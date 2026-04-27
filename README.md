@@ -1,4 +1,4 @@
-# Dairy Farm SaaS
+# Dairy Farm
 
 A React + Vite web app for managing dairy operations, including customer summaries, billing views, and history tracking.
 
