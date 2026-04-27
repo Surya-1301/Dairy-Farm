@@ -34,7 +34,9 @@ function Profile() {
   };
 
   const roleLabel = activeUser?.role === "owner" ? "Owner" : "User";
-  const displayName = profile?.name || activeUser?.email || "Unknown user";
+  const displayName = profile?.name?.trim() || activeUser?.email?.split("@")[0] || "User";
+  const displayEmail = profile?.email || activeUser?.email || "Not set";
+  const displayPhone = profile?.phone || activeUser?.phone || "Not set";
   const initials = displayName[0]?.toUpperCase() ?? "U";
 
   return (
@@ -52,7 +54,8 @@ function Profile() {
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">{roleLabel}</p>
             <h2 className="text-lg font-semibold text-slate-900">{displayName}</h2>
-            <p className="text-sm text-slate-600">+91 {profile?.phone ?? "Unknown mobile"}</p>
+            <p className="text-sm text-slate-600">{displayEmail}</p>
+            <p className="text-sm text-slate-600">{displayPhone === "Not set" ? "Mobile not added" : `+91 ${displayPhone}`}</p>
           </div>
         </div>
       </div>

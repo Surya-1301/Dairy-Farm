@@ -4,15 +4,15 @@ import SummaryTable from "../components/SummaryTable";
 import { getActiveUser, getAllUserProfiles, subscribeAuthState } from "../firebase/auth";
 import { generateBill } from "../utils/generateBill";
 import { sendWhatsAppMessage } from "../utils/whatsapp";
+import { getMilkChartData, subscribeMilkData } from "../utils/milkData";
 
 const summaryCustomers: Array<{ id: string; name: string; liters: number; rate: number }> = [];
-
-const chartData: Array<{ day: string; liters: number }> = [];
 
 function Dashboard() {
   const bill = useMemo(() => generateBill(summaryCustomers), []);
   const [activeUser, setActiveUser] = useState(getActiveUser());
   const [userProfiles, setUserProfiles] = useState(getAllUserProfiles());
+  const [chartData, setChartData] = useState(getMilkChartData());
 
   useEffect(() => {
     return subscribeAuthState(() => {
@@ -21,8 +21,14 @@ function Dashboard() {
     });
   }, []);
 
+  useEffect(() => {
+    return subscribeMilkData(() => {
+      setChartData(getMilkChartData());
+    });
+  }, []);
+
   const onSendSummary = () => {
-    sendWhatsAppMessage("919999999999", `Today's total collection is Rs ${bill.totalAmount}`);
+    sendWhatsAppMessage("919628909255", `Today's total collection is Rs ${bill.totalAmount}`);
   };
 
   return (

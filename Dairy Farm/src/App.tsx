@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { isOwnerLoggedIn, subscribeAuthState } from "./firebase/auth";
+import Customers from "./pages/Customers";
 import CustomerDetails from "./pages/CustomerDetails";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
@@ -65,6 +66,18 @@ function App() {
           isAuthenticated ? (
             <Layout>
               <Profile />
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/customers"
+        element={
+          isAuthenticated ? (
+            <Layout>
+              <Customers />
             </Layout>
           ) : (
             <Navigate to="/login" replace />

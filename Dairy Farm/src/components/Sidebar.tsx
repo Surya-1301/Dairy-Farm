@@ -3,6 +3,7 @@ import { logout } from "../firebase/auth";
 
 const links = [
   { to: "/dashboard", label: "Dashboard" },
+  { to: "/customers", label: "Customers" },
   { to: "/customer-details", label: "Customer Details" },
   { to: "/history", label: "History" },
   { to: "/profile", label: "Profile" }

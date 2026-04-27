@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getCustomers, subscribeCustomersChanged } from "../utils/customerData";
+import { notifyMilkDataChanged } from "../utils/milkData";
 
 const INITIAL_ROWS = 20;
 const INITIAL_DAYS = 15;
@@ -109,12 +111,42 @@ function CustomerTable() {
 
   const { rows, dayCount } = sheetState;
 
+  // Sync customer names from master customer data
+  useEffect(() => {
+    const unsubscribe = subscribeCustomersChanged(() => {
+      const customers = getCustomers();
+      const updatedRows = rows.map((row) => {
+        const customer = customers.find((c) => c.serialNumber === row.serialNumber);
+        if (customer && customer.name && !row.customerName) {
+          // Only auto-populate if the cell is empty
+          return { ...row, customerName: customer.name };
+        } else if (customer && customer.name) {
+          // Update if customer data changed
+          return { ...row, customerName: customer.name };
+        }
+        return row;
+      });
+
+      if (updatedRows.some((row, index) => row.customerName !== rows[index].customerName)) {
+        setSheetState({ dayCount, rows: updatedRows });
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(SHEET_STORAGE_KEY, JSON.stringify({ dayCount, rows: updatedRows }));
+        }
+        notifyMilkDataChanged();
+      }
+    });
+
+    return unsubscribe;
+  }, [rows, dayCount]);
+
   const saveState = (nextState: SheetState) => {
     setSheetState(nextState);
 
     if (typeof window !== "undefined") {
       window.localStorage.setItem(SHEET_STORAGE_KEY, JSON.stringify(nextState));
     }
+
+    notifyMilkDataChanged();
   };
 
   const archiveToHistory = () => {

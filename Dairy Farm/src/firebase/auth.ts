@@ -1,11 +1,18 @@
-import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber, signOut } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut
+} from "firebase/auth";
 import { auth } from "./config";
 
 const OWNER_PHONE = "9999999999";
 const OWNER_EMAIL = "owner@dairyfarm.com";
+const OWNER_PASSWORD = "123456";
 const AUTH_SESSION_KEY = "dairy-farm-owner-session";
 const AUTH_USER_KEY = "dairy-farm-active-user";
 const USER_PROFILES_KEY = "dairy-farm-user-profiles";
+const USER_CREDENTIALS_KEY = "dairy-farm-user-credentials";
 const AUTH_CHANGE_EVENT = "dairy-farm-auth-changed";
 
 type AuthMode = "signin" | "signup";
@@ -14,6 +21,14 @@ type ActiveUser = {
   phone: string;
   email: string;
   role: "owner" | "user";
+};
+
+type StoredCredential = {
+  email: string;
+  password: string;
+  name: string;
+  role: "owner" | "user";
+  phone: string;
 };
 
 export type UserProfile = {
@@ -25,16 +40,13 @@ export type UserProfile = {
   updatedAt: string;
 };
 
+function normalizeEmail(rawValue: string) {
+  return rawValue.trim().toLowerCase();
+}
+
 function normalizePhone(rawValue: string) {
   return rawValue.replace(/\D/g, "");
 }
-
-let recaptchaVerifier: RecaptchaVerifier | null = null;
-let confirmationResult: ConfirmationResult | null = null;
-let pendingPhone: string | null = null;
-let fallbackOtpPhone: string | null = null;
-let fallbackOtpCode: string | null = null;
-let lastOtpMode: "firebase" | "fallback" = "firebase";
 
 function setOwnerSession(isLoggedIn: boolean) {
   if (typeof window === "undefined") {
@@ -62,29 +74,68 @@ function setActiveUser(activeUser: ActiveUser | null) {
   }
 }
 
-function getRecaptchaVerifier() {
-  if (!auth) {
-    throw new Error("Phone authentication is unavailable. Check Firebase config.");
-  }
-
-  if (!recaptchaVerifier) {
-    recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
-      size: "normal"
-    });
-  }
-
-  return recaptchaVerifier;
-}
-
-function isFirebasePhoneConfigError(error: unknown) {
+function isFirebaseAuthError(error: unknown) {
   if (!(error instanceof Error)) {
     return false;
   }
 
   return (
     error.message.includes("auth/configuration-not-found") ||
-    error.message.includes("auth/operation-not-allowed")
+    error.message.includes("auth/operation-not-allowed") ||
+    error.message.includes("auth/admin-restricted-operation") ||
+    error.message.includes("auth/invalid-api-key")
   );
+}
+
+function getStoredCredentials(): StoredCredential[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const rawValue = window.localStorage.getItem(USER_CREDENTIALS_KEY);
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(rawValue) as StoredCredential[];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredCredentials(credentials: StoredCredential[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(USER_CREDENTIALS_KEY, JSON.stringify(credentials));
+}
+
+function upsertStoredCredential(credential: StoredCredential) {
+  const normalizedEmail = normalizeEmail(credential.email);
+  const normalizedPhone = normalizePhone(credential.phone);
+  const credentials = getStoredCredentials();
+  const index = credentials.findIndex((item) => item.email === normalizedEmail);
+
+  const nextCredential: StoredCredential = {
+    ...credential,
+    email: normalizedEmail,
+    phone: normalizedPhone
+  };
+
+  if (index >= 0) {
+    credentials[index] = { ...credentials[index], ...nextCredential };
+  } else {
+    credentials.push(nextCredential);
+  }
+
+  saveStoredCredentials(credentials);
+}
+
+function getStoredCredentialByEmail(email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  return getStoredCredentials().find((credential) => credential.email === normalizedEmail) ?? null;
 }
 
 function getStoredUserProfiles(): UserProfile[] {
@@ -114,10 +165,10 @@ function saveUserProfiles(profiles: UserProfile[]) {
 
 function upsertUserProfile(profile: Omit<UserProfile, "updatedAt">) {
   const normalizedPhone = normalizePhone(profile.phone);
-  const normalizedEmail = profile.email.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(profile.email);
   const profiles = getStoredUserProfiles();
   const now = new Date().toISOString();
-  const index = profiles.findIndex((item) => item.phone === normalizedPhone);
+  const index = profiles.findIndex((item) => item.email === normalizedEmail || item.phone === normalizedPhone);
 
   const nextProfile: UserProfile = {
     ...profile,
@@ -135,6 +186,21 @@ function upsertUserProfile(profile: Omit<UserProfile, "updatedAt">) {
   saveUserProfiles(profiles);
 }
 
+function syncAuthSession(activeUser: ActiveUser) {
+  setOwnerSession(true);
+  setActiveUser(activeUser);
+}
+
+function hydrateOwnerProfile() {
+  upsertUserProfile({
+    phone: OWNER_PHONE,
+    email: OWNER_EMAIL,
+    role: "owner",
+    name: "Owner",
+    farmName: "Raipur Dairy Farm"
+  });
+}
+
 export function getActiveUser(): ActiveUser | null {
   if (typeof window === "undefined") {
     return null;
@@ -150,10 +216,10 @@ export function getActiveUser(): ActiveUser | null {
 
   try {
     const parsed = JSON.parse(rawValue) as ActiveUser;
-    if (!parsed.phone || !parsed.role) {
+    if (!parsed.phone || !parsed.role || !parsed.email) {
       return null;
     }
-    return { ...parsed, email: parsed.email ?? "" };
+    return parsed;
   } catch {
     return null;
   }
@@ -174,13 +240,28 @@ export function getCurrentUserProfile(): UserProfile | null {
     updatedAt: new Date().toISOString()
   };
 
-  const storedProfile = getStoredUserProfiles().find((profile) => profile.phone === activeUser.phone);
+  const storedProfile = getStoredUserProfiles().find(
+    (profile) => profile.phone === activeUser.phone || profile.email === activeUser.email
+  );
   if (!storedProfile) {
     upsertUserProfile(defaultProfile);
     return defaultProfile;
   }
 
   return storedProfile;
+}
+
+function createProfileFromActiveUser(activeUser: ActiveUser): UserProfile {
+  const fallbackName = activeUser.role === "owner" ? "Owner" : activeUser.email.split("@")[0] || "User";
+
+  return {
+    phone: activeUser.phone,
+    email: activeUser.email,
+    role: activeUser.role,
+    name: fallbackName,
+    farmName: activeUser.role === "owner" ? "Raipur Dairy Farm" : "",
+    updatedAt: new Date().toISOString()
+  };
 }
 
 export function updateCurrentUserProfile(
@@ -191,15 +272,32 @@ export function updateCurrentUserProfile(
     return null;
   }
 
+  const activeUser = getActiveUser();
+  const nextEmail = normalizeEmail(updates.email);
   const nextProfile: Omit<UserProfile, "updatedAt"> = {
     phone: currentProfile.phone,
-    email: updates.email.trim().toLowerCase(),
+    email: nextEmail,
     role: currentProfile.role,
     name: updates.name.trim(),
     farmName: updates.farmName.trim()
   };
 
   upsertUserProfile(nextProfile);
+
+  if (activeUser) {
+    setActiveUser({ ...activeUser, email: nextEmail });
+  }
+
+  const existingCredential = activeUser ? getStoredCredentialByEmail(activeUser.email) : null;
+  if (existingCredential) {
+    upsertStoredCredential({
+      ...existingCredential,
+      email: nextEmail,
+      name: updates.name.trim(),
+      phone: currentProfile.phone
+    });
+  }
+
   window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
 
   return getCurrentUserProfile();
@@ -218,7 +316,12 @@ export function subscribeAuthState(listener: () => void) {
 
   const onChange = () => listener();
   const onStorage = (event: StorageEvent) => {
-    if (event.key === AUTH_SESSION_KEY || event.key === AUTH_USER_KEY || event.key === USER_PROFILES_KEY) {
+    if (
+      event.key === AUTH_SESSION_KEY ||
+      event.key === AUTH_USER_KEY ||
+      event.key === USER_PROFILES_KEY ||
+      event.key === USER_CREDENTIALS_KEY
+    ) {
       listener();
     }
   };
@@ -240,111 +343,204 @@ export function isOwnerLoggedIn() {
   return window.localStorage.getItem(AUTH_SESSION_KEY) === "true";
 }
 
-export async function requestOtpForPhone(phone: string, mode: AuthMode): Promise<void> {
-  const normalizedPhone = normalizePhone(phone);
-  if (normalizedPhone.length !== 10) {
-    throw new Error("Enter a valid 10-digit mobile number.");
+export async function signInWithEmailPassword(email: string, password: string): Promise<void> {
+  const normalizedEmail = normalizeEmail(email);
+  const trimmedPassword = password.trim();
+
+  if (!normalizedEmail || !trimmedPassword) {
+    throw new Error("Enter both email and password.");
   }
 
-  const existingProfile = getStoredUserProfiles().find((profile) => profile.phone === normalizedPhone);
-  const isOwner = normalizedPhone === OWNER_PHONE;
-
-  if (mode === "signup" && existingProfile && !isOwner) {
-    throw new Error("Account already exists. Use Sign in.");
-  }
-  if (mode === "signin" && !existingProfile && !isOwner) {
-    throw new Error("User not found. Please sign up first.");
-  }
-
-  try {
-    const verifier = getRecaptchaVerifier();
-    await verifier.render();
-    confirmationResult = await signInWithPhoneNumber(auth!, `+91${normalizedPhone}`, verifier);
-    pendingPhone = normalizedPhone;
-    fallbackOtpPhone = null;
-    fallbackOtpCode = null;
-    lastOtpMode = "firebase";
-  } catch (error) {
-    if (!isFirebasePhoneConfigError(error)) {
-      throw error;
-    }
-
-    // Graceful fallback for projects where Phone Auth is not enabled yet.
-    fallbackOtpPhone = normalizedPhone;
-    fallbackOtpCode = "123456";
-    confirmationResult = null;
-    pendingPhone = normalizedPhone;
-    lastOtpMode = "fallback";
-  }
-}
-
-export function getLastOtpMode() {
-  return lastOtpMode;
-}
-
-export async function verifyOtpAndAuthenticate(phone: string, otp: string, mode: AuthMode): Promise<void> {
-  const normalizedPhone = normalizePhone(phone);
-  const inputOtp = otp.trim();
-
-  if (normalizedPhone.length !== 10) {
-    throw new Error("Enter a valid 10-digit mobile number.");
-  }
-
-  if (pendingPhone !== normalizedPhone) {
-    throw new Error("Please request OTP again.");
-  }
-
-  const existingProfile = getStoredUserProfiles().find((profile) => profile.phone === normalizedPhone);
-  const isOwner = normalizedPhone === OWNER_PHONE;
-
-  if (mode === "signup" && existingProfile && !isOwner) {
-    throw new Error("Account already exists. Use Sign in.");
-  }
-  if (mode === "signin" && !existingProfile && !isOwner) {
-    throw new Error("User not found. Please sign up first.");
-  }
-
-  if (confirmationResult) {
+  if (auth) {
     try {
-      await confirmationResult.confirm(inputOtp);
-    } catch {
-      throw new Error("Invalid OTP.");
-    }
-  } else {
-    if (fallbackOtpPhone !== normalizedPhone || fallbackOtpCode !== inputOtp) {
-      throw new Error("Invalid OTP.");
+      const credential = await signInWithEmailAndPassword(auth, normalizedEmail, trimmedPassword);
+      const role: "owner" | "user" = credential.user.email?.toLowerCase() === OWNER_EMAIL ? "owner" : "user";
+      const storedProfile = getStoredUserProfiles().find((profile) => profile.email === normalizedEmail);
+      const activeUser: ActiveUser = {
+        email: normalizedEmail,
+        phone: storedProfile?.phone ?? (role === "owner" ? OWNER_PHONE : ""),
+        role
+      };
+
+      syncAuthSession(activeUser);
+
+      if (!storedProfile) {
+        upsertUserProfile(createProfileFromActiveUser(activeUser));
+      }
+
+      if (role === "owner") {
+        hydrateOwnerProfile();
+      }
+
+      return;
+    } catch (error) {
+      if (!isFirebaseAuthError(error)) {
+        const localCredential = getStoredCredentialByEmail(normalizedEmail);
+        if (!localCredential || localCredential.password !== trimmedPassword) {
+          throw error;
+        }
+      }
     }
   }
 
-  if (isOwner) {
-    setOwnerSession(true);
-    setActiveUser({ phone: OWNER_PHONE, email: OWNER_EMAIL, role: "owner" });
-    upsertUserProfile({
-      phone: OWNER_PHONE,
-      email: OWNER_EMAIL,
-      role: "owner",
-      name: "Owner",
-      farmName: "Raipur Dairy Farm"
-    });
-  } else {
-    const existingEmail = existingProfile?.email ?? "";
-    const existingName = existingProfile?.name ?? "";
-    const existingFarmName = existingProfile?.farmName ?? "";
+  const storedCredential = getStoredCredentialByEmail(normalizedEmail);
+  if (!storedCredential || storedCredential.password !== trimmedPassword) {
+    if (normalizedEmail === OWNER_EMAIL && trimmedPassword === OWNER_PASSWORD) {
+      hydrateOwnerProfile();
+      upsertStoredCredential({
+        email: OWNER_EMAIL,
+        password: OWNER_PASSWORD,
+        name: "Owner",
+        role: "owner",
+        phone: OWNER_PHONE
+      });
+      syncAuthSession({ email: OWNER_EMAIL, phone: OWNER_PHONE, role: "owner" });
+      return;
+    }
 
-    setOwnerSession(true);
-    setActiveUser({ phone: normalizedPhone, email: existingEmail, role: "user" });
+    throw new Error("Invalid email or password.");
+  }
+
+  syncAuthSession({
+    email: storedCredential.email,
+    phone: storedCredential.phone,
+    role: storedCredential.role
+  });
+
+  upsertUserProfile({
+    phone: storedCredential.phone,
+    email: storedCredential.email,
+    role: storedCredential.role,
+    name: storedCredential.name || (storedCredential.email.split("@")[0] || "User"),
+    farmName: storedCredential.role === "owner" ? "Raipur Dairy Farm" : ""
+  });
+}
+
+export async function signUpWithEmailPassword(
+  email: string,
+  password: string,
+  name: string
+): Promise<void> {
+  const normalizedEmail = normalizeEmail(email);
+  const trimmedPassword = password.trim();
+  const trimmedName = name.trim();
+
+  if (!normalizedEmail || !trimmedPassword) {
+    throw new Error("Enter both email and password.");
+  }
+
+  if (normalizedEmail === OWNER_EMAIL) {
+    throw new Error("This email is reserved for the owner.");
+  }
+
+  if (getStoredCredentialByEmail(normalizedEmail)) {
+    throw new Error("Account already exists. Use Sign in.");
+  }
+
+  if (auth) {
+    try {
+      const credential = await createUserWithEmailAndPassword(auth, normalizedEmail, trimmedPassword);
+      syncAuthSession({
+        email: credential.user.email ?? normalizedEmail,
+        phone: "",
+        role: "user"
+      });
+    } catch (error) {
+      if (!isFirebaseAuthError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  upsertStoredCredential({
+    email: normalizedEmail,
+    password: trimmedPassword,
+    name: trimmedName,
+    role: "user",
+    phone: ""
+  });
+
+  upsertUserProfile({
+    phone: "",
+    email: normalizedEmail,
+    role: "user",
+    name: trimmedName,
+    farmName: ""
+  });
+
+  syncAuthSession({
+    email: normalizedEmail,
+    phone: "",
+    role: "user"
+  });
+}
+
+export async function requestPasswordReset(email: string): Promise<"firebase" | "local"> {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    throw new Error("Enter an email address.");
+  }
+
+  if (normalizedEmail === OWNER_EMAIL) {
+    throw new Error("Owner password reset is not available from this screen.");
+  }
+
+  const storedCredential = getStoredCredentialByEmail(normalizedEmail);
+
+  if (auth) {
+    try {
+      await sendPasswordResetEmail(auth, normalizedEmail);
+      return "firebase";
+    } catch (error) {
+      if (!storedCredential || !isFirebaseAuthError(error)) {
+        if (!storedCredential) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  if (!storedCredential) {
+    throw new Error("Account not found.");
+  }
+
+  return "local";
+}
+
+export async function completeLocalPasswordReset(email: string, password: string): Promise<void> {
+  const normalizedEmail = normalizeEmail(email);
+  const trimmedPassword = password.trim();
+
+  if (!normalizedEmail || !trimmedPassword) {
+    throw new Error("Enter a new password.");
+  }
+
+  if (normalizedEmail === OWNER_EMAIL) {
+    throw new Error("Owner password cannot be changed here.");
+  }
+
+  const storedCredential = getStoredCredentialByEmail(normalizedEmail);
+  if (!storedCredential) {
+    throw new Error("Account not found.");
+  }
+
+  upsertStoredCredential({
+    ...storedCredential,
+    password: trimmedPassword
+  });
+
+  const storedProfile = getStoredUserProfiles().find((profile) => profile.email === normalizedEmail);
+  if (storedProfile) {
     upsertUserProfile({
-      phone: normalizedPhone,
-      email: existingEmail,
-      role: "user",
-      name: existingName,
-      farmName: existingFarmName
+      phone: storedProfile.phone,
+      email: storedProfile.email,
+      role: storedProfile.role,
+      name: storedProfile.name,
+      farmName: storedProfile.farmName
     });
   }
-  confirmationResult = null;
-  pendingPhone = null;
-  fallbackOtpPhone = null;
-  fallbackOtpCode = null;
+
+  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
 }
 
 export async function logout(): Promise<void> {
