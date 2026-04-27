@@ -4,7 +4,8 @@ import { logout } from "../firebase/auth";
 const links = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/customer-details", label: "Customer Details" },
-  { to: "/history", label: "History" }
+  { to: "/history", label: "History" },
+  { to: "/profile", label: "Profile" }
 ];
 
 function Sidebar() {
@@ -17,7 +18,17 @@ function Sidebar() {
 
   return (
     <aside className="border-b border-slate-200 bg-white/80 p-4 backdrop-blur md:flex md:min-h-screen md:flex-col md:border-b-0 md:border-r">
-      <h1 className="mb-6 text-xl font-bold text-brand-700">Dairy Farm</h1>
+      <NavLink
+        to="/dashboard"
+        className="mb-6 flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        <img
+          src="/src/assets/logo.png"
+          alt="Raipur Dugdh Utapadan Association logo"
+          className="h-12 w-12 rounded-full border border-slate-200 object-cover"
+        />
+        <h1 className="text-xl font-bold text-brand-700">Dairy Farm</h1>
+      </NavLink>
       <nav className="flex gap-2 md:flex-col">
         {links.map((link) => (
           <NavLink

@@ -6,6 +6,7 @@ import CustomerDetails from "./pages/CustomerDetails";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
 import Login from "./pages/Login";
+import Profile from "./pages/Profile";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(isOwnerLoggedIn());
@@ -52,6 +53,18 @@ function App() {
           isAuthenticated ? (
             <Layout>
               <History />
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          isAuthenticated ? (
+            <Layout>
+              <Profile />
             </Layout>
           ) : (
             <Navigate to="/login" replace />
