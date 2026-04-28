@@ -64,16 +64,22 @@ function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-start justify-center bg-slate-50 px-3 py-6 sm:items-center sm:px-4">
+    <div 
+      className="flex min-h-screen items-start justify-center bg-slate-50 px-3 py-6 sm:items-center sm:px-4"
+      style={{
+        paddingTop: 'max(1.5rem, calc(1.5rem + var(--safe-area-inset-top)))',
+        paddingBottom: 'max(1.5rem, calc(1.5rem + var(--safe-area-inset-bottom)))',
+      }}
+    >
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-md space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
+        className="w-full max-w-md space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8"
       >
         <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
           <button
             type="button"
             onClick={() => resetForMode("signin")}
-            className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+            className={`rounded-md px-4 py-3 text-sm font-semibold transition min-h-[44px] flex items-center justify-center active:opacity-75 ${
               mode === "signin" ? "bg-white text-slate-900" : "text-slate-600"
             }`}
           >
@@ -82,7 +88,7 @@ function Login() {
           <button
             type="button"
             onClick={() => resetForMode("signup")}
-            className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+            className={`rounded-md px-4 py-3 text-sm font-semibold transition min-h-[44px] flex items-center justify-center active:opacity-75 ${
               mode === "signup" ? "bg-white text-slate-900" : "text-slate-600"
             }`}
           >
@@ -93,10 +99,10 @@ function Login() {
           {mode === "signin" ? "Welcome back" : mode === "signup" ? "Create account" : "Reset password"}
         </h1>
         {errorMessage ? (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{errorMessage}</p>
+          <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage}</p>
         ) : null}
         {infoMessage ? (
-          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{infoMessage}</p>
+          <p className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{infoMessage}</p>
         ) : null}
         {mode === "signup" ? (
           <label className="block text-sm font-medium text-slate-700">
@@ -105,14 +111,15 @@ function Login() {
               type="text"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base"
+              className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
               placeholder="Enter your name"
               required
+              autoComplete="name"
             />
           </label>
         ) : null}
         {mode === "reset" ? (
-          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
             Enter the email address on your Firebase account and we will send a password reset email.
           </p>
         ) : null}
@@ -122,9 +129,10 @@ function Login() {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base"
+            className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
             placeholder="Enter email address"
             required
+            autoComplete="email"
           />
         </label>
         {mode !== "reset" ? (
@@ -134,9 +142,10 @@ function Login() {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base"
+              className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
               placeholder="Enter password"
               required
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
             />
           </label>
         ) : null}
@@ -147,16 +156,17 @@ function Login() {
               type="password"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base"
+              className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
               placeholder="Confirm password"
               required
+              autoComplete="new-password"
             />
           </label>
         ) : null}
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+          className="w-full rounded-lg bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 active:bg-brand-800 disabled:opacity-60 min-h-[48px] flex items-center justify-center transition"
         >
           {loading
             ? mode === "signin"
@@ -174,7 +184,7 @@ function Login() {
           <button
             type="button"
             onClick={() => resetForMode("reset")}
-            className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 min-h-[48px] flex items-center justify-center transition"
           >
             Forgot password?
           </button>

@@ -11,6 +11,7 @@ import { auth } from "./config";
 
 const OWNER_PHONE = "9999999999";
 const OWNER_EMAIL = "ss058012@gmail.com";
+const OWNER_PASSWORD = "Rebel_0102";
 const AUTH_CHANGE_EVENT = "dairy-farm-auth-changed";
 const USER_PROFILES_KEY = "dairy-farm-user-profiles";
 const USER_CREDENTIALS_KEY = "dairy-farm-user-credentials";
@@ -425,8 +426,20 @@ export async function signUpWithEmailPassword(email: string, password: string, n
     throw new Error("Enter both email and password.");
   }
 
+  // Allow owner account creation with correct credentials
   if (normalizedEmail === OWNER_EMAIL) {
-    throw new Error("This email is reserved for the owner.");
+    if (trimmedPassword !== OWNER_PASSWORD) {
+      throw new Error("Invalid owner password.");
+    }
+    
+    try {
+      const credential = await createUserWithEmailAndPassword(firebaseAuth, normalizedEmail, trimmedPassword);
+      ensureCurrentUserProfile(credential.user, { name: trimmedName || "Owner" });
+      syncFirebaseUser(credential.user);
+    } catch (error) {
+      throw toFriendlyAuthError(error);
+    }
+    return;
   }
 
   try {
@@ -496,6 +509,28 @@ export async function deleteCurrentAccount(): Promise<void> {
   syncFirebaseUser(null);
 }
 
-export async function deleteUserByEmail(): Promise<void> {
-  throw new Error("Owner user deletion now requires Firebase Admin or a backend endpoint.");
+export async function deleteUserByEmail(email: string): Promise<void> {
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail) {
+    throw new Error("Invalid email address.");
+  }
+
+  if (normalizedEmail === OWNER_EMAIL) {
+    throw new Error("Cannot delete the owner account.");
+  }
+
+  // Remove user profile
+  removeUserProfileForEmail(normalizedEmail);
+  
+  // Remove legacy credentials
+  removeLegacyCredentialForEmail(normalizedEmail);
+  
+  // Clear all account storage
+  clearAccountStorage(normalizedEmail);
+  
+  // Emit auth change event to notify listeners
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+  }
 }

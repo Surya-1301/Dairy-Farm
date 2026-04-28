@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCustomers, subscribeCustomersChanged } from "../utils/customerData";
 import { notifyMilkDataChanged } from "../utils/milkData";
+import { send15DaysDataToWhatsApp } from "../utils/whatsapp";
 
 const INITIAL_ROWS = 20;
 const INITIAL_DAYS = 15;
@@ -257,6 +258,7 @@ function CustomerTable() {
                 </th>
               ))}
               <th className="min-w-20 border border-slate-400 px-2 py-2">Total</th>
+              <th className="min-w-28 border border-slate-400 px-2 py-2">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -291,6 +293,16 @@ function CustomerTable() {
                     </td>
                   ))}
                   <td className="border border-slate-300 px-2 py-1 font-semibold">{total}</td>
+                  <td className="border border-slate-300 px-2 py-1">
+                    <button
+                      type="button"
+                      onClick={() => send15DaysDataToWhatsApp(row.serialNumber)}
+                      className="rounded-lg bg-green-500 px-3 py-1 text-xs font-semibold text-white hover:bg-green-600 transition-colors"
+                      title="Send 15 days data to WhatsApp"
+                    >
+                      📱 Send
+                    </button>
+                  </td>
                 </tr>
               );
             })}

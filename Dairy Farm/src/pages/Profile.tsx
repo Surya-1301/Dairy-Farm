@@ -255,33 +255,33 @@ function Profile() {
   const initials = displayName[0]?.toUpperCase() ?? "U";
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-4 md:space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Profile</h1>
-        <p className="mt-1 text-sm text-slate-600">View and update your account details.</p>
+        <h1 className="text-xl md:text-2xl font-bold text-slate-900">Profile</h1>
+        <p className="mt-1 text-xs md:text-sm text-slate-600">View and update your account details.</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-brand-500 text-xl font-bold text-white">
+      <div className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex h-14 w-14 md:h-16 md:w-16 items-center justify-center flex-shrink-0 overflow-hidden rounded-full bg-brand-500 text-lg md:text-xl font-bold text-white">
             {displayAvatarUrl ? (
               <img src={displayAvatarUrl} alt="Profile avatar" className="h-full w-full object-cover" />
             ) : (
               initials
             )}
           </div>
-          <div className="space-y-1 flex-1">
-            <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">{roleLabel}</p>
-            <h2 className="text-lg font-semibold text-slate-900">{displayName}</h2>
-            <p className="text-sm text-slate-600">{displayEmail}</p>
-            <p className="text-sm text-slate-600">{displayPhone}</p>
+          <div className="space-y-1 flex-1 min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">{roleLabel}</p>
+            <h2 className="text-base md:text-lg font-semibold text-slate-900 truncate">{displayName}</h2>
+            <p className="text-xs md:text-sm text-slate-600 truncate">{displayEmail}</p>
+            <p className="text-xs md:text-sm text-slate-600">{displayPhone}</p>
           </div>
         </div>
       </div>
 
-      <form onSubmit={onSave} className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900">Edit Profile</h3>
+      <form onSubmit={onSave} className="space-y-4 rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h3 className="text-base md:text-lg font-semibold text-slate-900">Edit Profile</h3>
           {profile && (
             <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded">
               Saved
@@ -291,7 +291,7 @@ function Profile() {
         
         {message && (
           <div
-            className={`rounded-lg px-3 py-2 text-sm ${
+            className={`rounded-lg px-3 py-2 text-xs md:text-sm ${
               messageType === "success"
                 ? "bg-emerald-50 text-emerald-700"
                 : "bg-red-50 text-red-700"
@@ -301,40 +301,43 @@ function Profile() {
           </div>
         )}
 
-        <label className="block text-sm font-medium text-slate-700">
+        <label className="block text-xs md:text-sm font-medium text-slate-700">
           Full Name <span className="text-red-500">*</span>
           <input
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
             placeholder="Enter your full name"
             required
             disabled={loading}
+            autoComplete="name"
           />
         </label>
 
-        <label className="block text-sm font-medium text-slate-700">
+        <label className="block text-xs md:text-sm font-medium text-slate-700">
           Phone Number
           <input
             type="tel"
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
             placeholder="Enter your phone number"
             disabled={loading}
+            autoComplete="tel"
           />
         </label>
 
-        <label className="block text-sm font-medium text-slate-700">
+        <label className="block text-xs md:text-sm font-medium text-slate-700">
           Email Address
           <input
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
             placeholder="Enter your email address"
             disabled
+            autoComplete="email"
           />
         </label>
         <p className="text-xs text-slate-500">
@@ -342,13 +345,13 @@ function Profile() {
         </p>
 
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-700">
+          <label className="block text-xs md:text-sm font-medium text-slate-700">
             Profile Avatar
             <input
               type="file"
               accept="image/*"
               onChange={handleAvatarChange}
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="mt-2 block w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px]"
               disabled={loading}
             />
           </label>
@@ -358,18 +361,18 @@ function Profile() {
               type="button"
               onClick={handleRemoveAvatar}
               disabled={loading}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+              className="rounded-lg border border-slate-300 px-4 py-3 text-xs md:text-sm font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-50 w-full min-h-[48px] flex items-center justify-center transition"
             >
               Remove Avatar
             </button>
           )}
         </div>
 
-        <div className="flex gap-3 pt-4">
+        <div className="flex flex-col sm:flex-row gap-3 pt-4">
           <button
             type="submit"
             disabled={loading}
-            className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            className="w-full sm:flex-1 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
           >
             {loading ? "Saving..." : "Save Profile"}
           </button>
@@ -377,7 +380,7 @@ function Profile() {
             type="button"
             onClick={handleDeleteAccount}
             disabled={loading}
-            className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+            className="w-full sm:flex-1 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 active:bg-red-200 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
           >
             {loading ? "Deleting..." : "Delete Account"}
           </button>
