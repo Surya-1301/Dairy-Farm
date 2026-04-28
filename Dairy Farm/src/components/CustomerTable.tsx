@@ -111,33 +111,41 @@ function CustomerTable() {
 
   const { rows, dayCount } = sheetState;
 
-  // Sync customer names from master customer data
+  // Sync customer names from master customer data — run on mount and when customers change
   useEffect(() => {
-    const unsubscribe = subscribeCustomersChanged(() => {
+    const syncCustomersToSheet = () => {
       const customers = getCustomers();
-      const updatedRows = rows.map((row) => {
-        const customer = customers.find((c) => c.serialNumber === row.serialNumber);
-        if (customer && customer.name && !row.customerName) {
-          // Only auto-populate if the cell is empty
-          return { ...row, customerName: customer.name };
-        } else if (customer && customer.name) {
-          // Update if customer data changed
-          return { ...row, customerName: customer.name };
+
+      setSheetState((prev) => {
+        const { dayCount: prevDayCount, rows: prevRows } = prev;
+        const updatedRows = prevRows.map((row) => {
+          const customer = customers.find((c) => c.serialNumber === row.serialNumber);
+          if (customer && customer.name) {
+            return { ...row, customerName: customer.name };
+          }
+          return row;
+        });
+
+        const changed = updatedRows.some((r, i) => r.customerName !== prevRows[i].customerName);
+
+        if (changed) {
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(SHEET_STORAGE_KEY, JSON.stringify({ dayCount: prevDayCount, rows: updatedRows }));
+          }
+          notifyMilkDataChanged();
+          return { dayCount: prevDayCount, rows: updatedRows };
         }
-        return row;
+
+        return prev;
       });
+    };
 
-      if (updatedRows.some((row, index) => row.customerName !== rows[index].customerName)) {
-        setSheetState({ dayCount, rows: updatedRows });
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(SHEET_STORAGE_KEY, JSON.stringify({ dayCount, rows: updatedRows }));
-        }
-        notifyMilkDataChanged();
-      }
-    });
+    // initial sync
+    syncCustomersToSheet();
 
+    const unsubscribe = subscribeCustomersChanged(syncCustomersToSheet);
     return unsubscribe;
-  }, [rows, dayCount]);
+  }, []);
 
   const saveState = (nextState: SheetState) => {
     setSheetState(nextState);

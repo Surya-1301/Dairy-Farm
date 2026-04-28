@@ -27,20 +27,12 @@ function Dashboard() {
     });
   }, []);
 
-  const onSendSummary = () => {
-    sendWhatsAppMessage("919628909255", `Today's total collection is Rs ${bill.totalAmount}`);
-  };
+  // summary/whatsapp handled elsewhere; no dashboard actions here
 
   return (
     <section className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <button
-          onClick={onSendSummary}
-          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-        >
-          Send WhatsApp Summary
-        </button>
       </div>
 
       <SummaryTable

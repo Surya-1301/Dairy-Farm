@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
+import OwnerDashboard from "./pages/OwnerDashboard";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(isOwnerLoggedIn());
@@ -31,6 +32,16 @@ function App() {
             <Layout>
               <Dashboard />
             </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/owner-dashboard"
+        element={
+          isAuthenticated ? (
+            <OwnerDashboard />
           ) : (
             <Navigate to="/login" replace />
           )

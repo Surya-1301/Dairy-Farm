@@ -1,15 +1,18 @@
-# Dairy Farm SaaS
+# Dairy Farm
 
-A React + Vite web app for managing dairy operations, including customer summaries, billing views, and history tracking.
+A React + Vite dairy management app for handling customer records, daily milk-sheet entries, profile management, and owner-level reporting.
 
-## Features
+## What The App Does
 
-- Owner authentication flow with protected routes
-- Dashboard with summary cards and daily chart view
-- Customer details and history pages
-- Bill generation utility for total liters and total amount
-- WhatsApp summary trigger for quick sharing
-- Firebase-ready setup with local fallback auth behavior
+- Email/password sign in, sign up, and password reset
+- Protected routes for authenticated users
+- Customer management with add, edit, and delete actions
+- 15-day milk sheet with editable daily quantities
+- Dashboard chart based on milk-sheet totals
+- Sheet history archive with local download support
+- Profile management with avatar upload
+- Owner-only dashboard for viewing users, milk totals, earnings, and deleting users
+- Firebase Auth support with localStorage fallback when Firebase config is unavailable
 
 ## Tech Stack
 
@@ -17,31 +20,33 @@ A React + Vite web app for managing dairy operations, including customer summari
 - TypeScript
 - Vite 5
 - Tailwind CSS
-- React Router
+- React Router DOM
 - Recharts
-- Firebase Auth + Analytics
+- Firebase
 
-## Project Structure
+## Repository Layout
 
-This repository currently contains the app inside a nested folder:
+This repository contains a nested frontend app:
 
-- Root repository: `Dairy Farm/`
-- Frontend app code: `Dairy Farm/Dairy Farm/`
+- Repository root: `Dairy Farm/`
+- Frontend app: `Dairy Farm/Dairy Farm/`
 
-Run app commands from the inner app directory.
+Run frontend commands from the inner `Dairy Farm/` app folder.
 
 ## Getting Started
 
-### 1) Install dependencies
+### 1. Install dependencies
+
+From the repository root:
 
 ```bash
 cd "Dairy Farm"
 npm install
 ```
 
-### 2) Create environment file
+### 2. Add environment variables
 
-Create a `.env` file inside `Dairy Farm/` with:
+Create a `.env` file inside the inner app folder (`Dairy Farm/`) with:
 
 ```env
 VITE_FIREBASE_API_KEY=your_api_key
@@ -53,42 +58,64 @@ VITE_FIREBASE_APP_ID=your_app_id
 VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
 ```
 
-Note: if Firebase config is missing, the app logs a warning and uses local fallback behavior for auth flows.
+If these values are missing, the app still runs and falls back to local auth/storage behavior for core flows.
 
-### 3) Start development server
+### 3. Start the app
 
 ```bash
 npm run dev
 ```
 
-Open the local URL printed by Vite (usually `http://localhost:5173`).
+The Vite dev server usually starts at [http://localhost:5173](http://localhost:5173).
 
 ## Available Scripts
 
-From `Dairy Farm/`:
+Inside `Dairy Farm/`:
 
-- `npm run dev` - start development server
-- `npm run build` - create production build
-- `npm run preview` - preview production build locally
+- `npm run dev` starts the development server
+- `npm run build` creates a production build
+- `npm run preview` previews the production build locally
+
+## Main Routes
+
+- `/login` - sign in, sign up, and password reset
+- `/dashboard` - main user dashboard
+- `/customers` - customer management
+- `/customer-details` - editable milk data sheet
+- `/history` - archived sheet history
+- `/profile` - user profile management
+- `/owner-dashboard` - owner-only admin dashboard
+
+## Data And Storage
+
+- Customer records are stored in localStorage
+- The milk sheet is stored locally and drives dashboard chart totals
+- Archived sheets are stored separately in history and can be downloaded as JSON
+- User profile data is persisted locally and synced with auth state
+- Firebase Auth is used when configured; otherwise local fallback logic is used
 
 ## Authentication Notes
 
-- Reserved owner login:
-  - Email: `owner@dairyfarm.com`
-  - Password: `123456`
-- Additional users can sign up/login through Firebase Auth (or local fallback when Firebase is unavailable).
+- The app includes a reserved owner account in the auth logic
+- Regular users can create accounts with email and password
+- Password reset supports Firebase email reset when available, with a local fallback flow otherwise
 
-## Deployment
+For production use, review the authentication implementation and move any hardcoded sensitive values into secure environment-based configuration.
 
-Build the app:
+## Build And Deploy
 
 ```bash
 cd "Dairy Farm"
 npm run build
 ```
 
-Deploy the generated `dist/` folder using your preferred host (Vercel, Netlify, Firebase Hosting, etc.).
+Deploy the generated `dist/` output using Vercel, Netlify, Firebase Hosting, or any static hosting provider.
 
-## Repository
+## Current Focus Areas In The Codebase
 
-GitHub: [Surya-1301/Dairy-Farm](https://github.com/Surya-1301/Dairy-Farm/)
+- `src/pages/Customers.tsx` manages customer CRUD
+- `src/components/CustomerTable.tsx` manages the editable milk sheet
+- `src/pages/History.tsx` handles archived sheet snapshots
+- `src/pages/Profile.tsx` manages user profile updates and avatar upload
+- `src/pages/OwnerDashboard.tsx` provides owner analytics and user deletion
+- `src/firebase/auth.ts` contains Firebase plus local fallback auth logic

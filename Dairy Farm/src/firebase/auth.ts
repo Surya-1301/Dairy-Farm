@@ -1,5 +1,6 @@
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   signOut
@@ -7,12 +8,13 @@ import {
 import { auth } from "./config";
 
 const OWNER_PHONE = "9999999999";
-const OWNER_EMAIL = "owner@dairyfarm.com";
-const OWNER_PASSWORD = "123456";
+const OWNER_EMAIL = "ss058012@gmail.com";
+const OWNER_PASSWORD = "Rebel_0102";
 const AUTH_SESSION_KEY = "dairy-farm-owner-session";
 const AUTH_USER_KEY = "dairy-farm-active-user";
 const USER_PROFILES_KEY = "dairy-farm-user-profiles";
 const USER_CREDENTIALS_KEY = "dairy-farm-user-credentials";
+const DELETED_EMAILS_KEY = "dairy-farm-deleted-emails";
 const AUTH_CHANGE_EVENT = "dairy-farm-auth-changed";
 
 type AuthMode = "signin" | "signup";
@@ -37,6 +39,7 @@ export type UserProfile = {
   role: "owner" | "user";
   name: string;
   farmName: string;
+  avatarUrl?: string;
   updatedAt: string;
 };
 
@@ -155,12 +158,67 @@ function getStoredUserProfiles(): UserProfile[] {
   }
 }
 
+function getDeletedEmails(): string[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const rawValue = window.localStorage.getItem(DELETED_EMAILS_KEY);
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(rawValue) as string[];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedEmails(emails: string[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(DELETED_EMAILS_KEY, JSON.stringify(emails));
+}
+
+function markEmailDeleted(email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  const deletedEmails = getDeletedEmails();
+
+  if (!deletedEmails.includes(normalizedEmail)) {
+    deletedEmails.push(normalizedEmail);
+    saveDeletedEmails(deletedEmails);
+  }
+}
+
+function clearDeletedEmail(email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  saveDeletedEmails(getDeletedEmails().filter((item) => item !== normalizedEmail));
+}
+
+function isEmailMarkedDeleted(email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  return getDeletedEmails().includes(normalizedEmail);
+}
+
 function saveUserProfiles(profiles: UserProfile[]) {
   if (typeof window === "undefined") {
     return;
   }
 
   window.localStorage.setItem(USER_PROFILES_KEY, JSON.stringify(profiles));
+}
+
+function removeUserDataForEmail(email: string) {
+  const normalizedEmail = normalizeEmail(email);
+
+  const remainingCredentials = getStoredCredentials().filter((credential) => credential.email !== normalizedEmail);
+  saveStoredCredentials(remainingCredentials);
+
+  const remainingProfiles = getStoredUserProfiles().filter((profile) => profile.email !== normalizedEmail);
+  saveUserProfiles(remainingProfiles);
 }
 
 function upsertUserProfile(profile: Omit<UserProfile, "updatedAt">) {
@@ -197,7 +255,8 @@ function hydrateOwnerProfile() {
     email: OWNER_EMAIL,
     role: "owner",
     name: "Owner",
-    farmName: "Raipur Dairy Farm"
+    farmName: "Raipur Dairy Farm",
+    avatarUrl: ""
   });
 }
 
@@ -231,12 +290,18 @@ export function getCurrentUserProfile(): UserProfile | null {
     return null;
   }
 
+  const storedCredential = getStoredCredentialByEmail(activeUser.email);
+
   const defaultProfile: UserProfile = {
     phone: activeUser.phone,
     email: activeUser.email,
     role: activeUser.role,
-    name: activeUser.role === "owner" ? "Owner" : "",
+    name:
+      activeUser.role === "owner"
+        ? "Owner"
+        : storedCredential?.name?.trim() || activeUser.email.split("@")[0] || "User",
     farmName: "",
+    avatarUrl: "",
     updatedAt: new Date().toISOString()
   };
 
@@ -260,12 +325,13 @@ function createProfileFromActiveUser(activeUser: ActiveUser): UserProfile {
     role: activeUser.role,
     name: fallbackName,
     farmName: activeUser.role === "owner" ? "Raipur Dairy Farm" : "",
+    avatarUrl: "",
     updatedAt: new Date().toISOString()
   };
 }
 
 export function updateCurrentUserProfile(
-  updates: Pick<UserProfile, "name" | "farmName" | "email">
+  updates: Pick<UserProfile, "name" | "farmName" | "email" | "phone"> & { avatarUrl?: string }
 ): UserProfile | null {
   const currentProfile = getCurrentUserProfile();
   if (!currentProfile) {
@@ -274,12 +340,14 @@ export function updateCurrentUserProfile(
 
   const activeUser = getActiveUser();
   const nextEmail = normalizeEmail(updates.email);
+  const nextPhone = normalizePhone(updates.phone);
   const nextProfile: Omit<UserProfile, "updatedAt"> = {
-    phone: currentProfile.phone,
+    phone: nextPhone,
     email: nextEmail,
     role: currentProfile.role,
     name: updates.name.trim(),
-    farmName: updates.farmName.trim()
+    farmName: updates.farmName.trim(),
+    avatarUrl: updates.avatarUrl !== undefined ? updates.avatarUrl : currentProfile.avatarUrl ?? ""
   };
 
   upsertUserProfile(nextProfile);
@@ -294,7 +362,7 @@ export function updateCurrentUserProfile(
       ...existingCredential,
       email: nextEmail,
       name: updates.name.trim(),
-      phone: currentProfile.phone
+      phone: nextPhone
     });
   }
 
@@ -349,6 +417,10 @@ export async function signInWithEmailPassword(email: string, password: string): 
 
   if (!normalizedEmail || !trimmedPassword) {
     throw new Error("Enter both email and password.");
+  }
+
+  if (isEmailMarkedDeleted(normalizedEmail)) {
+    throw new Error("This account was deleted. Please create a new account.");
   }
 
   if (auth) {
@@ -407,12 +479,15 @@ export async function signInWithEmailPassword(email: string, password: string): 
     role: storedCredential.role
   });
 
+  const storedProfile = getStoredUserProfiles().find((profile) => profile.email === storedCredential.email);
+
   upsertUserProfile({
     phone: storedCredential.phone,
     email: storedCredential.email,
     role: storedCredential.role,
     name: storedCredential.name || (storedCredential.email.split("@")[0] || "User"),
-    farmName: storedCredential.role === "owner" ? "Raipur Dairy Farm" : ""
+    farmName: storedCredential.role === "owner" ? "Raipur Dairy Farm" : "",
+    avatarUrl: storedProfile?.avatarUrl ?? ""
   });
 }
 
@@ -436,6 +511,8 @@ export async function signUpWithEmailPassword(
   if (getStoredCredentialByEmail(normalizedEmail)) {
     throw new Error("Account already exists. Use Sign in.");
   }
+
+  clearDeletedEmail(normalizedEmail);
 
   if (auth) {
     try {
@@ -465,8 +542,11 @@ export async function signUpWithEmailPassword(
     email: normalizedEmail,
     role: "user",
     name: trimmedName,
-    farmName: ""
+    farmName: "",
+    avatarUrl: ""
   });
+
+  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
 
   syncAuthSession({
     email: normalizedEmail,
@@ -556,4 +636,107 @@ export async function logout(): Promise<void> {
   } catch {
     // Allow local logout to succeed even if Firebase sign out fails.
   }
+}
+
+export async function deleteCurrentAccount(): Promise<void> {
+  const activeUser = getActiveUser();
+  if (!activeUser) {
+    throw new Error("No account is currently signed in.");
+  }
+
+  if (activeUser.email === OWNER_EMAIL) {
+    throw new Error("Owner account cannot be deleted from here.");
+  }
+
+  const normalizedEmail = normalizeEmail(activeUser.email);
+
+  try {
+    // Try to delete from Firebase first
+    if (auth && auth.currentUser) {
+      try {
+        await deleteUser(auth.currentUser);
+      } catch (firebaseError) {
+        console.warn("Firebase deletion failed, continuing with local deletion:", firebaseError);
+      }
+    }
+  } catch (error) {
+    console.warn("Firebase auth error:", error);
+  }
+
+  try {
+    // Mark email as deleted (prevents re-registration)
+    markEmailDeleted(normalizedEmail);
+    
+    // Remove all user data from localStorage
+    removeUserDataForEmail(normalizedEmail);
+    
+    // Clear user-specific data
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(`milk-data-${normalizedEmail}`);
+      window.localStorage.removeItem(`dairy-farm-profile-draft-${normalizedEmail}`);
+      window.localStorage.removeItem(`customers-${normalizedEmail}`);
+      window.localStorage.removeItem(`dairy-farm-profile-draft`);
+      window.localStorage.removeItem(AUTH_USER_KEY);
+      window.localStorage.removeItem(AUTH_SESSION_KEY);
+    }
+    
+    // Emit auth change event
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+    }
+
+    // Sign out from Firebase
+    if (auth) {
+      try {
+        await signOut(auth);
+      } catch {
+        console.warn("Firebase sign out failed");
+      }
+    }
+  } catch (error) {
+    console.error("Error during account deletion:", error);
+    throw new Error("Failed to delete account completely. Some data may remain.");
+  }
+}
+
+export async function deleteUserByEmail(email: string): Promise<void> {
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail) {
+    throw new Error("Invalid email address.");
+  }
+
+  if (normalizedEmail === OWNER_EMAIL) {
+    throw new Error("Owner account cannot be deleted.");
+  }
+
+  const storedCredential = getStoredCredentialByEmail(normalizedEmail);
+  if (!storedCredential) {
+    throw new Error("User not found.");
+  }
+
+  if (auth) {
+    try {
+      if (storedCredential) {
+        await signInWithEmailAndPassword(auth, normalizedEmail, storedCredential.password);
+        if (auth.currentUser) {
+          await deleteUser(auth.currentUser);
+        }
+      }
+    } catch {
+      // Continue with local deletion even if Firebase deletion is unavailable.
+    }
+  }
+
+  markEmailDeleted(normalizedEmail);
+  removeUserDataForEmail(normalizedEmail);
+
+  // Clear user-specific data
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(`milk-data-${normalizedEmail}`);
+    window.localStorage.removeItem(`dairy-farm-profile-draft-${normalizedEmail}`);
+    window.localStorage.removeItem(`customers-${normalizedEmail}`);
+  }
+
+  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
 }

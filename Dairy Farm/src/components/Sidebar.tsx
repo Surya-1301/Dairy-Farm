@@ -1,16 +1,28 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { logout } from "../firebase/auth";
+import { logout, getActiveUser } from "../firebase/auth";
+import { useState, useEffect } from "react";
 
-const links = [
+const userLinks = [
   { to: "/dashboard", label: "Dashboard" },
-  { to: "/customers", label: "Customers" },
-  { to: "/customer-details", label: "Customer Details" },
+  { to: "/customers", label: "Add Customer" },
+  { to: "/customer-details", label: "Data" },
   { to: "/history", label: "History" },
+  { to: "/profile", label: "Profile" }
+];
+
+const ownerLinks = [
+  { to: "/owner-dashboard", label: "Owner Dashboard" },
   { to: "/profile", label: "Profile" }
 ];
 
 function Sidebar() {
   const navigate = useNavigate();
+  const [isOwner, setIsOwner] = useState(false);
+
+  useEffect(() => {
+    const user = getActiveUser();
+    setIsOwner(user?.role === "owner");
+  }, []);
 
   const onLogout = async () => {
     await logout();
@@ -31,7 +43,7 @@ function Sidebar() {
         <h1 className="text-xl font-bold text-brand-700">Dairy Farm</h1>
       </NavLink>
       <nav className="flex gap-2 md:flex-col">
-        {links.map((link) => (
+        {(isOwner ? ownerLinks : userLinks).map((link) => (
           <NavLink
             key={link.to}
             to={link.to}
