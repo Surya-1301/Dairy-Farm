@@ -1,0 +1,31 @@
+services:
+  - type: static_site
+    name: dairy-farm
+    plan: free
+    buildCommand: cd 'Dairy Farm' && npm install && npm run build
+    staticPublishPath: Dairy Farm/dist
+    headers:
+      - path: /
+        name: Cache-Control
+        value: "no-cache"
+      - path: /assets/*
+        name: Cache-Control
+        value: "max-age=31536000, immutable"
+    routes:
+      - path: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_FIREBASE_API_KEY
+        scope: build
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        scope: build
+      - key: VITE_FIREBASE_PROJECT_ID
+        scope: build
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        scope: build
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        scope: build
+      - key: VITE_FIREBASE_APP_ID
+        scope: build
+      - key: VITE_FIREBASE_MEASUREMENT_ID
+        scope: build
