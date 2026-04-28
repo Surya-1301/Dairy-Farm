@@ -1,6 +1,6 @@
 # Dairy Farm
 
-A React + Vite dairy management app for handling customer records, daily milk-sheet entries, profile management, and owner-level reporting.
+A fully responsive React + Vite dairy management app for handling customer records, daily milk-sheet entries, profile management, and owner-level reporting. Optimized for mobile, tablet, and desktop devices with Android-first responsive design.
 
 ## What The App Does
 
@@ -13,6 +13,9 @@ A React + Vite dairy management app for handling customer records, daily milk-sh
 - Profile management with avatar upload
 - Owner-only dashboard for viewing users, milk totals, earnings, and deleting users
 - Firebase Auth support with localStorage fallback when Firebase config is unavailable
+- **Fully responsive design optimized for Android, iOS, tablets, and desktop**
+- **Mobile-first approach with touch-friendly interface**
+- **Support for notched devices and safe areas**
 
 ## Tech Stack
 
@@ -23,6 +26,34 @@ A React + Vite dairy management app for handling customer records, daily milk-sh
 - React Router DOM
 - Recharts
 - Firebase
+
+## Mobile & Responsive Design
+
+The app is **fully optimized for mobile and tablet devices** with Android-first responsive design:
+
+### Mobile Features
+- ✅ **Touch-Optimized**: 44-48px minimum touch targets on all interactive elements
+- ✅ **Notch Support**: Safe area handling for devices with notches (iPhone X+, Android)
+- ✅ **Viewport Optimization**: Enhanced meta tags for proper mobile rendering
+- ✅ **Form Accessibility**: 16px font size on inputs to prevent mobile zoom
+- ✅ **Mobile Menu**: Hamburger navigation with slide-in sidebar
+- ✅ **Responsive Tables**: Hidden columns on mobile, visible on desktop
+- ✅ **Optimized Keyboard**: Auto-complete attributes and proper input types
+- ✅ **Smooth Scrolling**: Native scrolling performance on iOS/Android
+- ✅ **Landscape Support**: Responsive to device orientation changes
+
+### Responsive Breakpoints
+- **Mobile (default)**: Single column, full-width elements
+- **sm (640px)**: Small adjustments for larger phones
+- **md (768px)**: Tablet layout with sidebars visible
+- **lg (1024px)**: Desktop layout with full features
+
+### Device Support
+- ✅ Android phones (all screen sizes)
+- ✅ iPhones (6s through latest models)
+- ✅ iPads and Android tablets
+- ✅ Desktop browsers
+- ✅ Landscape and portrait orientations
 
 ## Repository Layout
 
@@ -86,6 +117,17 @@ Inside `Dairy Farm/`:
 - `/profile` - user profile management
 - `/owner-dashboard` - owner-only admin dashboard
 
+## Owner Dashboard Features
+
+The owner account has access to exclusive admin features:
+
+- **Users Tab**: View all registered users with email, phone, and role information
+- **Delete Users**: Remove user accounts (only owner can perform this action)
+- **Overview Tab**: System statistics (active users, total milk, total earnings)
+- **Reports Tab**: Financial reports and analytics
+- **Real-time Metrics**: Dashboard updates automatically when users are added/removed
+- **Responsive Design**: All tables and metrics work seamlessly on mobile and desktop
+
 ## Data And Storage
 
 - Customer records are stored in localStorage
@@ -96,8 +138,12 @@ Inside `Dairy Farm/`:
 
 ## Authentication Notes
 
-- The app includes a reserved owner account in the auth logic
+- The app includes a reserved owner account for system administration
+- **Owner Credentials**: Email: `ss058012@gmail.com` | Password: `Rebel_0102`
+- Owner account has special dashboard access for user management
 - Regular users can create accounts with email and password
+- Password reset is available on login page
+- All authentication data is stored locally in localStorage
 - Password reset supports Firebase email reset when available, with a local fallback flow otherwise
 
 For production use, review the authentication implementation and move any hardcoded sensitive values into secure environment-based configuration.
