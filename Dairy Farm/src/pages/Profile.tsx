@@ -334,9 +334,12 @@ function Profile() {
             onChange={(event) => setEmail(event.target.value)}
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
             placeholder="Enter your email address"
-            disabled={loading}
+            disabled
           />
         </label>
+        <p className="text-xs text-slate-500">
+          Email changes are managed by Firebase and are not editable from this screen.
+        </p>
 
         <div className="space-y-2">
           <label className="block text-sm font-medium text-slate-700">

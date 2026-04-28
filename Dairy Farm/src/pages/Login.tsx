@@ -1,14 +1,8 @@
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  completeLocalPasswordReset,
-  requestPasswordReset,
-  signInWithEmailPassword,
-  signUpWithEmailPassword
-} from "../firebase/auth";
+import { requestPasswordReset, signInWithEmailPassword, signUpWithEmailPassword } from "../firebase/auth";
 
 type AuthMode = "signin" | "signup" | "reset";
-type ResetStage = "request" | "local-update" | "sent";
 
 function Login() {
   const navigate = useNavigate();
@@ -17,9 +11,6 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [resetPassword, setResetPassword] = useState("");
-  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
-  const [resetStage, setResetStage] = useState<ResetStage>("request");
   const [infoMessage, setInfoMessage] = useState("Use your email address and password to access the app.");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -29,6 +20,8 @@ function Login() {
     setLoading(true);
 
     try {
+      let shouldNavigateToDashboard = false;
+
       if (mode === "signup") {
         if (password !== confirmPassword) {
           throw new Error("Passwords do not match.");
@@ -36,35 +29,21 @@ function Login() {
 
         await signUpWithEmailPassword(email, password, name);
         setInfoMessage("Account created successfully.");
+        shouldNavigateToDashboard = true;
       } else if (mode === "reset") {
-        if (resetStage === "request") {
-          const resetResult = await requestPasswordReset(email);
-          if (resetResult === "firebase") {
-            setResetStage("sent");
-            setInfoMessage("Password reset email sent. Check your inbox and then sign in.");
-            setMode("signin");
-          } else {
-            setResetStage("local-update");
-            setInfoMessage("Set a new password for this local account.");
-          }
-        } else {
-          if (resetPassword !== resetConfirmPassword) {
-            throw new Error("Passwords do not match.");
-          }
-
-          await completeLocalPasswordReset(email, resetPassword);
-          setInfoMessage("Password updated. You can sign in now.");
-          setMode("signin");
-          setResetStage("request");
-          setResetPassword("");
-          setResetConfirmPassword("");
-        }
+        await requestPasswordReset(email);
+        setInfoMessage("Password reset email sent. Check your inbox and then sign in.");
+        setMode("signin");
+        setPassword("");
       } else {
         await signInWithEmailPassword(email, password);
         setInfoMessage("Signed in successfully.");
+        shouldNavigateToDashboard = true;
       }
 
-      navigate("/dashboard", { replace: true });
+      if (shouldNavigateToDashboard) {
+        navigate("/dashboard", { replace: true });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Authentication failed.";
       setErrorMessage(message);
@@ -79,9 +58,6 @@ function Login() {
     setInfoMessage("Use your email address and password to access the app.");
     setPassword("");
     setConfirmPassword("");
-    setResetPassword("");
-    setResetConfirmPassword("");
-    setResetStage("request");
     if (nextMode === "signin") {
       setName("");
     }
@@ -135,10 +111,9 @@ function Login() {
             />
           </label>
         ) : null}
-        {mode === "reset" && resetStage === "request" ? (
+        {mode === "reset" ? (
           <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            Enter the email address on your account. If Firebase email reset is available, we will send a reset link.
-            If not, you can set a new local password immediately after this step.
+            Enter the email address on your Firebase account and we will send a password reset email.
           </p>
         ) : null}
         <label className="block text-sm font-medium text-slate-700">
@@ -152,7 +127,7 @@ function Login() {
             required
           />
         </label>
-        {mode !== "reset" || resetStage === "local-update" ? (
+        {mode !== "reset" ? (
           <label className="block text-sm font-medium text-slate-700">
             {mode === "signup" ? "Password" : "Password"}
             <input
@@ -178,32 +153,6 @@ function Login() {
             />
           </label>
         ) : null}
-        {mode === "reset" && resetStage === "local-update" ? (
-          <>
-            <label className="block text-sm font-medium text-slate-700">
-              New Password
-              <input
-                type="password"
-                value={resetPassword}
-                onChange={(event) => setResetPassword(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base"
-                placeholder="Enter new password"
-                required
-              />
-            </label>
-            <label className="block text-sm font-medium text-slate-700">
-              Confirm New Password
-              <input
-                type="password"
-                value={resetConfirmPassword}
-                onChange={(event) => setResetConfirmPassword(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base"
-                placeholder="Confirm new password"
-                required
-              />
-            </label>
-          </>
-        ) : null}
         <button
           type="submit"
           disabled={loading}
@@ -214,16 +163,12 @@ function Login() {
               ? "Signing in..."
               : mode === "signup"
                 ? "Creating account..."
-                : resetStage === "local-update"
-                  ? "Updating password..."
-                  : "Sending reset link..."
+                : "Sending reset link..."
             : mode === "signin"
               ? "Sign in"
               : mode === "signup"
                 ? "Sign up"
-                : resetStage === "local-update"
-                  ? "Update password"
-                  : "Send reset link"}
+                : "Send reset link"}
         </button>
         {mode === "signin" ? (
           <button

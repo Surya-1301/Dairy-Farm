@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { logout, getActiveUser } from "../firebase/auth";
+import { logout, getActiveUser, subscribeAuthState } from "../firebase/auth";
 import { useState, useEffect } from "react";
 
 const userLinks = [
@@ -20,8 +20,13 @@ function Sidebar() {
   const [isOwner, setIsOwner] = useState(false);
 
   useEffect(() => {
-    const user = getActiveUser();
-    setIsOwner(user?.role === "owner");
+    const syncUserRole = () => {
+      const user = getActiveUser();
+      setIsOwner(user?.role === "owner");
+    };
+
+    syncUserRole();
+    return subscribeAuthState(syncUserRole);
   }, []);
 
   const onLogout = async () => {

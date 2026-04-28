@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
-import { isOwnerLoggedIn, subscribeAuthState } from "./firebase/auth";
+import { isAuthReady, isAuthenticated, subscribeAuthState } from "./firebase/auth";
 import Customers from "./pages/Customers";
 import CustomerDetails from "./pages/CustomerDetails";
 import Dashboard from "./pages/Dashboard";
@@ -11,24 +11,34 @@ import Profile from "./pages/Profile";
 import OwnerDashboard from "./pages/OwnerDashboard";
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(isOwnerLoggedIn());
+  const [authReady, setAuthReady] = useState(isAuthReady());
+  const [authenticated, setAuthenticated] = useState(isAuthenticated());
 
   useEffect(() => {
     return subscribeAuthState(() => {
-      setIsAuthenticated(isOwnerLoggedIn());
+      setAuthReady(isAuthReady());
+      setAuthenticated(isAuthenticated());
     });
   }, []);
+
+  if (!authReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-sm text-slate-600">
+        Checking account session...
+      </div>
+    );
+  }
 
   return (
     <Routes>
       <Route
         path="/login"
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />}
+        element={authenticated ? <Navigate to="/dashboard" replace /> : <Login />}
       />
       <Route
         path="/dashboard"
         element={
-          isAuthenticated ? (
+          authenticated ? (
             <Layout>
               <Dashboard />
             </Layout>
@@ -40,7 +50,7 @@ function App() {
       <Route
         path="/owner-dashboard"
         element={
-          isAuthenticated ? (
+          authenticated ? (
             <OwnerDashboard />
           ) : (
             <Navigate to="/login" replace />
@@ -50,7 +60,7 @@ function App() {
       <Route
         path="/customer-details"
         element={
-          isAuthenticated ? (
+          authenticated ? (
             <Layout>
               <CustomerDetails />
             </Layout>
@@ -62,7 +72,7 @@ function App() {
       <Route
         path="/history"
         element={
-          isAuthenticated ? (
+          authenticated ? (
             <Layout>
               <History />
             </Layout>
@@ -74,7 +84,7 @@ function App() {
       <Route
         path="/profile"
         element={
-          isAuthenticated ? (
+          authenticated ? (
             <Layout>
               <Profile />
             </Layout>
@@ -86,7 +96,7 @@ function App() {
       <Route
         path="/customers"
         element={
-          isAuthenticated ? (
+          authenticated ? (
             <Layout>
               <Customers />
             </Layout>
@@ -97,7 +107,7 @@ function App() {
       />
       <Route
         path="*"
-        element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />}
+        element={<Navigate to={authenticated ? "/dashboard" : "/login"} replace />}
       />
     </Routes>
   );

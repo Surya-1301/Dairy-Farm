@@ -30,6 +30,7 @@ export default function OwnerDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deleteInfo, setDeleteInfo] = useState("");
 
   useEffect(() => {
     if (!isOwnerLoggedIn()) {
@@ -90,9 +91,10 @@ export default function OwnerDashboard() {
     try {
       await deleteUserByEmail(email);
       setDeleteConfirm(null);
+      setDeleteInfo("");
       loadDashboardData();
     } catch (error) {
-      alert(`Error deleting user: ${error instanceof Error ? error.message : "Unknown error"}`);
+      setDeleteInfo(error instanceof Error ? error.message : "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -106,6 +108,9 @@ export default function OwnerDashboard() {
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Owner Dashboard</h1>
             <p className="text-gray-600 mt-2">System Overview & Management</p>
+            {deleteInfo ? (
+              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{deleteInfo}</p>
+            ) : null}
           </div>
           <button
             onClick={loadDashboardData}
@@ -261,9 +266,6 @@ export default function OwnerDashboard() {
                     <div className="text-center py-12 text-gray-500">
                       <p className="mb-2">No users registered yet</p>
                       <p className="text-sm">Users will appear here after they sign up for an account.</p>
-                      <p className="text-xs mt-4 text-gray-400">
-                        Debug: Check if "dairy-farm-user-profiles" exists in localStorage
-                      </p>
                     </div>
                   )}
                 </div>
