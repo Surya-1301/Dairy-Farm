@@ -16,6 +16,10 @@ const USER_PROFILES_KEY = "dairy-farm-user-profiles";
 const USER_CREDENTIALS_KEY = "dairy-farm-user-credentials";
 const DELETED_EMAILS_KEY = "dairy-farm-deleted-emails";
 const AUTH_CHANGE_EVENT = "dairy-farm-auth-changed";
+const PROFILE_DRAFT_KEY = "dairy-farm-profile-draft";
+const CUSTOMER_LIST_KEY = "dairy-farm-customers";
+const CUSTOMER_SHEET_KEY = "dairy-farm-customer-sheet";
+const CUSTOMER_SHEET_HISTORY_KEY = "dairy-farm-customer-sheet-history";
 
 type AuthMode = "signin" | "signup";
 
@@ -221,6 +225,87 @@ function removeUserDataForEmail(email: string) {
   saveUserProfiles(remainingProfiles);
 }
 
+function clearAccountStorage(email: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+
+  window.localStorage.removeItem(`milk-data-${normalizedEmail}`);
+  window.localStorage.removeItem(`dairy-farm-profile-draft-${normalizedEmail}`);
+  window.localStorage.removeItem(`customers-${normalizedEmail}`);
+
+  // Current app data is stored in shared keys, so remove those too.
+  window.localStorage.removeItem(PROFILE_DRAFT_KEY);
+  window.localStorage.removeItem(CUSTOMER_LIST_KEY);
+  window.localStorage.removeItem(CUSTOMER_SHEET_KEY);
+  window.localStorage.removeItem(CUSTOMER_SHEET_HISTORY_KEY);
+  window.localStorage.removeItem(AUTH_USER_KEY);
+  window.localStorage.removeItem(AUTH_SESSION_KEY);
+}
+
+async function deleteFirebaseAccountForEmail(email: string) {
+  if (!auth) {
+    return;
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+  const storedCredential = getStoredCredentialByEmail(normalizedEmail);
+
+  if (auth.currentUser?.email?.toLowerCase() !== normalizedEmail && storedCredential) {
+    try {
+      await signInWithEmailAndPassword(auth, normalizedEmail, storedCredential.password);
+    } catch (error) {
+      if (isFirebaseAuthError(error)) {
+        return;
+      }
+
+      throw error;
+    }
+  }
+
+  if (!auth.currentUser || auth.currentUser.email?.toLowerCase() !== normalizedEmail) {
+    return;
+  }
+
+  try {
+    await deleteUser(auth.currentUser);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.includes("auth/requires-recent-login") ||
+        error.message.includes("auth/user-token-expired") ||
+        error.message.includes("auth/invalid-user-token"))
+    ) {
+      if (!storedCredential) {
+        throw new Error("Please sign in again before deleting your account.");
+      }
+
+      try {
+        await signInWithEmailAndPassword(auth, normalizedEmail, storedCredential.password);
+      } catch (reauthError) {
+        if (isFirebaseAuthError(reauthError)) {
+          return;
+        }
+
+        throw reauthError;
+      }
+
+      if (!auth.currentUser) {
+        throw new Error("Please sign in again before deleting your account.");
+      }
+
+      await deleteUser(auth.currentUser);
+      return;
+    }
+
+    if (!isFirebaseAuthError(error)) {
+      throw error;
+    }
+  }
+}
+
 function upsertUserProfile(profile: Omit<UserProfile, "updatedAt">) {
   const normalizedPhone = normalizePhone(profile.phone);
   const normalizedEmail = normalizeEmail(profile.email);
@@ -275,10 +360,13 @@ export function getActiveUser(): ActiveUser | null {
 
   try {
     const parsed = JSON.parse(rawValue) as ActiveUser;
-    if (!parsed.phone || !parsed.role || !parsed.email) {
+    if (!parsed.role || !parsed.email) {
       return null;
     }
-    return parsed;
+    return {
+      ...parsed,
+      phone: parsed.phone ?? ""
+    };
   } catch {
     return null;
   }
@@ -651,16 +739,10 @@ export async function deleteCurrentAccount(): Promise<void> {
   const normalizedEmail = normalizeEmail(activeUser.email);
 
   try {
-    // Try to delete from Firebase first
-    if (auth && auth.currentUser) {
-      try {
-        await deleteUser(auth.currentUser);
-      } catch (firebaseError) {
-        console.warn("Firebase deletion failed, continuing with local deletion:", firebaseError);
-      }
-    }
+    await deleteFirebaseAccountForEmail(normalizedEmail);
   } catch (error) {
-    console.warn("Firebase auth error:", error);
+    console.error("Firebase account deletion failed:", error);
+    throw error instanceof Error ? error : new Error("Failed to delete Firebase account.");
   }
 
   try {
@@ -669,16 +751,8 @@ export async function deleteCurrentAccount(): Promise<void> {
     
     // Remove all user data from localStorage
     removeUserDataForEmail(normalizedEmail);
-    
-    // Clear user-specific data
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(`milk-data-${normalizedEmail}`);
-      window.localStorage.removeItem(`dairy-farm-profile-draft-${normalizedEmail}`);
-      window.localStorage.removeItem(`customers-${normalizedEmail}`);
-      window.localStorage.removeItem(`dairy-farm-profile-draft`);
-      window.localStorage.removeItem(AUTH_USER_KEY);
-      window.localStorage.removeItem(AUTH_SESSION_KEY);
-    }
+
+    clearAccountStorage(normalizedEmail);
     
     // Emit auth change event
     if (typeof window !== "undefined") {
@@ -717,26 +791,15 @@ export async function deleteUserByEmail(email: string): Promise<void> {
 
   if (auth) {
     try {
-      if (storedCredential) {
-        await signInWithEmailAndPassword(auth, normalizedEmail, storedCredential.password);
-        if (auth.currentUser) {
-          await deleteUser(auth.currentUser);
-        }
-      }
+      await deleteFirebaseAccountForEmail(normalizedEmail);
     } catch {
-      // Continue with local deletion even if Firebase deletion is unavailable.
+      // Continue with local deletion for owner-managed cleanup when Firebase deletion is unavailable.
     }
   }
 
   markEmailDeleted(normalizedEmail);
   removeUserDataForEmail(normalizedEmail);
-
-  // Clear user-specific data
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(`milk-data-${normalizedEmail}`);
-    window.localStorage.removeItem(`dairy-farm-profile-draft-${normalizedEmail}`);
-    window.localStorage.removeItem(`customers-${normalizedEmail}`);
-  }
+  clearAccountStorage(normalizedEmail);
 
   window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
 }
