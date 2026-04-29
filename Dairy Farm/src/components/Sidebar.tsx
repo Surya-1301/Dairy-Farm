@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { logout, getActiveUser, subscribeAuthState } from "../firebase/auth";
 import { useState, useEffect } from "react";
+import logoUrl from "../assets/logo.png";
 
 const userLinks = [
   { to: "/dashboard", label: "Dashboard" },
@@ -46,7 +47,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
         className="mb-6 flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 flex-shrink-0"
       >
         <img
-          src="/src/assets/logo.png"
+          src={logoUrl}
           alt="Raipur Dugdh Utapadan Association logo"
           className="h-10 w-10 md:h-12 md:w-12 rounded-full border border-slate-200 object-cover"
         />
