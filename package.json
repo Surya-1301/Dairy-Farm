@@ -3,8 +3,8 @@
   "private": true,
   "scripts": {
     "dev": "npm --prefix 'Dairy Farm' run dev",
-    "build": "npm --prefix 'Dairy Farm' ci && npm --prefix 'Dairy Farm' run build",
-    "start": "npm --prefix 'Dairy Farm' run preview -- --host 0.0.0.0 --port ${PORT:-4173}"
+    "build": "npm --prefix 'Dairy Farm' ci --include=dev && npm --prefix 'Dairy Farm' run build",
+    "start": "npm --prefix 'Dairy Farm' run preview"
   },
   "dependencies": {
     "firebase": "^12.12.1"
