@@ -1,18 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Chart from "../components/Chart";
 import SummaryTable from "../components/SummaryTable";
 import { fetchAllUserProfiles, getActiveUser, getAllUserProfiles, subscribeAuthState } from "../firebase/auth";
-import { generateBill } from "../utils/generateBill";
-import { sendWhatsAppMessage } from "../utils/whatsapp";
 import { getMilkChartData, subscribeMilkData } from "../utils/milkData";
-
-const summaryCustomers: Array<{ id: string; name: string; liters: number; rate: number }> = [];
+import { getCustomers, subscribeCustomersChanged } from "../utils/customerData";
 
 function Dashboard() {
-  const bill = useMemo(() => generateBill(summaryCustomers), []);
   const [activeUser, setActiveUser] = useState(getActiveUser());
   const [userProfiles, setUserProfiles] = useState(getAllUserProfiles());
   const [chartData, setChartData] = useState(getMilkChartData());
+  const [totalCustomers, setTotalCustomers] = useState(getCustomers().length);
 
   useEffect(() => {
     return subscribeAuthState(() => {
@@ -37,6 +34,14 @@ function Dashboard() {
     });
   }, []);
 
+  useEffect(() => {
+    return subscribeCustomersChanged(() => {
+      setTotalCustomers(getCustomers().length);
+    });
+  }, []);
+
+  const totalAmount = chartData.reduce((sum, point) => sum + point.amount, 0);
+
   // summary/whatsapp handled elsewhere; no dashboard actions here
 
   return (
@@ -46,9 +51,8 @@ function Dashboard() {
       </div>
 
       <SummaryTable
-        totalCustomers={bill.totalCustomers}
-        totalLiters={bill.totalLiters}
-        totalAmount={bill.totalAmount}
+        totalCustomers={totalCustomers}
+        totalAmount={Number(totalAmount.toFixed(2))}
       />
 
       <div className="overflow-x-auto rounded-lg md:rounded-xl">

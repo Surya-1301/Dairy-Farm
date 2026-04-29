@@ -9,8 +9,8 @@ import {
 } from "recharts";
 
 type ChartPoint = {
-  day: string;
-  liters: number;
+  date: string;
+  amount: number;
 };
 
 type ChartProps = {
@@ -18,7 +18,7 @@ type ChartProps = {
 };
 
 function Chart({ data }: ChartProps) {
-  const hasData = data.length > 0 && data.some((point) => point.liters > 0);
+  const hasData = data.length > 0 && data.some((point) => point.amount > 0);
 
   return (
     <div className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-3 md:p-4 shadow-sm">
@@ -28,10 +28,10 @@ function Chart({ data }: ChartProps) {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip />
-              <Line type="monotone" dataKey="liters" stroke="#1763d6" strokeWidth={2} dot={{ r: 3 }} />
+              <Tooltip formatter={(value: number) => [value, "Amount"]} />
+              <Line type="monotone" dataKey="amount" stroke="#1763d6" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>

@@ -13,9 +13,19 @@ type SheetState = {
 };
 
 export type MilkChartPoint = {
-  day: string;
-  liters: number;
+  date: string;
+  amount: number;
 };
+
+function formatDayLabel(dayOffsetFromToday: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffsetFromToday);
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short"
+  });
+}
 
 function readCurrentSheet(): SheetState | null {
   if (typeof window === "undefined") {
@@ -59,10 +69,16 @@ export function getMilkChartData(): MilkChartPoint[] {
     return [];
   }
 
-  return Array.from({ length: sheet.dayCount }, (_, dayIndex) => ({
-    day: `Day ${dayIndex + 1}`,
-    liters: sheet.rows.reduce((total, row) => total + (row.days?.[dayIndex] ?? 0), 0)
-  }));
+  const startOffset = -(sheet.dayCount - 1);
+
+  return Array.from({ length: sheet.dayCount }, (_, dayIndex) => {
+    const dailyAmount = sheet.rows.reduce((total, row) => total + (row.days?.[dayIndex] ?? 0), 0);
+
+    return {
+      date: formatDayLabel(startOffset + dayIndex),
+      amount: Number(dailyAmount.toFixed(2))
+    };
+  });
 }
 
 export function subscribeMilkData(listener: () => void) {

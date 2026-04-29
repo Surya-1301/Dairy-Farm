@@ -242,12 +242,12 @@ function CustomerTable() {
   };
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3 shadow-sm md:p-4">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
         <button
           type="button"
           onClick={addRow}
-          className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
         >
           Add Row
         </button>
@@ -255,14 +255,14 @@ function CustomerTable() {
           type="button"
           onClick={removeRow}
           disabled={rows.length <= 1}
-          className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-[44px] rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
         >
           Remove Row
         </button>
         <button
           type="button"
           onClick={addColumn}
-          className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
         >
           Add Column
         </button>
@@ -270,32 +270,34 @@ function CustomerTable() {
           type="button"
           onClick={removeColumn}
           disabled={dayCount <= 1}
-          className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-[44px] rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
         >
           Remove Column
         </button>
         <button
           type="button"
           onClick={archiveToHistory}
-          className="rounded-lg border border-emerald-300 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+          className="col-span-2 min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:col-auto sm:text-sm"
         >
           Save to History
         </button>
       </div>
 
+      <p className="text-xs text-slate-500 sm:hidden">Swipe left/right to view all day columns.</p>
+
       <div className="overflow-auto">
-        <table className="min-w-[1500px] border-collapse text-center text-sm">
+        <table className="min-w-[980px] border-collapse text-center text-xs md:text-sm">
           <thead className="bg-slate-100 font-semibold text-slate-800">
             <tr>
-              <th className="min-w-16 border border-slate-400 px-2 py-2">S No</th>
-              <th className="min-w-36 border border-slate-400 px-2 py-2">Customer Name</th>
+              <th className="min-w-14 border border-slate-400 px-1 py-2 md:px-2">S No</th>
+              <th className="min-w-28 border border-slate-400 px-1 py-2 md:min-w-36 md:px-2">Customer Name</th>
               {Array.from({ length: dayCount }, (_, index) => (
-                <th key={`day-${index + 1}`} className="min-w-20 border border-slate-400 px-2 py-2">
+                <th key={`day-${index + 1}`} className="min-w-16 border border-slate-400 px-1 py-2 md:min-w-20 md:px-2">
                   Day {index + 1}
                 </th>
               ))}
-              <th className="min-w-20 border border-slate-400 px-2 py-2">Total</th>
-              <th className="min-w-28 border border-slate-400 px-2 py-2">Action</th>
+              <th className="min-w-16 border border-slate-400 px-1 py-2 md:min-w-20 md:px-2">Total</th>
+              <th className="min-w-24 border border-slate-400 px-1 py-2 md:min-w-28 md:px-2">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -304,12 +306,12 @@ function CustomerTable() {
 
               return (
                 <tr key={row.serialNumber} className="bg-white even:bg-slate-50">
-                  <td className="border border-slate-300 px-2 py-1">{row.serialNumber}</td>
-                  <td className="border border-slate-300 px-2 py-1">
+                  <td className="border border-slate-300 px-1 py-1 md:px-2">{row.serialNumber}</td>
+                  <td className="border border-slate-300 px-1 py-1 md:px-2">
                     <input
                       value={row.customerName}
                       onChange={(event) => updateCustomerName(row.serialNumber, event.target.value)}
-                      className="w-full rounded border border-slate-300 px-2 py-1 text-left"
+                      className="h-9 w-full rounded border border-slate-300 px-2 py-1 text-left"
                     />
                   </td>
                   {row.days.map((value, dayIndex) => (
@@ -325,16 +327,16 @@ function CustomerTable() {
                         onChange={(event) =>
                           updateDayValue(row.serialNumber, dayIndex, event.target.value)
                         }
-                        className="w-full rounded border border-slate-300 px-2 py-1 text-center"
+                        className="h-9 w-full rounded border border-slate-300 px-2 py-1 text-center"
                       />
                     </td>
                   ))}
-                  <td className="border border-slate-300 px-2 py-1 font-semibold">{total}</td>
-                  <td className="border border-slate-300 px-2 py-1">
+                  <td className="border border-slate-300 px-1 py-1 font-semibold md:px-2">{total}</td>
+                  <td className="border border-slate-300 px-1 py-1 md:px-2">
                     <button
                       type="button"
                       onClick={() => send15DaysDataToWhatsApp(row.serialNumber)}
-                      className="rounded-lg bg-green-500 px-3 py-1 text-xs font-semibold text-white hover:bg-green-600 transition-colors"
+                      className="min-h-[36px] rounded-lg bg-green-500 px-2 py-1 text-xs font-semibold text-white hover:bg-green-600 transition-colors"
                       title="Send 15 days data to WhatsApp"
                     >
                       📱 Send
