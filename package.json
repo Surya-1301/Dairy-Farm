@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "npm --prefix 'Dairy Farm' run dev",
     "build": "npm --prefix 'Dairy Farm' ci --include=dev && npm --prefix 'Dairy Farm' run build",
+    "postinstall": "npm run build",
     "start": "npm --prefix 'Dairy Farm' run preview"
   },
   "dependencies": {
