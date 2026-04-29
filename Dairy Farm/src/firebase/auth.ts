@@ -7,7 +7,8 @@ import {
   signOut as firebaseSignOut,
   type User
 } from "firebase/auth";
-import { auth } from "./config";
+import { collection, deleteDoc, doc, getDocs, setDoc } from "firebase/firestore";
+import { auth, db } from "./config";
 
 const OWNER_PHONE = "9999999999";
 const OWNER_EMAIL = "ss058012@gmail.com";
@@ -19,6 +20,7 @@ const PROFILE_DRAFT_KEY = "dairy-farm-profile-draft";
 const CUSTOMER_LIST_KEY = "dairy-farm-customers";
 const CUSTOMER_SHEET_KEY = "dairy-farm-customer-sheet";
 const CUSTOMER_SHEET_HISTORY_KEY = "dairy-farm-customer-sheet-history";
+const USER_PROFILES_COLLECTION = "userProfiles";
 
 type ActiveUser = {
   phone: string;
@@ -149,6 +151,20 @@ function saveUserProfiles(profiles: UserProfile[]) {
   window.localStorage.setItem(USER_PROFILES_KEY, JSON.stringify(profiles));
 }
 
+function mergeStoredUserProfiles(nextProfiles: UserProfile[]) {
+  const profilesByEmail = new Map<string, UserProfile>();
+
+  getStoredUserProfiles().forEach((profile) => {
+    profilesByEmail.set(profile.email, profile);
+  });
+
+  nextProfiles.forEach((profile) => {
+    profilesByEmail.set(profile.email, profile);
+  });
+
+  saveUserProfiles(Array.from(profilesByEmail.values()));
+}
+
 function getLegacyStoredCredentials(): LegacyStoredCredential[] {
   if (typeof window === "undefined") {
     return [];
@@ -213,11 +229,36 @@ function upsertUserProfile(profile: Omit<UserProfile, "updatedAt">) {
   }
 
   saveUserProfiles(profiles);
+  return nextProfile;
+}
+
+async function saveUserProfileToCloud(profile: UserProfile) {
+  if (!db) {
+    return;
+  }
+
+  try {
+    await setDoc(doc(db, USER_PROFILES_COLLECTION, profile.email), profile, { merge: true });
+  } catch (error) {
+    console.error("Error saving user profile to Firestore:", error);
+  }
 }
 
 function removeUserProfileForEmail(email: string) {
   const normalizedEmail = normalizeEmail(email);
   saveUserProfiles(getStoredUserProfiles().filter((profile) => profile.email !== normalizedEmail));
+}
+
+async function removeUserProfileFromCloud(email: string) {
+  if (!db) {
+    return;
+  }
+
+  try {
+    await deleteDoc(doc(db, USER_PROFILES_COLLECTION, normalizeEmail(email)));
+  } catch (error) {
+    console.error("Error deleting user profile from Firestore:", error);
+  }
 }
 
 function clearAccountStorage(email: string) {
@@ -267,13 +308,14 @@ function ensureCurrentUserProfile(user: User, overrides: Partial<Pick<UserProfil
   const existingProfile = getStoredUserProfiles().find((profile) => profile.email === email);
   const baseProfile = buildProfileForEmail(email, role, overrides);
 
-  upsertUserProfile({
+  const nextProfile = upsertUserProfile({
     ...baseProfile,
     name: overrides.name?.trim() || existingProfile?.name || baseProfile.name,
     phone: overrides.phone ?? existingProfile?.phone ?? baseProfile.phone,
     farmName: overrides.farmName ?? existingProfile?.farmName ?? baseProfile.farmName,
     avatarUrl: overrides.avatarUrl ?? existingProfile?.avatarUrl ?? baseProfile.avatarUrl
   });
+  void saveUserProfileToCloud(nextProfile);
 
   removeLegacyCredentialForEmail(email);
 
@@ -333,7 +375,8 @@ export function getCurrentUserProfile(): UserProfile | null {
   }
 
   const nextProfile = buildProfileForEmail(activeUser.email, activeUser.role);
-  upsertUserProfile(nextProfile);
+  const savedProfile = upsertUserProfile(nextProfile);
+  void saveUserProfileToCloud(savedProfile);
   return getStoredUserProfiles().find((profile) => profile.email === activeUser.email) ?? null;
 }
 
@@ -361,7 +404,8 @@ export function updateCurrentUserProfile(
     avatarUrl: updates.avatarUrl !== undefined ? updates.avatarUrl : currentProfile?.avatarUrl ?? ""
   };
 
-  upsertUserProfile(nextProfile);
+  const savedProfile = upsertUserProfile(nextProfile);
+  void saveUserProfileToCloud(savedProfile);
   emitAuthChange();
 
   return getCurrentUserProfile();
@@ -371,6 +415,25 @@ export function getAllUserProfiles(): UserProfile[] {
   return getStoredUserProfiles()
     .filter((profile) => profile.role === "user")
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function fetchAllUserProfiles(): Promise<UserProfile[]> {
+  if (!db) {
+    return getAllUserProfiles();
+  }
+
+  try {
+    const snapshot = await getDocs(collection(db, USER_PROFILES_COLLECTION));
+    const cloudProfiles = snapshot.docs
+      .map((item) => item.data() as UserProfile)
+      .filter((profile) => profile.email && profile.role);
+
+    mergeStoredUserProfiles(cloudProfiles);
+  } catch (error) {
+    console.error("Error loading user profiles from Firestore:", error);
+  }
+
+  return getAllUserProfiles();
 }
 
 export function subscribeAuthState(listener: () => void) {
@@ -504,6 +567,7 @@ export async function deleteCurrentAccount(): Promise<void> {
   }
 
   removeUserProfileForEmail(normalizedEmail);
+  await removeUserProfileFromCloud(normalizedEmail);
   removeLegacyCredentialForEmail(normalizedEmail);
   clearAccountStorage(normalizedEmail);
   syncFirebaseUser(null);
@@ -522,6 +586,7 @@ export async function deleteUserByEmail(email: string): Promise<void> {
 
   // Remove user profile
   removeUserProfileForEmail(normalizedEmail);
+  await removeUserProfileFromCloud(normalizedEmail);
   
   // Remove legacy credentials
   removeLegacyCredentialForEmail(normalizedEmail);

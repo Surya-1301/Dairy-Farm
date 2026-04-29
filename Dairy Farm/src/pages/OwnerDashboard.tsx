@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import { useNavigate } from "react-router-dom";
-import { isOwnerLoggedIn, deleteUserByEmail, subscribeAuthState, getAllUserProfiles } from "../firebase/auth";
+import { isOwnerLoggedIn, deleteUserByEmail, subscribeAuthState, fetchAllUserProfiles } from "../firebase/auth";
 
 interface UserProfile {
   email: string;
@@ -46,10 +46,11 @@ export default function OwnerDashboard() {
     });
   }, [navigate]);
 
-  const loadDashboardData = () => {
-    // Load all user profiles using the auth function
+  const loadDashboardData = async () => {
+    setLoading(true);
+
     try {
-      const userProfiles = getAllUserProfiles();
+      const userProfiles = await fetchAllUserProfiles();
       setUsers(userProfiles);
 
       // Calculate total earnings and milk
@@ -81,6 +82,8 @@ export default function OwnerDashboard() {
       setUsers([]);
       setTotalEarnings(0);
       setTotalMilk(0);
+    } finally {
+      setLoading(false);
     }
   };
 

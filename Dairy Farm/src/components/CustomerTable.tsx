@@ -219,6 +219,28 @@ function CustomerTable() {
     saveState({ dayCount, rows: nextRows });
   };
 
+  const addColumn = () => {
+    const nextRows = rows.map((row) => ({
+      ...row,
+      days: [...row.days, 0]
+    }));
+
+    saveState({ dayCount: dayCount + 1, rows: nextRows });
+  };
+
+  const removeColumn = () => {
+    if (dayCount <= 1) {
+      return;
+    }
+
+    const nextRows = rows.map((row) => ({
+      ...row,
+      days: row.days.slice(0, -1)
+    }));
+
+    saveState({ dayCount: dayCount - 1, rows: nextRows });
+  };
+
   return (
     <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -236,6 +258,21 @@ function CustomerTable() {
           className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Remove Row
+        </button>
+        <button
+          type="button"
+          onClick={addColumn}
+          className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          Add Column
+        </button>
+        <button
+          type="button"
+          onClick={removeColumn}
+          disabled={dayCount <= 1}
+          className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Remove Column
         </button>
         <button
           type="button"

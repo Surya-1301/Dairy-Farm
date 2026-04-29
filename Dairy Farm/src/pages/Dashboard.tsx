@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Chart from "../components/Chart";
 import SummaryTable from "../components/SummaryTable";
-import { getActiveUser, getAllUserProfiles, subscribeAuthState } from "../firebase/auth";
+import { fetchAllUserProfiles, getActiveUser, getAllUserProfiles, subscribeAuthState } from "../firebase/auth";
 import { generateBill } from "../utils/generateBill";
 import { sendWhatsAppMessage } from "../utils/whatsapp";
 import { getMilkChartData, subscribeMilkData } from "../utils/milkData";
@@ -16,10 +16,20 @@ function Dashboard() {
 
   useEffect(() => {
     return subscribeAuthState(() => {
-      setActiveUser(getActiveUser());
-      setUserProfiles(getAllUserProfiles());
+      const nextActiveUser = getActiveUser();
+      setActiveUser(nextActiveUser);
+
+      if (nextActiveUser?.role === "owner") {
+        fetchAllUserProfiles().then(setUserProfiles);
+      }
     });
   }, []);
+
+  useEffect(() => {
+    if (activeUser?.role === "owner") {
+      fetchAllUserProfiles().then(setUserProfiles);
+    }
+  }, [activeUser?.role]);
 
   useEffect(() => {
     return subscribeMilkData(() => {

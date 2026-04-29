@@ -22,6 +22,37 @@ Before deploying, ensure you have these Firebase environment variables ready:
 
 Get these values from your Firebase project settings at https://console.firebase.google.com
 
+## Firebase Firestore Setup
+
+Registered user profiles are shared through Firestore so the owner dashboard can see users who signed up from other devices or browsers.
+
+1. In Firebase Console, open **Firestore Database**
+2. Create a database if it does not exist
+3. Add rules for the `userProfiles` collection, for example:
+
+```txt
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner() {
+      return isSignedIn() && request.auth.token.email == "ss058012@gmail.com";
+    }
+
+    match /userProfiles/{email} {
+      allow create, update: if isSignedIn() && request.auth.token.email == email;
+      allow read, delete: if isOwner();
+    }
+  }
+}
+```
+
+4. Publish the rules, then redeploy Render after adding/updating Firebase environment variables.
+
 ---
 
 ## Deploy to Vercel
