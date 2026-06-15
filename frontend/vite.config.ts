@@ -4,6 +4,6 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   preview: {
-    allowedHosts: ["dairy-farm-osuo.onrender.com"]
+    allowedHosts: ["dairy-farm-qlw1.onrender.com"]
   }
 });
