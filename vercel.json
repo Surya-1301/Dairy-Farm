@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "cd 'Dairy Farm' && npm install && npm run build",
-  "outputDirectory": "Dairy Farm/dist",
+  "buildCommand": "cd 'frontend' && npm install && npm run build",
+  "outputDirectory": "frontend/dist",
   "env": {
     "VITE_FIREBASE_API_KEY": "@VITE_FIREBASE_API_KEY",
     "VITE_FIREBASE_AUTH_DOMAIN": "@VITE_FIREBASE_AUTH_DOMAIN",

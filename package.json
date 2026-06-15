@@ -2,10 +2,10 @@
   "name": "dairy-farm-root",
   "private": true,
   "scripts": {
-    "dev": "npm --prefix 'Dairy Farm' run dev",
-    "build": "npm --prefix 'Dairy Farm' ci --include=dev && npm --prefix 'Dairy Farm' run build",
+    "dev": "npm --prefix 'frontend' run dev",
+    "build": "npm --prefix 'frontend' ci --include=dev && npm --prefix 'frontend' run build",
     "postinstall": "npm run build",
-    "start": "npm --prefix 'Dairy Farm' run preview"
+    "start": "npm --prefix 'frontend' run preview"
   },
   "dependencies": {
     "firebase": "^12.12.1"

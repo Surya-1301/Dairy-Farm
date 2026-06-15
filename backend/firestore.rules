@@ -1,0 +1,48 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function authEmail() {
+      return isSignedIn() && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : "";
+    }
+
+    function isOwner() {
+      return authEmail() == "ss058012@gmail.com";
+    }
+
+    function isSelfDoc(email) {
+      return isSignedIn() && authEmail() == email.lower();
+    }
+
+    // User-owned SaaS data
+    match /customerLists/{email} {
+      allow read, write: if isOwner() || isSelfDoc(email);
+    }
+
+    match /sheetStates/{email} {
+      allow read, write: if isOwner() || isSelfDoc(email);
+    }
+
+    match /sheetHistories/{email} {
+      allow read, write: if isOwner() || isSelfDoc(email);
+    }
+
+    // User profile access with owner override for admin screens
+    match /userProfiles/{email} {
+      allow create, update: if isSignedIn() && (isOwner() || authEmail() == email.lower());
+      allow read: if isSignedIn() && (isOwner() || authEmail() == email.lower());
+      allow delete: if isOwner();
+    }
+
+    // Explicit deny for everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -2,18 +2,25 @@ services:
   - type: static_site
     name: dairy-farm
     plan: free
-    buildCommand: cd 'Dairy Farm' && npm install && npm run build
-    staticPublishPath: Dairy Farm/dist
+
+    buildCommand: cd frontend && npm install && npm run build
+
+    # FIXED PATH
+    staticPublishPath: dist
+
     headers:
       - path: /
         name: Cache-Control
         value: "no-cache"
+
       - path: /assets/*
         name: Cache-Control
         value: "max-age=31536000, immutable"
+
     routes:
       - path: /*
         destination: /index.html
+
     envVars:
       - key: VITE_FIREBASE_API_KEY
         scope: build

@@ -28,30 +28,18 @@ Registered user profiles are shared through Firestore so the owner dashboard can
 
 1. In Firebase Console, open **Firestore Database**
 2. Create a database if it does not exist
-3. Add rules for the `userProfiles` collection, for example:
+3. Use the committed Firestore rules in [firestore.rules](backend/firestore.rules). These rules enforce per-user access for:
+   - `customerLists/{email}`
+   - `sheetStates/{email}`
+   - `sheetHistories/{email}`
+   - owner override access for admin workflows
+4. Deploy the rules from repository root:
 
-```txt
-rules_version = '2';
-
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner() {
-      return isSignedIn() && request.auth.token.email == "ss058012@gmail.com";
-    }
-
-    match /userProfiles/{email} {
-      allow create, update: if isSignedIn() && request.auth.token.email == email;
-      allow read, delete: if isOwner();
-    }
-  }
-}
+```bash
+cd backend && firebase deploy --only firestore:rules
 ```
 
-4. Publish the rules, then redeploy Render after adding/updating Firebase environment variables.
+5. Redeploy Render or Vercel after adding/updating Firebase environment variables.
 
 ---
 
@@ -85,8 +73,8 @@ Vercel is optimized for React and Vite applications with automatic deployments o
 The `vercel.json` file is already configured, but verify:
 
 1. Go to **Settings → Build & Development Settings**
-2. Build Command: Should show `cd 'Dairy Farm' && npm install && npm run build`
-3. Output Directory: Should show `Dairy Farm/dist`
+2. Build Command: Should show `cd 'frontend' && npm install && npm run build`
+3. Output Directory: Should show `frontend/dist`
 4. Click "Save"
 
 ### Step 4: Deploy
@@ -126,8 +114,8 @@ Render supports static site hosting with simple configuration.
 
 The `render.yaml` file is already configured with:
 
-- Build Command: `cd 'Dairy Farm' && npm install && npm run build`
-- Publish Directory: `Dairy Farm/dist`
+- Build Command: `cd 'frontend' && npm install && npm run build`
+- Publish Directory: `frontend/dist`
 - Auto-deploy on push: Enabled
 
 ### Step 3: Add Environment Variables
@@ -161,7 +149,7 @@ The `render.yaml` file is already configured with:
 Test the production build locally:
 
 ```bash
-cd "Dairy Farm"
+cd frontend
 npm run build
 npm run preview
 ```
@@ -199,7 +187,7 @@ Click "Add Environment Variable" and add each one individually with the exact ke
 **Solution**: 
 - Vercel/Render correctly configured in JSON files
 - Ensure repository structure hasn't changed
-- Check that `Dairy Farm/package.json` exists
+- Check that `frontend/package.json` exists
 
 ### Environment Variables Not Loading
 
