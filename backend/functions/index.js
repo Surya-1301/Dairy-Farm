@@ -6,7 +6,15 @@ initializeApp();
 
 const OWNER_EMAIL = "ss058012@gmail.com";
 
-exports.generatePasswordResetLink = onCall({ cors: true }, async (request) => {
+exports.generatePasswordResetLink = onCall({
+  cors: [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://dairy-farm-qlw1.onrender.com",
+    "https://raipur-dairy-farmm.web.app",
+    "https://raipur-dairy-farmm.firebaseapp.com"
+  ]
+}, async (request) => {
   const callerEmail = request.auth?.token?.email?.toLowerCase();
   const targetEmail = (request.data?.email ?? "").toLowerCase().trim();
 
