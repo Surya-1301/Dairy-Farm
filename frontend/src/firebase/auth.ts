@@ -3,7 +3,6 @@ import {
   confirmPasswordReset,
   deleteUser,
   onAuthStateChanged,
-  sendPasswordResetEmail,
   signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword,
   signOut as firebaseSignOut,
   type User
@@ -504,7 +503,6 @@ export async function signUpWithEmailPassword(email: string, password: string, n
 }
 
 export async function requestPasswordReset(email: string): Promise<"firebase"> {
-  const firebaseAuth = requireFirebaseAuth();
   const normalizedEmail = normalizeEmail(email);
 
   if (!normalizedEmail) {
@@ -512,15 +510,15 @@ export async function requestPasswordReset(email: string): Promise<"firebase"> {
   }
 
   try {
-    await sendPasswordResetEmail(firebaseAuth, normalizedEmail, {
-      url: "https://dairy-farm-qlw1.onrender.com/login"
-    });
+    const oobCode = await generatePasswordResetOobCode(normalizedEmail);
+    const resetUrl = `https://dairy-farm-qlw1.onrender.com/reset-password?oobCode=${encodeURIComponent(oobCode)}`;
+    const { sendPasswordResetLinkEmail } = await import("../utils/emailOtp");
+    await sendPasswordResetLinkEmail(normalizedEmail, normalizedEmail, resetUrl);
     return "firebase";
   } catch (error) {
     if (isConfigurationError(error)) {
       throw toFriendlyAuthError(error);
     }
-
     throw new Error("We could not send a reset email for this account.");
   }
 }
