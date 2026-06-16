@@ -1,0 +1,13 @@
+{
+  "name": "dairy-farm-functions",
+  "description": "Firebase Cloud Functions for Dairy Farm",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^5.1.1"
+  },
+  "private": true
+}

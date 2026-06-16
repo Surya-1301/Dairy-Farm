@@ -1,5 +1,6 @@
 import {
   createUserWithEmailAndPassword,
+  confirmPasswordReset,
   deleteUser,
   onAuthStateChanged,
   sendPasswordResetEmail,
@@ -8,7 +9,8 @@ import {
   type User
 } from "firebase/auth";
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
-import { auth, db } from "./config";
+import { httpsCallable } from "firebase/functions";
+import { auth, db, functions } from "./config";
 import { deleteUserDataByEmail } from "./data";
 
 const OWNER_EMAIL = (import.meta.env.VITE_OWNER_EMAIL as string ?? "").trim().toLowerCase();
@@ -510,7 +512,9 @@ export async function requestPasswordReset(email: string): Promise<"firebase"> {
   }
 
   try {
-    await sendPasswordResetEmail(firebaseAuth, normalizedEmail);
+    await sendPasswordResetEmail(firebaseAuth, normalizedEmail, {
+      url: "https://dairy-farm-qlw1.onrender.com/login"
+    });
     return "firebase";
   } catch (error) {
     if (isConfigurationError(error)) {
@@ -518,6 +522,33 @@ export async function requestPasswordReset(email: string): Promise<"firebase"> {
     }
 
     throw new Error("We could not send a reset email for this account.");
+  }
+}
+
+export async function generatePasswordResetOobCode(email: string): Promise<string> {
+  if (!functions) {
+    throw new Error("Firebase Functions is not configured.");
+  }
+  const fn = httpsCallable<{ email: string }, { oobCode: string }>(functions, "generatePasswordResetLink");
+  const result = await fn({ email: normalizeEmail(email) });
+  return result.data.oobCode;
+}
+
+export async function confirmNewPassword(oobCode: string, newPassword: string): Promise<void> {
+  const firebaseAuth = requireFirebaseAuth();
+  try {
+    await confirmPasswordReset(firebaseAuth, oobCode, newPassword);
+  } catch (error) {
+    if ((error as { code?: string })?.code === "auth/expired-action-code") {
+      throw new Error("This reset link has expired. Please request a new one.");
+    }
+    if ((error as { code?: string })?.code === "auth/invalid-action-code") {
+      throw new Error("This reset link is invalid or already used. Please request a new one.");
+    }
+    if ((error as { code?: string })?.code === "auth/weak-password") {
+      throw new Error("Password must be at least 6 characters.");
+    }
+    throw new Error("Failed to reset password. Please try again.");
   }
 }
 

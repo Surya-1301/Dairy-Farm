@@ -11,7 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#f8fafc"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.raipurdairy.farm"
@@ -29,15 +31,24 @@
         "GET_ACCOUNTS",
         "READ_PHONE_STATE",
         "ACCESS_NETWORK_STATE",
-        "MODIFY_AUDIO_SETTINGS"
+        "MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#ffffff"
-      },
+      }
     },
     "plugins": [
       "expo-file-system"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7dd89770-aa70-4c2b-927a-fb68db9194b4"
+      }
+    },
+    "owner": "shubham0102"
   }
 }

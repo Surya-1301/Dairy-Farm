@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import { useNavigate } from "react-router-dom";
-import { deleteUserByEmail, fetchAllUserProfiles, isOwnerLoggedIn, subscribeAuthState, updateUserProfileByEmail } from "../firebase/auth";
-import { generateResetToken, RESET_TOKEN_VALIDITY_MS, sendPasswordResetLinkEmail } from "../utils/emailOtp";
-import { getCustomersByEmail, getSheetByEmail, savePasswordResetOtp, type Customer, type SheetState } from "../firebase/data";
+import { deleteUserByEmail, fetchAllUserProfiles, isOwnerLoggedIn, requestPasswordReset, subscribeAuthState, updateUserProfileByEmail } from "../firebase/auth";
+import { getCustomersByEmail, getSheetByEmail, type Customer, type SheetState } from "../firebase/data";
 
 type UserProfile = {
   email: string;
@@ -270,7 +269,6 @@ export default function OwnerDashboard() {
                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Name</th>
                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Email</th>
                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Phone</th>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Farm</th>
                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Customers</th>
                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Sheet Total</th>
                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Role</th>
@@ -283,7 +281,6 @@ export default function OwnerDashboard() {
                           <td className="px-4 py-4 font-medium text-slate-900">{user.name}</td>
                           <td className="px-4 py-4 text-slate-600">{user.email}</td>
                           <td className="px-4 py-4 text-slate-600">{user.phone || "-"}</td>
-                          <td className="px-4 py-4 text-slate-600">{user.farmName || "-"}</td>
                           <td className="px-4 py-4 text-slate-600">{user.customerCount}</td>
                           <td className="px-4 py-4 text-slate-600">{user.sheetTotal}</td>
                           <td className="px-4 py-4">
@@ -501,12 +498,8 @@ export default function OwnerDashboard() {
                           setPwResetMsg(null);
                           setPwResetLoading(true);
                           try {
-                            const token = generateResetToken();
-                            await savePasswordResetOtp(selectedUser.email, token, RESET_TOKEN_VALIDITY_MS);
-                            const appUrl = (import.meta.env.VITE_APP_URL as string | undefined)?.replace(/\/$/, "") || window.location.origin;
-                            const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(selectedUser.email)}`;
-                            await sendPasswordResetLinkEmail(selectedUser.email, selectedUser.name, resetUrl);
-                            setPwResetMsg("Password reset link sent via email!");
+                            await requestPasswordReset(selectedUser.email);
+                            setPwResetMsg("Password reset email sent!");
                           } catch (err) {
                             setPwResetMsg(err instanceof Error ? err.message : "Failed to send reset email");
                           } finally {

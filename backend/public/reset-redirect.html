@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Redirecting...</title>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var mode = params.get('mode');
+      var oobCode = params.get('oobCode');
+      var appUrl = 'https://dairy-farm-qlw1.onrender.com';
+
+      if (mode === 'resetPassword' && oobCode) {
+        window.location.replace(appUrl + '/reset-password?oobCode=' + encodeURIComponent(oobCode));
+      } else {
+        window.location.replace(appUrl + '/login');
+      }
+    })();
+  </script>
+</head>
+<body>Redirecting...</body>
+</html>
