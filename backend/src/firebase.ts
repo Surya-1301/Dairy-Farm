@@ -7,11 +7,11 @@ import {
   getReactNativePersistence,
   initializeAuth,
   onAuthStateChanged,
-  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   type User
 } from "firebase/auth";
+import { sendPasswordResetLinkEmail } from "./utils/emailOtp";
 import { collection, deleteDoc, doc, getDoc, getDocs, getFirestore, setDoc } from "firebase/firestore";
 import type { ActiveUser, Role, UserProfile } from "./types";
 
@@ -140,13 +140,27 @@ export async function signUp(email: string, password: string, name: string, phon
   await ensureUserProfile(credential.user, { name: trimmedName || undefined, phone: phone || undefined });
 }
 
+const CLOUD_FUNCTION_URL =
+  "https://us-central1-raipur-dairy-farmm.cloudfunctions.net/generatePasswordResetLink";
+const RESET_REDIRECT_URL = "https://dairy-farm-qlw1.onrender.com/reset-password";
+
 export async function resetPassword(email: string) {
   const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) {
-    throw new Error("Enter an email address.");
-  }
+  if (!normalizedEmail) throw new Error("Enter an email address.");
 
-  await sendPasswordResetEmail(auth, normalizedEmail);
+  const idToken = await auth.currentUser?.getIdToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+
+  const response = await fetch(CLOUD_FUNCTION_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email: normalizedEmail })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error ?? "Failed to generate reset link.");
+  const resetUrl = `${RESET_REDIRECT_URL}?oobCode=${encodeURIComponent(data.oobCode)}`;
+  await sendPasswordResetLinkEmail(normalizedEmail, normalizedEmail, resetUrl);
 }
 
 export async function logout() {

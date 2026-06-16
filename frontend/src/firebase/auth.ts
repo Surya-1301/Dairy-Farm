@@ -8,8 +8,7 @@ import {
   type User
 } from "firebase/auth";
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
-import { auth, db, functions } from "./config";
+import { auth, db } from "./config";
 import { deleteUserDataByEmail } from "./data";
 
 const OWNER_EMAIL = (import.meta.env.VITE_OWNER_EMAIL as string ?? "").trim().toLowerCase();
@@ -504,10 +503,7 @@ export async function signUpWithEmailPassword(email: string, password: string, n
 
 export async function requestPasswordReset(email: string): Promise<"firebase"> {
   const normalizedEmail = normalizeEmail(email);
-
-  if (!normalizedEmail) {
-    throw new Error("Enter an email address.");
-  }
+  if (!normalizedEmail) throw new Error("Enter an email address.");
 
   try {
     const oobCode = await generatePasswordResetOobCode(normalizedEmail);
@@ -516,20 +512,30 @@ export async function requestPasswordReset(email: string): Promise<"firebase"> {
     await sendPasswordResetLinkEmail(normalizedEmail, normalizedEmail, resetUrl);
     return "firebase";
   } catch (error) {
-    if (isConfigurationError(error)) {
-      throw toFriendlyAuthError(error);
-    }
+    if (isConfigurationError(error)) throw toFriendlyAuthError(error);
     throw new Error("We could not send a reset email for this account.");
   }
 }
 
 export async function generatePasswordResetOobCode(email: string): Promise<string> {
-  if (!functions) {
-    throw new Error("Firebase Functions is not configured.");
-  }
-  const fn = httpsCallable<{ email: string }, { oobCode: string }>(functions, "generatePasswordResetLink");
-  const result = await fn({ email: normalizeEmail(email) });
-  return result.data.oobCode;
+  const firebaseAuth = requireFirebaseAuth();
+  const idToken = await firebaseAuth.currentUser?.getIdToken();
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+
+  const response = await fetch(
+    "https://us-central1-raipur-dairy-farmm.cloudfunctions.net/generatePasswordResetLink",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email: normalizeEmail(email) })
+    }
+  );
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error ?? "Failed to generate reset link.");
+  return data.oobCode;
 }
 
 export async function confirmNewPassword(oobCode: string, newPassword: string): Promise<void> {

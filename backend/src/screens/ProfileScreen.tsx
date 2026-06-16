@@ -17,6 +17,7 @@ import {
   deleteAccountPermanently,
   fetchProfileForCurrentUser,
   logout,
+  resetPassword,
   updateProfileForCurrentUser
 } from "../firebase";
 import { colors, styles as t } from "../theme";
@@ -75,6 +76,30 @@ export default function ProfileScreen() {
     setMessageType("success");
     setMessage("Avatar removed.");
     setTimeout(() => setMessage(""), 2000);
+  };
+
+  const handleResetPassword = () => {
+    Alert.alert(
+      "Reset Password",
+      "Send a password reset email to your account?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send",
+          onPress: async () => {
+            setLoading(true);
+            try {
+              await resetPassword(email);
+              Alert.alert("Sent", "Password reset email sent! Check your inbox.");
+            } catch (error) {
+              Alert.alert("Error", error instanceof Error ? error.message : "Failed to send reset email.");
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleLogout = () => {
@@ -272,6 +297,10 @@ export default function ProfileScreen() {
               <Text style={t.dangerText}>{loading ? "Deleting..." : "Delete Account"}</Text>
             </Pressable>
           </View>
+
+          <Pressable style={[t.outlineButton, loading && { opacity: 0.5 }]} onPress={handleResetPassword} disabled={loading}>
+            <Text style={t.outlineText}>Reset Password</Text>
+          </Pressable>
 
           <Pressable style={t.outlineButton} onPress={handleLogout}>
             <Text style={t.outlineText}>Logout</Text>

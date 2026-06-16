@@ -183,7 +183,7 @@ function Login() {
         ) : null}
         {mode === "reset" ? (
           <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Enter your email address. Your admin has already sent a reset link — or click below to have Firebase send one directly.
+            Enter your email address and we'll send you a password reset link.
           </p>
         ) : null}
         {!otpSent ? (

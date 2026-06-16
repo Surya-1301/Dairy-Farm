@@ -11,7 +11,7 @@ import {
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { deleteUserProfile, fetchUserProfiles } from "../firebase";
+import { deleteUserProfile, fetchUserProfiles, resetPassword } from "../firebase";
 import { getCustomersByEmail, getSheetByEmail } from "../storage";
 import { colors, styles as t } from "../theme";
 import type { Customer, SheetState, UserProfile } from "../types";
@@ -62,6 +62,27 @@ export default function OwnerDashboardScreen() {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
+  };
+
+  const handleResetPassword = (user: UserSnapshot) => {
+    Alert.alert(
+      "Reset Password",
+      `Send a password reset email to ${user.email}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send",
+          onPress: async () => {
+            try {
+              await resetPassword(user.email);
+              Alert.alert("Sent", `Password reset email sent to ${user.email}.`);
+            } catch (error) {
+              Alert.alert("Error", error instanceof Error ? error.message : "Failed to send reset email.");
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleDelete = (user: UserSnapshot) => {
@@ -167,6 +188,9 @@ export default function OwnerDashboardScreen() {
                 <Pressable style={[t.outlineButton, { flex: 1 }]} onPress={() => setSelectedUser(user)}>
                   <Text style={t.outlineText}>View Details</Text>
                 </Pressable>
+                <Pressable style={[t.outlineButton, { flex: 1 }]} onPress={() => handleResetPassword(user)}>
+                  <Text style={t.outlineText}>Reset Password</Text>
+                </Pressable>
                 <Pressable style={[t.dangerButton, { flex: 1 }]} onPress={() => handleDelete(user)}>
                   <Text style={t.dangerText}>Delete</Text>
                 </Pressable>
@@ -265,6 +289,9 @@ export default function OwnerDashboardScreen() {
                 </ScrollView>
               </View>
 
+              <Pressable style={t.outlineButton} onPress={() => handleResetPassword(selectedUser)}>
+                <Text style={t.outlineText}>Send Password Reset Email</Text>
+              </Pressable>
               <Pressable style={t.dangerButton} onPress={() => handleDelete(selectedUser)}>
                 <Text style={t.dangerText}>Delete This User</Text>
               </Pressable>

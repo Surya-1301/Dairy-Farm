@@ -5,6 +5,7 @@ import {
   getActiveUser,
   getCurrentUserProfile,
   isAuthReady,
+  requestPasswordReset,
   subscribeAuthState,
   updateCurrentUserProfile
 } from "../firebase/auth";
@@ -30,6 +31,7 @@ function Profile() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(!isAuthReady());
 
   const refreshProfile = () => {
@@ -129,6 +131,23 @@ function Profile() {
       setMessage(errorMsg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!email.trim()) return;
+    setResetLoading(true);
+    setMessage("");
+    try {
+      await requestPasswordReset(email.trim());
+      setMessageType("success");
+      setMessage("Password reset email sent! Check your inbox.");
+      setTimeout(() => setMessage(""), 5000);
+    } catch (error) {
+      setMessageType("error");
+      setMessage(error instanceof Error ? error.message : "Failed to send reset email.");
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -344,15 +363,23 @@ function Profile() {
         <div className="flex flex-col sm:flex-row gap-3 pt-4">
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || resetLoading}
             className="w-full sm:flex-1 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
           >
             {loading ? "Saving..." : "Save Profile"}
           </button>
           <button
             type="button"
+            onClick={() => { void handleResetPassword(); }}
+            disabled={loading || resetLoading}
+            className="w-full sm:flex-1 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 hover:bg-amber-100 active:bg-amber-200 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
+          >
+            {resetLoading ? "Sending..." : "Reset Password"}
+          </button>
+          <button
+            type="button"
             onClick={handleDeleteAccount}
-            disabled={loading}
+            disabled={loading || resetLoading}
             className="w-full sm:flex-1 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 active:bg-red-200 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
           >
             {loading ? "Deleting..." : "Delete Account"}
