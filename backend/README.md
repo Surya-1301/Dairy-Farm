@@ -10,13 +10,13 @@ Expo / React Native app for the Dairy Farm management system. Shares the same Fi
 
 ## Features
 
-- Email/password sign in, sign up, and password reset
+- Email/password sign in, sign up, and custom password reset via EmailJS
 - Customer management — add, edit, delete with scrollable table view
 - Editable milk data sheet (50 rows × 16 days default) — add/remove rows and columns, swipe to scroll
 - PDF export of archived history sheets via `expo-print` + `expo-sharing`
 - Dashboard summary — customer count and total milk amount with tab navigation shortcuts
-- User profile — edit name, phone, avatar; logout; delete account
-- Owner-only screen — registered users and analytics
+- User profile — edit name, phone, avatar; reset password; logout; delete account
+- Owner-only screen — registered users, analytics, and reset password for any user
 
 ## Setup
 
@@ -39,6 +39,11 @@ EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
 EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
 EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
+EXPO_PUBLIC_OWNER_EMAIL=owner@example.com
+EXPO_PUBLIC_EMAILJS_SERVICE_ID=your_emailjs_service_id
+EXPO_PUBLIC_EMAILJS_TEMPLATE_ID=your_emailjs_otp_template_id
+EXPO_PUBLIC_EMAILJS_RESET_TEMPLATE_ID=your_emailjs_reset_template_id
+EXPO_PUBLIC_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
 ```
 
 Use the same Firebase project as the web app (`frontend/`). Firestore rules are in the root `DEPLOYMENT.md`.
@@ -74,10 +79,25 @@ eas build:configure
 eas build -p android
 ```
 
+## Password Reset Flow
+
+Password resets use a Firebase Cloud Function (`functions/index.js`) to generate a reset `oobCode` server-side, then EmailJS sends a branded HTML email with a link to the web app's `/reset-password` page. This replaces Firebase's default reset email with a fully custom email.
+
+To deploy the Cloud Function:
+
+```bash
+firebase deploy --only functions
+```
+
+The compute service account (`<project-number>-compute@developer.gserviceaccount.com`) must have the **Firebase Authentication Admin** IAM role in Google Cloud Console.
+
 ## Project Structure
 
 ```
 backend/
+├── functions/
+│   ├── index.js         generatePasswordResetLink Cloud Function
+│   └── package.json
 ├── src/
 │   ├── screens/
 │   │   ├── LoginScreen.tsx
@@ -87,8 +107,10 @@ backend/
 │   │   ├── HistoryScreen.tsx
 │   │   ├── ProfileScreen.tsx
 │   │   └── OwnerDashboardScreen.tsx
+│   ├── utils/
+│   │   └── emailOtp.ts  EmailJS OTP + password reset email helpers
 │   ├── App.tsx          Entry point + navigation
-│   ├── firebase.ts      Firebase init + auth helpers
+│   ├── firebase.ts      Firebase init + auth + password reset helpers
 │   ├── storage.ts       Firestore read/write helpers
 │   ├── theme.ts         Shared colors and styles
 │   └── types.ts         Shared TypeScript types

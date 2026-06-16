@@ -9,13 +9,13 @@ A web + mobile dairy management system for tracking customers, daily milk entrie
 
 ## What The App Does
 
-- Email/password sign in, sign up, and password reset
+- Email/password sign in, sign up, and custom password reset via EmailJS
 - Customer management — add, edit, delete
 - Editable milk data sheet (50 rows × 15 days default) with add/remove row and column
 - Dashboard summary showing customer count and total milk amount
 - Sheet history archive — save snapshots and export as PDF (mobile) or JSON (web)
-- User profile management with avatar upload
-- Owner dashboard — view all registered users, milk totals, earnings, and delete accounts
+- User profile management with avatar upload and in-profile password reset
+- Owner dashboard — view all registered users, milk totals, earnings, delete accounts, and reset any user's password
 
 ---
 
@@ -25,6 +25,7 @@ A web + mobile dairy management system for tracking customers, daily milk entrie
 Dairy Farm/
 ├── frontend/        Web app (React + Vite + Tailwind)
 ├── backend/         Mobile app (Expo + React Native)
+│   └── functions/   Firebase Cloud Functions (password reset link generator)
 ├── DEPLOYMENT.md    Firebase + hosting deployment guide
 └── README.md        This file
 ```
@@ -62,6 +63,11 @@ VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
+VITE_OWNER_EMAIL=owner@example.com
+VITE_EMAILJS_SERVICE_ID=your_emailjs_service_id
+VITE_EMAILJS_TEMPLATE_ID=your_emailjs_otp_template_id
+VITE_EMAILJS_RESET_TEMPLATE_ID=your_emailjs_reset_template_id
+VITE_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
 ```
 
 ### Scripts
@@ -81,8 +87,9 @@ npm run preview   # preview production build
 | `/customers` | Customer list — add, edit, delete |
 | `/customer-details` | Editable milk data sheet |
 | `/history` | Archived sheet snapshots |
-| `/profile` | User profile and avatar |
-| `/owner-dashboard` | Owner-only — users, milk totals, earnings |
+| `/profile` | User profile, avatar, and password reset |
+| `/reset-password` | Password reset confirmation (via emailed link) |
+| `/owner-dashboard` | Owner-only — users, milk totals, earnings, reset passwords |
 
 ### Deploy
 
@@ -128,6 +135,11 @@ EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
 EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
 EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
+EXPO_PUBLIC_OWNER_EMAIL=owner@example.com
+EXPO_PUBLIC_EMAILJS_SERVICE_ID=your_emailjs_service_id
+EXPO_PUBLIC_EMAILJS_TEMPLATE_ID=your_emailjs_otp_template_id
+EXPO_PUBLIC_EMAILJS_RESET_TEMPLATE_ID=your_emailjs_reset_template_id
+EXPO_PUBLIC_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
 ```
 
 Use the same Firebase project as the web app.
@@ -149,8 +161,8 @@ npm run typecheck   # TypeScript check
 | Customers | Customer list — add, edit, delete |
 | Data | Editable milk sheet |
 | History | Archived sheets — view, export PDF, delete |
-| Settings | Profile edit, avatar, logout, delete account |
-| Owner Dashboard | Owner-only — registered users and analytics |
+| Settings | Profile edit, avatar, password reset, logout, delete account |
+| Owner Dashboard | Owner-only — registered users, analytics, reset passwords |
 
 ### Build APK / AAB
 
@@ -162,6 +174,27 @@ eas build -p android
 ```
 
 Android package id: `com.raipurdairy.farm`
+
+---
+
+## Cloud Functions (`backend/functions/`)
+
+A Firebase Cloud Function generates the password reset `oobCode` server-side using the Firebase Admin SDK. EmailJS then sends a branded HTML email with the reset link to the user.
+
+```
+backend/functions/
+├── index.js        generatePasswordResetLink — POST endpoint
+└── package.json
+```
+
+### Deploy
+
+```bash
+cd backend
+firebase deploy --only functions
+```
+
+The compute service account needs the **Firebase Authentication Admin** IAM role in Google Cloud Console.
 
 ---
 
@@ -182,6 +215,8 @@ Firestore rules and Firebase project setup are documented in `DEPLOYMENT.md`.
 
 ## Authentication
 
-- Firebase Auth — email/password sign in, sign up, password reset
-- The owner account has exclusive access to the owner dashboard and user management
+- Firebase Auth — email/password sign in and sign up
+- Password reset uses a Firebase Cloud Function + EmailJS to send a custom branded email
+- Unauthenticated users (login page) can request a reset; signed-in users can reset from their profile
+- The owner account has exclusive access to the owner dashboard, user management, and can reset any user's password
 - Regular users see only their own data

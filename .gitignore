@@ -33,3 +33,6 @@ pnpm-debug.log
 
 # Render
 .render
+
+# Firebase CLI cache
+.firebase/
