@@ -314,7 +314,7 @@ function Profile() {
           />
         </label>
         <p className="text-xs text-slate-500">
-          Email changes are managed by Firebase and are not editable from this screen.
+          Email address cannot be changed.
         </p>
 
         <div className="space-y-2">

@@ -1,38 +1,58 @@
 import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
-  FlatList,
+  Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  fetchUserProfiles,
-  deleteUserProfile
-} from "../firebase";
-import { colors } from "../theme";
-import type { UserProfile } from "../types";
+import { deleteUserProfile, fetchUserProfiles } from "../firebase";
+import { getCustomersByEmail, getSheetByEmail } from "../storage";
+import { colors, styles as t } from "../theme";
+import type { Customer, SheetState, UserProfile } from "../types";
+
+type UserSnapshot = UserProfile & {
+  customers: Customer[];
+  sheet: SheetState;
+  customerCount: number;
+  sheetTotal: number;
+};
 
 export default function OwnerDashboardScreen() {
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [snapshots, setSnapshots] = useState<UserSnapshot[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserSnapshot | null>(null);
 
   useEffect(() => {
-    loadUsers();
+    void loadData();
   }, []);
 
-  const loadUsers = async () => {
+  const loadData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const nextUsers = await fetchUserProfiles();
-      setUsers(nextUsers);
-    } catch (error) {
+      const profiles = await fetchUserProfiles();
+      const next = await Promise.all(
+        profiles.map(async (profile) => {
+          const [customers, sheet] = await Promise.all([
+            getCustomersByEmail(profile.email),
+            getSheetByEmail(profile.email)
+          ]);
+          const sheetTotal = sheet.rows.reduce(
+            (sum, row) => sum + row.days.reduce((s, v) => s + (v || 0), 0),
+            0
+          );
+          return { ...profile, customers, sheet, customerCount: customers.length, sheetTotal };
+        })
+      );
+      setSnapshots(next);
+    } catch {
       Alert.alert("Error", "Failed to load users");
-      console.error("Error loading users:", error);
     } finally {
       setLoading(false);
     }
@@ -40,235 +60,332 @@ export default function OwnerDashboardScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadUsers();
+    await loadData();
     setRefreshing(false);
   };
 
-  const deleteUser = (user: UserProfile) => {
-    Alert.alert("Delete User", `Are you sure you want to delete ${user.email}?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteUserProfile(user.email);
-            setUsers(users.filter((u) => u.email !== user.email));
-            Alert.alert("Success", "User deleted");
-          } catch (error) {
-            Alert.alert("Error", "Failed to delete user");
+  const handleDelete = (user: UserSnapshot) => {
+    Alert.alert(
+      "Delete User",
+      `Are you sure you want to delete ${user.email}? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteUserProfile(user.email);
+              setSnapshots((prev) => prev.filter((s) => s.email !== user.email));
+              if (selectedUser?.email === user.email) setSelectedUser(null);
+            } catch (error) {
+              Alert.alert("Error", error instanceof Error ? error.message : "Failed to delete user");
+            }
           }
         }
-      }
-    ]);
+      ]
+    );
   };
 
+  const totalCustomers = snapshots.reduce((sum, s) => sum + s.customerCount, 0);
+  const totalEarnings = snapshots.reduce((sum, s) => sum + s.sheetTotal, 0);
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={t.screen}>
       <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={undefined}
-        onScroll={undefined}
+        contentContainerStyle={t.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>Owner Dashboard</Text>
-          <Text style={styles.subtitle}>Manage registered users</Text>
+        <View>
+          <Text style={t.title}>Owner Dashboard</Text>
+          <Text style={[t.subtitle, { marginTop: 4 }]}>Manage registered users</Text>
         </View>
 
-        <View style={styles.statsContainer}>
-          <StatCard label="Total Users" value={users.length.toString()} />
-          <StatCard label="Active" value={(users.length > 0 ? users.length : 0).toString()} />
+        <View style={s.statsRow}>
+          <StatCard label="Total Users" value={String(snapshots.length)} color={colors.primary} />
+          <StatCard label="Customers" value={String(totalCustomers)} color="#059669" />
+          <StatCard label="Earnings" value={`₹${totalEarnings.toLocaleString()}`} color="#7c3aed" small />
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Registered Users ({users.length})</Text>
-            <Pressable onPress={handleRefresh} disabled={refreshing}>
-              <Text style={styles.refreshButton}>{refreshing ? "..." : "↻"}</Text>
-            </Pressable>
+        <View style={t.card}>
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Registered Users</Text>
+            <Text style={s.sectionCount}>{snapshots.length} total</Text>
           </View>
 
-          {users.length === 0 ? (
-            <Text style={styles.emptyText}>No users registered yet</Text>
-          ) : (
-            users.map((user) => (
-              <View key={user.email} style={styles.userCard}>
-                <View style={styles.userHeader}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {(user.name || user.email || "U").charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.userName}>{user.name || user.email}</Text>
-                    <Text style={styles.userEmail}>{user.email}</Text>
-                  </View>
-                </View>
+          {loading && snapshots.length === 0 && (
+            <View style={{ paddingVertical: 24, alignItems: "center" }}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          )}
 
-                <View style={styles.userInfo}>
-                  {user.phone && (
-                    <Text style={styles.userMeta}>📞 {user.phone}</Text>
-                  )}
-                  {user.farmName && (
-                    <Text style={styles.userMeta}>🏗️ {user.farmName}</Text>
-                  )}
-                  <Text style={styles.userMeta}>
-                    📅 {new Date(user.updatedAt).toLocaleDateString()}
+          {!loading && snapshots.length === 0 && (
+            <Text style={s.emptyText}>No users registered yet.</Text>
+          )}
+
+          {snapshots.map((user) => (
+            <View key={user.email} style={s.userCard}>
+              <View style={s.userHeader}>
+                <View style={s.avatar}>
+                  <Text style={s.avatarText}>
+                    {(user.name || user.email || "U").charAt(0).toUpperCase()}
                   </Text>
                 </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={s.nameRow}>
+                    <Text style={s.userName} numberOfLines={1}>{user.name || user.email}</Text>
+                    <View style={s.roleBadge}>
+                      <Text style={s.roleBadgeText}>USER</Text>
+                    </View>
+                  </View>
+                  <Text style={s.userEmail} numberOfLines={1}>{user.email}</Text>
+                </View>
+              </View>
 
-                <Pressable
-                  style={[styles.deleteButton]}
-                  onPress={() => deleteUser(user)}
-                >
-                  <Text style={styles.deleteButtonText}>Delete User</Text>
+              <View style={s.userMeta}>
+                {!!user.phone && <Text style={s.metaText}>{user.phone}</Text>}
+                {!!user.farmName && <Text style={s.metaText}>{user.farmName}</Text>}
+                <Text style={s.metaText}>{new Date(user.updatedAt).toLocaleDateString()}</Text>
+              </View>
+
+              <View style={s.userStats}>
+                <View style={s.userStat}>
+                  <Text style={s.userStatLabel}>Customers</Text>
+                  <Text style={s.userStatValue}>{user.customerCount}</Text>
+                </View>
+                <View style={s.userStat}>
+                  <Text style={s.userStatLabel}>Sheet Total</Text>
+                  <Text style={s.userStatValue}>{user.sheetTotal}</Text>
+                </View>
+                <View style={s.userStat}>
+                  <Text style={s.userStatLabel}>Rows</Text>
+                  <Text style={s.userStatValue}>{user.sheet.rows.length}</Text>
+                </View>
+              </View>
+
+              <View style={s.userActions}>
+                <Pressable style={[t.outlineButton, { flex: 1 }]} onPress={() => setSelectedUser(user)}>
+                  <Text style={t.outlineText}>View Details</Text>
+                </Pressable>
+                <Pressable style={[t.dangerButton, { flex: 1 }]} onPress={() => handleDelete(user)}>
+                  <Text style={t.dangerText}>Delete</Text>
                 </Pressable>
               </View>
-            ))
-          )}
+            </View>
+          ))}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={!!selectedUser}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setSelectedUser(null)}
+      >
+        {selectedUser && (
+          <SafeAreaView style={t.screen}>
+            <View style={s.modalHeader}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={s.modalTitle}>User Details</Text>
+                <Text style={t.subtitle} numberOfLines={1}>{selectedUser.email}</Text>
+              </View>
+              <Pressable style={t.outlineButton} onPress={() => setSelectedUser(null)}>
+                <Text style={t.outlineText}>Close</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={[t.content, { paddingTop: 8 }]}>
+              <View style={t.card}>
+                <Text style={s.sectionTitle}>Profile</Text>
+                <View style={s.infoGrid}>
+                  <InfoCell label="Name" value={selectedUser.name || "-"} />
+                  <InfoCell label="Email" value={selectedUser.email} />
+                  <InfoCell label="Phone" value={selectedUser.phone || "-"} />
+                  <InfoCell label="Farm" value={selectedUser.farmName || "-"} />
+                  <InfoCell label="Updated" value={new Date(selectedUser.updatedAt).toLocaleString()} />
+                  <InfoCell label="Sheet Total" value={String(selectedUser.sheetTotal)} />
+                </View>
+              </View>
+
+              <View style={t.card}>
+                <Text style={s.sectionTitle}>Customers ({selectedUser.customerCount})</Text>
+                {selectedUser.customers.length === 0 ? (
+                  <Text style={s.emptyText}>No customers saved.</Text>
+                ) : (
+                  selectedUser.customers.map((customer) => (
+                    <View key={`${selectedUser.email}-c-${customer.serialNumber}`} style={s.customerCard}>
+                      <View style={s.customerRow}>
+                        <Text style={s.customerName}>{customer.name || "Unnamed"}</Text>
+                        <View style={s.customerBadge}>
+                          <Text style={s.customerBadgeText}>#{customer.serialNumber}</Text>
+                        </View>
+                      </View>
+                      {!!customer.mobile && <Text style={s.customerMeta}>{customer.mobile}</Text>}
+                      {!!customer.address && <Text style={s.customerMeta}>{customer.address}</Text>}
+                    </View>
+                  ))
+                )}
+              </View>
+
+              <View style={t.card}>
+                <View style={s.sectionHeader}>
+                  <Text style={s.sectionTitle}>Sheet Data</Text>
+                  <Text style={s.sectionCount}>
+                    {selectedUser.sheet.rows.length} rows · {selectedUser.sheet.dayCount} days
+                  </Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator>
+                  <View>
+                    <View style={[s.tableRow, s.tableHeaderRow]}>
+                      <Text style={[s.tableCell, s.tableCellHeader, { width: 40 }]}>No</Text>
+                      <Text style={[s.tableCell, s.tableCellHeader, { width: 120 }]}>Customer</Text>
+                      {Array.from({ length: selectedUser.sheet.dayCount }, (_, i) => (
+                        <Text key={`hd-${i}`} style={[s.tableCell, s.tableCellHeader, { width: 48 }]}>
+                          D{i + 1}
+                        </Text>
+                      ))}
+                      <Text style={[s.tableCell, s.tableCellHeader, { width: 64 }]}>Total</Text>
+                    </View>
+                    {selectedUser.sheet.rows.map((row, ri) => {
+                      const rowTotal = row.days.reduce((sum, v) => sum + (v || 0), 0);
+                      return (
+                        <View key={`row-${ri}`} style={[s.tableRow, ri % 2 === 1 && s.tableRowAlt]}>
+                          <Text style={[s.tableCell, { width: 40 }]}>{row.serialNumber}</Text>
+                          <Text style={[s.tableCell, { width: 120 }]} numberOfLines={1}>
+                            {row.customerName || "-"}
+                          </Text>
+                          {row.days.map((v, di) => (
+                            <Text key={`d-${di}`} style={[s.tableCell, { width: 48 }]}>{v || 0}</Text>
+                          ))}
+                          <Text style={[s.tableCell, s.tableCellBold, { width: 64 }]}>{rowTotal}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              </View>
+
+              <Pressable style={t.dangerButton} onPress={() => handleDelete(selectedUser)}>
+                <Text style={t.dangerText}>Delete This User</Text>
+              </Pressable>
+            </ScrollView>
+          </SafeAreaView>
+        )}
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value, color, small }: { label: string; value: string; color: string; small?: boolean }) {
   return (
-    <View style={styles.statCard}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+    <View style={[s.statCard, { flex: 1 }]}>
+      <Text style={s.statLabel}>{label}</Text>
+      <Text style={[s.statValue, { color, fontSize: small ? 16 : 22 }]}>{value}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    backgroundColor: colors.background,
-    flex: 1
-  },
-  content: {
-    padding: 16,
-    gap: 16
-  },
-  header: {
-    marginBottom: 8
-  },
-  title: {
-    color: colors.foreground,
-    fontSize: 24,
-    fontWeight: "700",
-    marginBottom: 4
-  },
-  subtitle: {
-    color: colors.muted,
-    fontSize: 14
-  },
-  statsContainer: {
-    flexDirection: "row",
-    gap: 12
-  },
+function InfoCell({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={s.infoCell}>
+      <Text style={s.infoCellLabel}>{label}</Text>
+      <Text style={s.infoCellValue}>{value}</Text>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  statsRow: { flexDirection: "row", gap: 10 },
   statCard: {
     backgroundColor: "#ffffff",
     borderColor: colors.border,
     borderRadius: 12,
     borderWidth: 1,
-    flex: 1,
-    padding: 16
+    padding: 14
   },
   statLabel: {
     color: colors.muted,
-    fontSize: 12,
-    fontWeight: "600"
+    fontSize: 10,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5
   },
-  statValue: {
-    color: colors.primary,
-    fontSize: 28,
-    fontWeight: "700",
-    marginTop: 8
-  },
-  card: {
-    backgroundColor: "#ffffff",
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    gap: 12
-  },
-  cardHeader: {
-    alignItems: "center",
+  statValue: { fontWeight: "700", marginTop: 6 },
+  sectionHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12
+    alignItems: "center",
+    justifyContent: "space-between"
   },
-  cardTitle: {
-    color: colors.foreground,
-    fontSize: 16,
-    fontWeight: "700"
-  },
-  refreshButton: {
-    color: colors.primary,
-    fontSize: 18,
-    fontWeight: "700"
-  },
-  emptyText: {
-    color: colors.muted,
-    fontSize: 14,
-    textAlign: "center",
-    paddingVertical: 20
-  },
+  sectionTitle: { color: colors.foreground, fontSize: 15, fontWeight: "700" },
+  sectionCount: { color: colors.muted, fontSize: 12 },
+  emptyText: { color: colors.muted, fontSize: 13, textAlign: "center", paddingVertical: 16 },
   userCard: {
     backgroundColor: colors.background,
     borderColor: colors.border,
     borderRadius: 10,
     borderWidth: 1,
-    gap: 12,
-    padding: 12,
-    marginBottom: 12
+    gap: 10,
+    padding: 12
   },
-  userHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 12
-  },
+  userHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
   avatar: {
     alignItems: "center",
     backgroundColor: colors.primary,
     borderRadius: 999,
+    flexShrink: 0,
     height: 40,
     justifyContent: "center",
     width: 40
   },
-  avatarText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "700"
+  avatarText: { color: "#ffffff", fontSize: 16, fontWeight: "700" },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  userName: { color: colors.foreground, flex: 1, fontSize: 14, fontWeight: "700" },
+  roleBadge: { backgroundColor: "#dbeafe", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  roleBadgeText: { color: "#1d4ed8", fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
+  userEmail: { color: colors.muted, fontSize: 12, marginTop: 1 },
+  userMeta: { gap: 2 },
+  metaText: { color: colors.muted, fontSize: 12 },
+  userStats: {
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: "#f8fafc",
+    borderRadius: 8,
+    padding: 10
   },
-  userName: {
-    color: colors.foreground,
-    fontSize: 14,
-    fontWeight: "700"
+  userStat: { flex: 1, alignItems: "center" },
+  userStatLabel: { color: colors.muted, fontSize: 10, fontWeight: "600", textTransform: "uppercase" },
+  userStatValue: { color: colors.foreground, fontSize: 18, fontWeight: "700", marginTop: 2 },
+  userActions: { flexDirection: "row", gap: 8 },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    justifyContent: "space-between",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
   },
-  userEmail: {
+  modalTitle: { color: colors.foreground, fontSize: 18, fontWeight: "700" },
+  infoGrid: { gap: 8 },
+  infoCell: { backgroundColor: colors.background, borderRadius: 8, padding: 10 },
+  infoCellLabel: {
     color: colors.muted,
-    fontSize: 12
+    fontSize: 10,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.4
   },
-  userInfo: {
-    gap: 4
-  },
-  userMeta: {
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 16
-  },
-  deleteButton: {
-    alignItems: "center",
-    backgroundColor: "#ef4444",
-    borderRadius: 6,
-    paddingVertical: 8
-  },
-  deleteButtonText: {
-    color: "#ffffff",
-    fontSize: 12,
-    fontWeight: "700"
-  }
+  infoCellValue: { color: colors.foreground, fontSize: 14, fontWeight: "600", marginTop: 2 },
+  customerCard: { backgroundColor: colors.background, borderRadius: 8, gap: 3, padding: 10 },
+  customerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  customerName: { color: colors.foreground, flex: 1, fontSize: 14, fontWeight: "600" },
+  customerBadge: { backgroundColor: "#dbeafe", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  customerBadgeText: { color: "#1d4ed8", fontSize: 10, fontWeight: "700" },
+  customerMeta: { color: colors.muted, fontSize: 12 },
+  tableRow: { flexDirection: "row" },
+  tableHeaderRow: { backgroundColor: "#f1f5f9" },
+  tableRowAlt: { backgroundColor: "#f8fafc" },
+  tableCell: { borderColor: colors.border, borderWidth: 1, color: colors.foreground, fontSize: 12, padding: 8 },
+  tableCellHeader: { color: "#334155", fontWeight: "700" },
+  tableCellBold: { fontWeight: "700" }
 });

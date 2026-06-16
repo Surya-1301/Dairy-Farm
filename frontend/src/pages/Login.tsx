@@ -1,50 +1,72 @@
 import { FormEvent, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { getActiveUser, requestPasswordReset, signInWithEmailPassword, signUpWithEmailPassword } from "../firebase/auth";
+import {
+  getActiveUser,
+  requestPasswordReset,
+  signInWithEmailPassword,
+  signUpWithEmailPassword,
+} from "../firebase/auth";
+import { generateOtp, OTP_VALIDITY_MS, sendEmailOtp } from "../utils/emailOtp";
 
 type AuthMode = "signin" | "signup" | "reset";
 
 function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const initialMode = searchParams.get("mode") === "signup" ? "signup" : "signin";
+  const rawMode = searchParams.get("mode");
+  const initialMode: AuthMode = rawMode === "signup" ? "signup" : rawMode === "reset" ? "reset" : "signin";
+  const initialEmail = searchParams.get("email") ?? "";
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpInput, setOtpInput] = useState("");
+  const [pendingOtp, setPendingOtp] = useState("");
+  const [otpExpiry, setOtpExpiry] = useState<number | null>(null);
   const [infoMessage, setInfoMessage] = useState("Use your email address and password to access the app.");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const goToDashboard = () => {
+    navigate(getActiveUser()?.role === "owner" ? "/owner-dashboard" : "/dashboard", { replace: true });
+  };
+
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setErrorMessage("");
     setLoading(true);
 
     try {
-      let shouldNavigateToDashboard = false;
-
       if (mode === "signup") {
-        if (password !== confirmPassword) {
-          throw new Error("Passwords do not match.");
+        if (!otpSent) {
+          if (password !== confirmPassword) throw new Error("Passwords do not match.");
+          const code = generateOtp();
+          await sendEmailOtp(email.trim(), name.trim(), code);
+          setPendingOtp(code);
+          setOtpExpiry(Date.now() + OTP_VALIDITY_MS);
+          setOtpSent(true);
+          setInfoMessage(`Enter the 6-digit code sent to ${email.trim()}.`);
+        } else {
+          if (otpExpiry && Date.now() > otpExpiry) {
+            setOtpSent(false);
+            setPendingOtp("");
+            setOtpInput("");
+            throw new Error("Code expired. Click 'Sign up' to get a new one.");
+          }
+          if (otpInput.trim() !== pendingOtp) throw new Error("Incorrect code. Please try again.");
+          await signUpWithEmailPassword(email, password, name, phone.trim());
+          goToDashboard();
         }
-
-        await signUpWithEmailPassword(email, password, name);
-        setInfoMessage("Account created successfully.");
-        shouldNavigateToDashboard = true;
       } else if (mode === "reset") {
-        await requestPasswordReset(email);
-        setInfoMessage("Password reset email sent. Check your inbox and then sign in.");
+        await requestPasswordReset(email.trim());
+        setInfoMessage("Password reset link sent! Check your email inbox.");
         setMode("signin");
-        setPassword("");
       } else {
         await signInWithEmailPassword(email, password);
-        setInfoMessage("Signed in successfully.");
-        shouldNavigateToDashboard = true;
-      }
-
-      if (shouldNavigateToDashboard) {
-        navigate(getActiveUser()?.role === "owner" ? "/owner-dashboard" : "/dashboard", { replace: true });
+        goToDashboard();
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Authentication failed.";
@@ -54,14 +76,36 @@ function Login() {
     }
   };
 
+  const handleResendOtp = async () => {
+    setLoading(true);
+    setErrorMessage("");
+    try {
+      const code = generateOtp();
+      await sendEmailOtp(email.trim(), name.trim(), code);
+      setPendingOtp(code);
+      setOtpExpiry(Date.now() + OTP_VALIDITY_MS);
+      setOtpInput("");
+      setInfoMessage(`New code sent to ${email.trim()}.`);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to resend code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetForMode = (nextMode: AuthMode) => {
     setMode(nextMode);
     setErrorMessage("");
+    setOtpSent(false);
+    setOtpInput("");
+    setPendingOtp("");
+    setOtpExpiry(null);
     setInfoMessage("Use your email address and password to access the app.");
     setPassword("");
     setConfirmPassword("");
     if (nextMode === "signin") {
       setName("");
+      setPhone("");
     }
   };
 
@@ -106,7 +150,24 @@ function Login() {
         {infoMessage ? (
           <p className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{infoMessage}</p>
         ) : null}
-        {mode === "signup" ? (
+        {mode === "signup" && otpSent ? (
+          <label className="block text-sm font-medium text-slate-700">
+            Verification Code
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={otpInput}
+              onChange={(event) => setOtpInput(event.target.value.replace(/\D/g, ""))}
+              className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500 tracking-widest text-center"
+              placeholder="000000"
+              required
+              autoComplete="one-time-code"
+              autoFocus
+            />
+          </label>
+        ) : null}
+        {mode === "signup" && !otpSent ? (
           <label className="block text-sm font-medium text-slate-700">
             Full Name
             <input
@@ -122,24 +183,26 @@ function Login() {
         ) : null}
         {mode === "reset" ? (
           <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Enter the email address on your Firebase account and we will send a password reset email.
+            Enter your email address. Your admin has already sent a reset link — or click below to have Firebase send one directly.
           </p>
         ) : null}
-        <label className="block text-sm font-medium text-slate-700">
-          Email Address
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
-            placeholder="Enter email address"
-            required
-            autoComplete="email"
-          />
-        </label>
-        {mode !== "reset" ? (
+        {!otpSent ? (
           <label className="block text-sm font-medium text-slate-700">
-            {mode === "signup" ? "Password" : "Password"}
+            Email Address
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
+              placeholder="Enter email address"
+              required
+              autoComplete="email"
+            />
+          </label>
+        ) : null}
+        {mode !== "reset" && !otpSent ? (
+          <label className="block text-sm font-medium text-slate-700">
+            Password
             <input
               type="password"
               value={password}
@@ -151,7 +214,7 @@ function Login() {
             />
           </label>
         ) : null}
-        {mode === "signup" ? (
+        {mode === "signup" && !otpSent ? (
           <label className="block text-sm font-medium text-slate-700">
             Confirm Password
             <input
@@ -165,23 +228,39 @@ function Login() {
             />
           </label>
         ) : null}
+        {mode === "signup" && !otpSent ? (
+          <label className="block text-sm font-medium text-slate-700">
+            Phone Number
+            <input
+              type="tel"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
+              placeholder="10-digit mobile number"
+              autoComplete="tel"
+              required
+            />
+          </label>
+        ) : null}
         <button
           type="submit"
           disabled={loading}
           className="w-full rounded-lg bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 active:bg-brand-800 disabled:opacity-60 min-h-[48px] flex items-center justify-center transition"
         >
           {loading
-            ? mode === "signin"
-              ? "Signing in..."
-              : mode === "signup"
-                ? "Creating account..."
-                : "Sending reset link..."
-            : mode === "signin"
-              ? "Sign in"
-              : mode === "signup"
-                ? "Sign up"
-                : "Send reset link"}
+            ? mode === "signin" ? "Signing in..." : mode === "signup" ? (otpSent ? "Verifying..." : "Sending code...") : "Sending reset link..."
+            : mode === "signin" ? "Sign in" : mode === "signup" ? (otpSent ? "Verify code" : "Sign up") : "Send reset link"}
         </button>
+        {mode === "signup" && otpSent ? (
+          <button
+            type="button"
+            onClick={handleResendOtp}
+            disabled={loading}
+            className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 min-h-[48px] flex items-center justify-center transition"
+          >
+            Resend code
+          </button>
+        ) : null}
         {mode === "signin" ? (
           <button
             type="button"

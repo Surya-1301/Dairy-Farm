@@ -2,14 +2,14 @@ import { Link } from "react-router-dom";
 
 type SummaryTableProps = {
   totalCustomers: number;
-  totalMilk: number;
+  totalAmount: number;
   morningMilk: number;
   eveningMilk: number;
 };
 
 function SummaryTable({
   totalCustomers,
-  totalMilk,
+  totalAmount,
   morningMilk,
   eveningMilk
 }: SummaryTableProps) {
@@ -28,22 +28,22 @@ function SummaryTable({
           to="/customer-details"
           className="rounded-lg bg-slate-50 p-3 text-center md:p-4 hover:bg-slate-100 transition-colors cursor-pointer"
         >
-          <p className="text-xs uppercase text-slate-500 font-medium">Total Milk</p>
-          <p className="text-xl md:text-2xl font-bold text-slate-800 mt-1">{totalMilk} L</p>
+          <p className="text-xs uppercase text-slate-500 font-medium">Total Amount</p>
+          <p className="text-xl md:text-2xl font-bold text-slate-800 mt-1">{totalAmount}</p>
         </Link>
         <Link
           to="/customer-details"
           className="rounded-lg bg-slate-50 p-3 text-center md:p-4 hover:bg-slate-100 transition-colors cursor-pointer"
         >
-          <p className="text-xs uppercase text-slate-500 font-medium">Morning</p>
-          <p className="text-xl md:text-2xl font-bold text-slate-800 mt-1">{morningMilk} L</p>
+          <p className="text-xs uppercase text-slate-500 font-medium">Morning Amount</p>
+          <p className="text-xl md:text-2xl font-bold text-slate-800 mt-1">{morningMilk}</p>
         </Link>
         <Link
           to="/customer-details"
           className="rounded-lg bg-slate-50 p-3 text-center md:p-4 hover:bg-slate-100 transition-colors cursor-pointer"
         >
-          <p className="text-xs uppercase text-slate-500 font-medium">Evening</p>
-          <p className="text-xl md:text-2xl font-bold text-slate-800 mt-1">{eveningMilk} L</p>
+          <p className="text-xs uppercase text-slate-500 font-medium">Evening Amount</p>
+          <p className="text-xl md:text-2xl font-bold text-slate-800 mt-1">{eveningMilk}</p>
         </Link>
       </div>
     </div>

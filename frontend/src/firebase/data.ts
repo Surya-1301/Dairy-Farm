@@ -1,4 +1,4 @@
-import { deleteDoc, doc, getDoc, getDocs, setDoc, collection } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, getDocFromServer, getDocs, setDoc, collection, onSnapshot } from "firebase/firestore";
 import { db } from "./config";
 
 export type Customer = {
@@ -20,6 +20,7 @@ export type SheetRow = {
 export type SheetState = {
   dayCount: number;
   rows: SheetRow[];
+  updatedAt?: string;
 };
 
 export type SheetHistoryEntry = SheetState & {
@@ -28,7 +29,7 @@ export type SheetHistoryEntry = SheetState & {
 };
 
 const INITIAL_ROWS = 50;
-const INITIAL_DAYS = 15;
+const INITIAL_DAYS = 16;
 
 const CUSTOMER_LISTS_COLLECTION = "customerLists";
 const SHEET_STATES_COLLECTION = "sheetStates";
@@ -74,12 +75,13 @@ function normalizeCustomers(customers: Customer[]): Customer[] {
   }));
 }
 
-export async function getCustomersByEmail(email: string): Promise<Customer[]> {
+export async function getCustomersByEmail(email: string, forceServer = false): Promise<Customer[]> {
   if (!db) {
     return [];
   }
 
-  const snapshot = await getDoc(doc(db, CUSTOMER_LISTS_COLLECTION, normalizeEmail(email)));
+  const ref = doc(db, CUSTOMER_LISTS_COLLECTION, normalizeEmail(email));
+  const snapshot = await (forceServer ? getDocFromServer(ref) : getDoc(ref));
   if (!snapshot.exists()) {
     return [];
   }
@@ -103,21 +105,38 @@ export async function saveCustomersByEmail(email: string, customers: Customer[])
   return normalizedCustomers;
 }
 
-export async function getSheetByEmail(email: string): Promise<SheetState> {
+export async function getSheetByEmail(email: string, forceServer = false): Promise<SheetState> {
   if (!db) {
     return createInitialSheet();
   }
 
-  const snapshot = await getDoc(doc(db, SHEET_STATES_COLLECTION, normalizeEmail(email)));
+  const ref = doc(db, SHEET_STATES_COLLECTION, normalizeEmail(email));
+  const snapshot = await (forceServer ? getDocFromServer(ref) : getDoc(ref));
   if (!snapshot.exists()) {
     return createInitialSheet();
   }
 
-  const data = snapshot.data() as Partial<SheetState>;
-  const dayCount = typeof data.dayCount === "number" && data.dayCount > 0 ? data.dayCount : INITIAL_DAYS;
+  const data = snapshot.data() as Partial<SheetState> & { updatedAt?: string };
+  const rawDayCount = typeof data.dayCount === "number" && data.dayCount > 0 ? data.dayCount : INITIAL_DAYS;
+  const dayCount = Math.max(INITIAL_DAYS, rawDayCount);
   const rows = Array.isArray(data.rows) ? normalizeRows(data.rows, dayCount) : createInitialSheet().rows;
 
-  return { dayCount, rows };
+  return { dayCount, rows, updatedAt: data.updatedAt };
+}
+
+export function subscribeSheetByEmail(email: string, callback: (sheet: SheetState) => void): () => void {
+  if (!db) return () => {};
+
+  const docRef = doc(db, SHEET_STATES_COLLECTION, normalizeEmail(email));
+  return onSnapshot(docRef, (snapshot) => {
+    if (!snapshot.exists() || snapshot.metadata.hasPendingWrites) return;
+
+    const data = snapshot.data() as Partial<SheetState>;
+    const rawDayCount = typeof data.dayCount === "number" && data.dayCount > 0 ? data.dayCount : INITIAL_DAYS;
+    const dayCount = Math.max(INITIAL_DAYS, rawDayCount);
+    const rows = Array.isArray(data.rows) ? normalizeRows(data.rows, dayCount) : createInitialSheet().rows;
+    callback({ dayCount, rows });
+  });
 }
 
 export async function saveSheetByEmail(email: string, sheet: SheetState): Promise<SheetState> {
@@ -209,4 +228,28 @@ export async function getAllSheets(): Promise<Array<{ email: string; sheet: Shee
       sheet: { dayCount, rows }
     };
   });
+}
+
+const PASSWORD_RESETS_COLLECTION = "passwordResets";
+
+export async function savePasswordResetOtp(email: string, otp: string, validityMs: number): Promise<void> {
+  if (!db) return;
+  await setDoc(doc(db, PASSWORD_RESETS_COLLECTION, normalizeEmail(email)), {
+    otp,
+    expiresAt: new Date(Date.now() + validityMs).toISOString()
+  });
+}
+
+export async function verifyPasswordResetOtp(email: string, otp: string): Promise<boolean> {
+  if (!db) return false;
+  const snapshot = await getDoc(doc(db, PASSWORD_RESETS_COLLECTION, normalizeEmail(email)));
+  if (!snapshot.exists()) return false;
+  const data = snapshot.data() as { otp: string; expiresAt: string };
+  if (new Date(data.expiresAt) < new Date()) return false;
+  return data.otp === otp;
+}
+
+export async function clearPasswordResetOtp(email: string): Promise<void> {
+  if (!db) return;
+  await deleteDoc(doc(db, PASSWORD_RESETS_COLLECTION, normalizeEmail(email)));
 }

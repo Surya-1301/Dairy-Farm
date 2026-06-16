@@ -23,7 +23,7 @@ export type MilkChartPoint = {
 
 export type MilkDashboardSummary = {
   totalCustomers: number;
-  totalMilk: number;
+  totalAmount: number;
   morningMilk: number;
   eveningMilk: number;
 };
@@ -79,7 +79,7 @@ export async function getMilkDashboardSummary(): Promise<MilkDashboardSummary> {
   if (!sheet) {
     return {
       totalCustomers: 0,
-      totalMilk: 0,
+      totalAmount: 0,
       morningMilk: 0,
       eveningMilk: 0
     };
@@ -93,14 +93,14 @@ export async function getMilkDashboardSummary(): Promise<MilkDashboardSummary> {
   const eveningMilk = sheet.rows
     .filter((row) => row.shift === "E")
     .reduce((sum, row) => sum + row.days.reduce((rowSum, value) => rowSum + value, 0), 0);
-  const totalMilk = sheet.rows.reduce(
+  const totalAmount = sheet.rows.reduce(
     (sum, row) => sum + row.days.reduce((rowSum, value) => rowSum + value, 0),
     0
   );
 
   return {
     totalCustomers,
-    totalMilk: Number(totalMilk.toFixed(2)),
+    totalAmount: Number(totalAmount.toFixed(2)),
     morningMilk: Number(morningMilk.toFixed(2)),
     eveningMilk: Number(eveningMilk.toFixed(2))
   };

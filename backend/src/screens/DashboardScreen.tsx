@@ -68,22 +68,22 @@ export default function DashboardScreen() {
               style={({ pressed }) => [styles.metricCard, pressed && styles.metricCardPressed]}
               onPress={() => navigation.navigate("Data" as never)}
             >
-              <Text style={styles.metricLabel}>Total Milk</Text>
-              <Text style={styles.metricValue}>{Number(totalLiters.toFixed(2))} L</Text>
+              <Text style={styles.metricLabel}>Total Amount</Text>
+              <Text style={styles.metricValue}>{Number(totalLiters.toFixed(2))} </Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [styles.metricCard, pressed && styles.metricCardPressed]}
               onPress={() => navigation.navigate("Data" as never)}
             >
-              <Text style={styles.metricLabel}>Morning</Text>
-              <Text style={styles.metricValue}>{Number(morningTotal.toFixed(2))} L</Text>
+              <Text style={styles.metricLabel}>Morning Amount</Text>
+              <Text style={styles.metricValue}>{Number(morningTotal.toFixed(2))} </Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [styles.metricCard, pressed && styles.metricCardPressed]}
               onPress={() => navigation.navigate("Data" as never)}
             >
-              <Text style={styles.metricLabel}>Evening</Text>
-              <Text style={styles.metricValue}>{Number(eveningTotal.toFixed(2))} L</Text>
+              <Text style={styles.metricLabel}>Evening Amount</Text>
+              <Text style={styles.metricValue}>{Number(eveningTotal.toFixed(2))} </Text>
             </Pressable>
           </View>
         </View>

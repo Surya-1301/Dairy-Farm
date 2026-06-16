@@ -11,9 +11,7 @@ import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from "firebase/fi
 import { auth, db } from "./config";
 import { deleteUserDataByEmail } from "./data";
 
-const OWNER_PHONE = "9999999999";
-const OWNER_EMAIL = "ss058012@gmail.com";
-const OWNER_PASSWORD = "Rebel_0102";
+const OWNER_EMAIL = (import.meta.env.VITE_OWNER_EMAIL as string ?? "").trim().toLowerCase();
 const AUTH_CHANGE_EVENT = "dairy-farm-auth-changed";
 const USER_PROFILES_COLLECTION = "userProfiles";
 const USER_PROFILE_STORAGE_PREFIX = "dairy-farm-user-profile:";
@@ -174,6 +172,10 @@ function toFriendlyAuthError(error: unknown) {
     return new Error("Please sign in again before deleting your account.");
   }
 
+  if (error.message.includes("auth/too-many-requests")) {
+    return new Error("Too many requests. Please wait a few minutes and try again.");
+  }
+
   return error;
 }
 
@@ -251,7 +253,7 @@ function buildProfileForEmail(
 
   return {
     email: normalizedEmail,
-    phone: normalizePhone(overrides.phone ?? (role === "owner" ? OWNER_PHONE : "")),
+    phone: normalizePhone(overrides.phone ?? ""),
     role,
     name:
       overrides.name?.trim() ||
@@ -261,27 +263,6 @@ function buildProfileForEmail(
   };
 }
 
-function ensureCurrentUserProfile(user: User, overrides: Partial<Pick<UserProfile, "name" | "phone" | "farmName" | "avatarUrl">> = {}) {
-  const email = normalizeEmail(user.email ?? "");
-  if (!email) {
-    return null;
-  }
-
-  const role = getRoleForEmail(email);
-  const existingProfile = profileCache.get(email) ?? getUserProfileFromStorage(email);
-  const baseProfile = buildProfileForEmail(email, role, overrides);
-
-  const nextProfile = upsertUserProfile({
-    ...baseProfile,
-    name: overrides.name?.trim() || existingProfile?.name || baseProfile.name,
-    phone: overrides.phone ?? existingProfile?.phone ?? baseProfile.phone,
-    farmName: overrides.farmName ?? existingProfile?.farmName ?? baseProfile.farmName,
-    avatarUrl: overrides.avatarUrl ?? existingProfile?.avatarUrl ?? baseProfile.avatarUrl
-  });
-  void saveUserProfileToCloud(nextProfile);
-
-  return profileCache.get(email) ?? null;
-}
 
 function syncFirebaseUser(user: User | null) {
   activeFirebaseUser = user;
@@ -322,7 +303,7 @@ export function getActiveUser(): ActiveUser | null {
   return {
     email,
     role,
-    phone: storedProfile?.phone ?? (role === "owner" ? OWNER_PHONE : "")
+    phone: storedProfile?.phone ?? ""
   };
 }
 
@@ -374,7 +355,7 @@ export async function fetchCurrentUserProfile(): Promise<UserProfile | null> {
  */
 export async function updateUserProfileByEmail(
   email: string,
-  updates: Partial<Pick<UserProfile, "name" | "farmName" | "phone" | "avatarUrl" | "role">>
+  updates: Partial<Pick<UserProfile, "name" | "farmName" | "phone" | "avatarUrl" | "role" | "email">>
 ): Promise<UserProfile | null> {
   const active = getActiveUser();
   if (!active || active.role !== "owner") {
@@ -386,6 +367,8 @@ export async function updateUserProfileByEmail(
   const existing = (await getUserProfileFromCloud(normalized)) ?? profileCache.get(normalized) ?? null;
   if (!existing) return null;
 
+  const newEmail = updates.email ? normalizeEmail(updates.email) : normalized;
+
   const nextProfile: UserProfile = {
     ...existing,
     name: updates.name?.trim() ?? existing.name,
@@ -394,12 +377,15 @@ export async function updateUserProfileByEmail(
     avatarUrl: updates.avatarUrl !== undefined ? updates.avatarUrl : existing.avatarUrl,
     role: updates.role ?? existing.role,
     updatedAt: new Date().toISOString(),
-    email: normalized
+    email: newEmail
   };
 
+  if (newEmail !== normalized) {
+    profileCache.delete(normalized);
+  }
   upsertProfileCache(nextProfile);
   await saveUserProfileToCloud(nextProfile);
-  return profileCache.get(normalized) ?? null;
+  return profileCache.get(newEmail) ?? null;
 }
 
 export async function updateCurrentUserProfile(
@@ -492,7 +478,7 @@ export async function signInWithEmailPassword(email: string, password: string): 
   }
 }
 
-export async function signUpWithEmailPassword(email: string, password: string, name: string): Promise<void> {
+export async function signUpWithEmailPassword(email: string, password: string, name: string, phone = ""): Promise<void> {
   const firebaseAuth = requireFirebaseAuth();
   const normalizedEmail = normalizeEmail(email);
   const trimmedPassword = password.trim();
@@ -502,25 +488,13 @@ export async function signUpWithEmailPassword(email: string, password: string, n
     throw new Error("Enter both email and password.");
   }
 
-  // Allow owner account creation with correct credentials
-  if (normalizedEmail === OWNER_EMAIL) {
-    if (trimmedPassword !== OWNER_PASSWORD) {
-      throw new Error("Invalid owner password.");
-    }
-    
-    try {
-      const credential = await createUserWithEmailAndPassword(firebaseAuth, normalizedEmail, trimmedPassword);
-      ensureCurrentUserProfile(credential.user, { name: trimmedName || "Owner" });
-      syncFirebaseUser(credential.user);
-    } catch (error) {
-      throw toFriendlyAuthError(error);
-    }
-    return;
-  }
-
   try {
     const credential = await createUserWithEmailAndPassword(firebaseAuth, normalizedEmail, trimmedPassword);
-    ensureCurrentUserProfile(credential.user, { name: trimmedName });
+    const role = getRoleForEmail(normalizedEmail);
+    const profile = upsertUserProfile(
+      buildProfileForEmail(normalizedEmail, role, { name: trimmedName || undefined, phone: phone || undefined })
+    );
+    await saveUserProfileToCloud(profile);
     syncFirebaseUser(credential.user);
   } catch (error) {
     throw toFriendlyAuthError(error);

@@ -37,7 +37,13 @@ service cloud.firestore {
     match /userProfiles/{email} {
       allow create, update: if isSignedIn() && (isOwner() || authEmail() == email.lower());
       allow read: if isSignedIn() && (isOwner() || authEmail() == email.lower());
-      allow delete: if isOwner();
+      allow delete: if isOwner() || isSelfDoc(email);
+    }
+
+    // Password reset tokens — owner or self can create/update; anyone can read/delete (token is the secret)
+    match /passwordResets/{email} {
+      allow create, update: if isOwner() || isSelfDoc(email);
+      allow read, delete: if true;
     }
 
     // Explicit deny for everything else.

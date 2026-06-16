@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { auth, db, normalizeEmail } from "./firebase";
 import type { Customer, SheetHistoryEntry, SheetRow, SheetState } from "./types";
 import { createDefaultSheet } from "./utils/defaultSheet";
@@ -71,13 +71,46 @@ export async function getSheet(): Promise<SheetState> {
     }
 
     if (parsed && Array.isArray(parsed.rows) && typeof parsed.dayCount === "number") {
-      return { dayCount: parsed.dayCount, rows: normalizeRows(parsed.rows, parsed.dayCount) };
+      const dayCount = Math.max(loadDefaultSheet().dayCount, parsed.dayCount);
+      return { dayCount, rows: normalizeRows(parsed.rows, dayCount) };
     }
   } catch {
     return loadDefaultSheet();
   }
 
   return loadDefaultSheet();
+}
+
+export function subscribeSheet(callback: (sheet: SheetState) => void): () => void {
+  let email: string;
+  try {
+    email = requireActiveUserEmail();
+  } catch {
+    return () => {};
+  }
+
+  const docRef = doc(db, SHEET_STATES_COLLECTION, email);
+  return onSnapshot(docRef, (snapshot) => {
+    if (!snapshot.exists() || snapshot.metadata.hasPendingWrites) return;
+
+    try {
+      const parsed = snapshot.data() as SheetState | SheetRow[];
+      if (Array.isArray(parsed)) {
+        const defaultSheet = loadDefaultSheet();
+        callback({ dayCount: defaultSheet.dayCount, rows: normalizeRows(parsed, defaultSheet.dayCount) });
+        return;
+      }
+      if (parsed && Array.isArray(parsed.rows) && typeof parsed.dayCount === "number") {
+        const dayCount = Math.max(loadDefaultSheet().dayCount, parsed.dayCount);
+        callback({ dayCount, rows: normalizeRows(parsed.rows, dayCount) });
+        return;
+      }
+    } catch {
+      // ignore parse errors
+    }
+
+    callback(loadDefaultSheet());
+  });
 }
 
 export async function saveSheet(sheet: SheetState) {
@@ -147,4 +180,37 @@ export async function deleteHistoryEntry(entryId: string) {
     { entries: filtered, updatedAt: new Date().toISOString() },
     { merge: true }
   );
+}
+
+export async function getCustomersByEmail(email: string): Promise<Customer[]> {
+  const normalizedEmail = normalizeEmail(email);
+  const snapshot = await getDoc(doc(db, CUSTOMER_LISTS_COLLECTION, normalizedEmail));
+  if (!snapshot.exists()) return [];
+  try {
+    const data = snapshot.data() as { customers?: Customer[] };
+    const customers = data.customers ?? [];
+    return customers.map((customer, index) => ({ ...customer, serialNumber: index + 1 }));
+  } catch {
+    return [];
+  }
+}
+
+export async function getSheetByEmail(email: string): Promise<SheetState> {
+  const normalizedEmail = normalizeEmail(email);
+  const snapshot = await getDoc(doc(db, SHEET_STATES_COLLECTION, normalizedEmail));
+  if (!snapshot.exists()) return createDefaultSheet();
+  try {
+    const parsed = snapshot.data() as SheetState | SheetRow[];
+    if (Array.isArray(parsed)) {
+      const defaultSheet = createDefaultSheet();
+      return { dayCount: defaultSheet.dayCount, rows: normalizeRows(parsed, defaultSheet.dayCount) };
+    }
+    if (parsed && Array.isArray(parsed.rows) && typeof parsed.dayCount === "number") {
+      const dayCount = Math.max(createDefaultSheet().dayCount, parsed.dayCount);
+      return { dayCount, rows: normalizeRows(parsed.rows, dayCount) };
+    }
+  } catch {
+    return createDefaultSheet();
+  }
+  return createDefaultSheet();
 }

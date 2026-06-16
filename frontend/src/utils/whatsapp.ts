@@ -44,8 +44,8 @@ export async function send15DaysDataToWhatsApp(serialNumber: number) {
     return;
   }
 
-  // Get up to 15 days of data
-  const daysToShow = Math.min(15, customerRow.days.length);
+  // Get up to 16 days of data
+  const daysToShow = Math.min(16, customerRow.days.length);
   const milkData = customerRow.days.slice(0, daysToShow);
   
   // Calculate total

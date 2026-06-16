@@ -9,6 +9,7 @@ import History from "./pages/History";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import OwnerDashboard from "./pages/OwnerDashboard";
+import ResetPassword from "./pages/ResetPassword";
 
 function App() {
   const [authReady, setAuthReady] = useState(isAuthReady());
@@ -33,6 +34,7 @@ function App() {
 
   return (
     <Routes>
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route
         path="/login"
         element={authenticated ? <Navigate to={isOwner ? "/owner-dashboard" : "/dashboard"} replace /> : <Login />}

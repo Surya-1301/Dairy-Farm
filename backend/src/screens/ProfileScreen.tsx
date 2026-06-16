@@ -237,7 +237,7 @@ export default function ProfileScreen() {
               value={email}
               editable={false}
             />
-            <Text style={s.fieldNote}>Email changes are managed by Firebase and are not editable from this screen.</Text>
+            <Text style={s.fieldNote}>Email address cannot be changed.</Text>
           </View>
 
           <View style={s.field}>

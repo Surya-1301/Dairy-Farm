@@ -6,7 +6,7 @@ import { getMilkDashboardSummary, subscribeMilkData, type MilkDashboardSummary }
 
 const EMPTY_SUMMARY: MilkDashboardSummary = {
   totalCustomers: 0,
-  totalMilk: 0,
+  totalAmount: 0,
   morningMilk: 0,
   eveningMilk: 0
 };
@@ -15,7 +15,6 @@ function Dashboard() {
   const [activeUser, setActiveUser] = useState(getActiveUser());
   const [userProfiles, setUserProfiles] = useState(getAllUserProfiles());
   const [summary, setSummary] = useState<MilkDashboardSummary>(EMPTY_SUMMARY);
-
   const refreshSummary = () => {
     void getMilkDashboardSummary().then(setSummary);
   };
@@ -61,7 +60,7 @@ function Dashboard() {
 
       <SummaryTable
         totalCustomers={summary.totalCustomers}
-        totalMilk={summary.totalMilk}
+        totalAmount={summary.totalAmount}
         morningMilk={summary.morningMilk}
         eveningMilk={summary.eveningMilk}
       />
@@ -80,7 +79,6 @@ function Dashboard() {
                     <th className="rounded-l-lg px-2 md:px-3 py-2 font-semibold">Name</th>
                     <th className="px-2 md:px-3 py-2 font-semibold hidden md:table-cell">Email</th>
                     <th className="px-2 md:px-3 py-2 font-semibold hidden sm:table-cell">Phone</th>
-                    <th className="px-2 md:px-3 py-2 font-semibold hidden lg:table-cell">Farm Name</th>
                     <th className="rounded-r-lg px-2 md:px-3 py-2 font-semibold text-right">Updated</th>
                   </tr>
                 </thead>
@@ -90,7 +88,6 @@ function Dashboard() {
                       <td className="px-2 md:px-3 py-2 text-slate-900 font-medium">{profile.name || "-"}</td>
                       <td className="px-2 md:px-3 py-2 text-slate-700 hidden md:table-cell">{profile.email}</td>
                       <td className="px-2 md:px-3 py-2 text-slate-700 hidden sm:table-cell">{profile.phone || "-"}</td>
-                      <td className="px-2 md:px-3 py-2 text-slate-700 hidden lg:table-cell">{profile.farmName || "-"}</td>
                       <td className="px-2 md:px-3 py-2 text-slate-700 text-right text-xs">
                         {new Date(profile.updatedAt).toLocaleDateString()}
                       </td>

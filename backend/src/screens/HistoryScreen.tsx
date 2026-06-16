@@ -149,7 +149,7 @@ function buildHistoryPdfHtml(entry: SheetHistoryEntry) {
             </thead>
             <tbody>${rowsHtml}</tbody>
           </table>
-          <div class="summary">Grand Total: ${grandTotal.toFixed(1)} L</div>
+          <div class="summary">Grand Total: ${grandTotal.toFixed(1)}</div>
         </div>
       </body>
     </html>
@@ -259,7 +259,7 @@ export default function HistoryScreen() {
                 <View style={styles.stats}>
                   <StatItem label="Customers" value={entry.rows.length.toString()} />
                   <StatItem label="Days" value={entry.dayCount.toString()} />
-                  <StatItem label="Total" value={`${total.toFixed(1)} L`} />
+                  <StatItem label="Total Amount" value={total.toFixed(1)} />
                 </View>
 
                 <View style={styles.actions}>

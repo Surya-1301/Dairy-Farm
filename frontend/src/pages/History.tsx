@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { getActiveUser } from "../firebase/auth";
 import { getHistoryByEmail, saveHistoryByEmail, type SheetHistoryEntry } from "../firebase/data";
 
@@ -6,22 +8,41 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
-function buildDownloadFileName(savedAt: string) {
-  return `dairy-farm-history-${savedAt.replace(/[:.]/g, "-")}.json`;
+function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
+  const doc = new jsPDF({ orientation: "landscape" });
+
+  const total = entry.rows.reduce(
+    (entryTotal, row) => entryTotal + row.days.reduce((rowTotal, value) => rowTotal + value, 0),
+    0
+  );
+
+  doc.setFontSize(14);
+  doc.text(`Dairy Farm — Sheet ${sheetNumber}`, 14, 15);
+  doc.setFontSize(9);
+  doc.text(`Saved: ${formatDate(entry.savedAt)}   |   Rows: ${entry.rows.length}   |   Days: ${entry.dayCount}   |   Total: ${total}`, 14, 22);
+
+  const head = [
+    ["S No", "Customer Name", ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`), "Total"],
+  ];
+
+  const body = entry.rows.map((row) => {
+    const rowTotal = row.days.reduce((sum, v) => sum + v, 0);
+    return [row.serialNumber, row.customerName, ...row.days, rowTotal];
+  });
+
+  autoTable(doc, {
+    head,
+    body,
+    startY: 27,
+    styles: { fontSize: 7, cellPadding: 1.5, halign: "center" },
+    headStyles: { fillColor: [71, 85, 105], textColor: 255, fontStyle: "bold" },
+    columnStyles: { 1: { halign: "left" } },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+  });
+
+  doc.save(`dairy-farm-sheet-${sheetNumber}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
 }
 
-function downloadSheet(entry: SheetHistoryEntry) {
-  const payload = JSON.stringify(entry, null, 2);
-  const blob = new Blob([payload], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-
-  anchor.href = url;
-  anchor.download = buildDownloadFileName(entry.savedAt);
-  anchor.click();
-
-  URL.revokeObjectURL(url);
-}
 
 function History() {
   const [history, setHistory] = useState<SheetHistoryEntry[]>([]);
@@ -53,7 +74,7 @@ function History() {
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-slate-900">History</h1>
         <p className="mt-1 text-xs md:text-sm text-slate-600">
-          Saved 15-day sheet snapshots appear here after you archive them.
+          Saved 16-day sheet snapshots appear here after you archive them.
         </p>
       </div>
 
@@ -87,7 +108,7 @@ function History() {
                 <div className="flex flex-col sm:flex-row gap-2 mb-3">
                   <button
                     type="button"
-                    onClick={() => downloadSheet(entry)}
+                    onClick={() => downloadSheetAsPdf(entry, history.length - index)}
                     className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition flex-1 sm:flex-none"
                   >
                     Save to Local Device

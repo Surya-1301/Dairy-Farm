@@ -15,9 +15,7 @@ import {
 import { collection, deleteDoc, doc, getDoc, getDocs, getFirestore, setDoc } from "firebase/firestore";
 import type { ActiveUser, Role, UserProfile } from "./types";
 
-export const OWNER_EMAIL = "ss058012@gmail.com";
-const OWNER_PHONE = "8081398313";
-const OWNER_PASSWORD = "Rebel_0102";
+export const OWNER_EMAIL = (process.env.EXPO_PUBLIC_OWNER_EMAIL ?? "").trim().toLowerCase();
 const USER_PROFILES_COLLECTION = "userProfiles";
 
 const firebaseConfig = {
@@ -73,7 +71,7 @@ export function getActiveUserFromFirebase(user: User | null): ActiveUser | null 
   return {
     email,
     role,
-    phone: role === "owner" ? OWNER_PHONE : ""
+    phone: ""
   };
 }
 
@@ -86,7 +84,7 @@ function buildProfile(
 
   return {
     email: normalizedEmail,
-    phone: normalizePhone(overrides.phone ?? (role === "owner" ? OWNER_PHONE : "")),
+    phone: normalizePhone(overrides.phone ?? ""),
     role,
     name: overrides.name?.trim() || (role === "owner" ? "Owner" : normalizedEmail.split("@")[0] || "User"),
     farmName: overrides.farmName?.trim() || (role === "owner" ? "Raipur Dairy Farm" : ""),
@@ -129,7 +127,7 @@ export async function signIn(email: string, password: string) {
   await ensureUserProfile(credential.user);
 }
 
-export async function signUp(email: string, password: string, name: string) {
+export async function signUp(email: string, password: string, name: string, phone = "") {
   const normalizedEmail = normalizeEmail(email);
   const trimmedPassword = password.trim();
   const trimmedName = name.trim();
@@ -138,12 +136,8 @@ export async function signUp(email: string, password: string, name: string) {
     throw new Error("Enter both email and password.");
   }
 
-  if (normalizedEmail === OWNER_EMAIL && trimmedPassword !== OWNER_PASSWORD) {
-    throw new Error("Invalid owner password.");
-  }
-
   const credential = await createUserWithEmailAndPassword(auth, normalizedEmail, trimmedPassword);
-  await ensureUserProfile(credential.user, { name: trimmedName || undefined });
+  await ensureUserProfile(credential.user, { name: trimmedName || undefined, phone: phone || undefined });
 }
 
 export async function resetPassword(email: string) {

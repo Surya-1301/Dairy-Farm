@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Alert,
   Image,
@@ -17,6 +17,7 @@ import {
   signUp,
   resetPassword
 } from "../firebase";
+import { generateOtp, OTP_VALIDITY_MS, sendEmailOtp } from "../utils/emailOtp";
 import { colors } from "../theme";
 
 const logo = require("../../assets/logo.png");
@@ -82,8 +83,13 @@ export default function LoginScreen() {
   const [mode, setMode] = useState<AuthMode>("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpInput, setOtpInput] = useState("");
+  const [pendingOtp, setPendingOtp] = useState("");
+  const [otpExpiry, setOtpExpiry] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("Use your email address and password to access the app.");
 
@@ -91,10 +97,24 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       if (mode === "signup") {
-        if (password !== confirmPassword) {
-          throw new Error("Passwords do not match.");
+        if (!otpSent) {
+          if (password !== confirmPassword) throw new Error("Passwords do not match.");
+          const code = generateOtp();
+          await sendEmailOtp(email.trim(), name.trim(), code);
+          setPendingOtp(code);
+          setOtpExpiry(Date.now() + OTP_VALIDITY_MS);
+          setOtpSent(true);
+          setMessage(`Enter the 6-digit code sent to ${email.trim()}.`);
+        } else {
+          if (otpExpiry && Date.now() > otpExpiry) {
+            setOtpSent(false);
+            setPendingOtp("");
+            setOtpInput("");
+            throw new Error("Code expired. Tap Sign up to get a new one.");
+          }
+          if (otpInput.trim() !== pendingOtp) throw new Error("Incorrect code. Please try again.");
+          await signUp(email, password, name, phone.trim());
         }
-        await signUp(email, password, name);
       } else if (mode === "reset") {
         await resetPassword(email);
         setMessage("Password reset email sent. Check your inbox and sign in.");
@@ -103,7 +123,23 @@ export default function LoginScreen() {
         await signIn(email, password);
       }
     } catch (error) {
-      Alert.alert("Authentication failed", error instanceof Error ? error.message : "Please try again.");
+      Alert.alert("Error", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    setLoading(true);
+    try {
+      const code = generateOtp();
+      await sendEmailOtp(email.trim(), name.trim(), code);
+      setPendingOtp(code);
+      setOtpExpiry(Date.now() + OTP_VALIDITY_MS);
+      setOtpInput("");
+      setMessage(`New code sent to ${email.trim()}.`);
+    } catch (error) {
+      Alert.alert("Error", error instanceof Error ? error.message : "Failed to resend code.");
     } finally {
       setLoading(false);
     }
@@ -113,6 +149,11 @@ export default function LoginScreen() {
     setMode(nextMode);
     setPassword("");
     setConfirmPassword("");
+    setPhone("");
+    setOtpSent(false);
+    setOtpInput("");
+    setPendingOtp("");
+    setOtpExpiry(null);
     setMessage("Use your email address and password to access the app.");
   };
 
@@ -140,21 +181,52 @@ export default function LoginScreen() {
 
             <Text style={styles.subtitle}>{message}</Text>
 
-            {mode === "signup" ? <Field label="Full Name" value={name} onChangeText={setName} placeholder="Enter your name" /> : null}
-            <Field label="Email Address" value={email} onChangeText={setEmail} placeholder="Enter email" keyboardType="email-address" />
-            {mode !== "reset" ? (
+            {mode === "signup" && otpSent ? (
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Verification Code</Text>
+                <TextInput
+                  value={otpInput}
+                  onChangeText={(v) => setOtpInput(v.replace(/\D/g, ""))}
+                  placeholder="000000"
+                  keyboardType="numeric"
+                  maxLength={6}
+                  autoFocus
+                  style={[styles.input, styles.otpInput]}
+                />
+              </View>
+            ) : null}
+
+            {mode === "signup" && !otpSent ? (
+              <Field label="Full Name" value={name} onChangeText={setName} placeholder="Enter your name" />
+            ) : null}
+            {mode === "signup" && !otpSent ? (
+              <Field label="Phone Number" value={phone} onChangeText={setPhone} placeholder="10-digit mobile number" keyboardType="phone-pad" />
+            ) : null}
+            {!otpSent ? (
+              <Field label="Email Address" value={email} onChangeText={setEmail} placeholder="Enter email" keyboardType="email-address" />
+            ) : null}
+            {mode !== "reset" && !otpSent ? (
               <Field label="Password" value={password} onChangeText={setPassword} placeholder="Enter password" secureTextEntry />
             ) : null}
-            {mode === "signup" ? (
+            {mode === "signup" && !otpSent ? (
               <Field label="Confirm Password" value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" secureTextEntry />
             ) : null}
 
             <Button
-              label={loading ? "Please wait..." : mode === "reset" ? "Send reset link" : mode === "signup" ? "Create account" : "Sign in"}
+              label={
+                loading
+                  ? mode === "signin" ? "Signing in..." : mode === "signup" ? (otpSent ? "Verifying..." : "Sending code...") : "Sending reset link..."
+                  : mode === "signin" ? "Sign in" : mode === "signup" ? (otpSent ? "Verify code" : "Sign up") : "Send reset link"
+              }
               onPress={submit}
               disabled={loading}
             />
-            {mode === "signin" ? <Button label="Forgot password?" onPress={() => switchMode("reset")} variant="outline" /> : null}
+            {mode === "signup" && otpSent ? (
+              <Button label="Resend code" onPress={handleResendOtp} variant="outline" disabled={loading} />
+            ) : null}
+            {mode === "signin" ? (
+              <Button label="Forgot password?" onPress={() => switchMode("reset")} variant="outline" />
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -234,6 +306,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingHorizontal: 12,
     paddingVertical: 10
+  },
+  otpInput: {
+    fontSize: 24,
+    letterSpacing: 8,
+    textAlign: "center"
   },
   button: {
     alignItems: "center",

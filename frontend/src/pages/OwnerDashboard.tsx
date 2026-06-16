@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import { useNavigate } from "react-router-dom";
 import { deleteUserByEmail, fetchAllUserProfiles, isOwnerLoggedIn, subscribeAuthState, updateUserProfileByEmail } from "../firebase/auth";
-import { getCustomersByEmail, getSheetByEmail, type Customer, type SheetState } from "../firebase/data";
+import { generateResetToken, RESET_TOKEN_VALIDITY_MS, sendPasswordResetLinkEmail } from "../utils/emailOtp";
+import { getCustomersByEmail, getSheetByEmail, savePasswordResetOtp, type Customer, type SheetState } from "../firebase/data";
 
 type UserProfile = {
   email: string;
@@ -22,6 +23,15 @@ type UserSnapshot = UserProfile & {
   sheetTotal: number;
 };
 
+
+function UpdatedCard({ updatedAt }: { updatedAt?: string }) {
+  return (
+    <div className="mt-2 text-base font-semibold text-slate-900">
+      {updatedAt ? new Date(updatedAt).toLocaleString([], { hour12: true, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-"}
+    </div>
+  );
+}
+
 function StatCard({ title, value, tone, description }: { title: string; value: string; tone: string; description: string }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
@@ -32,22 +42,35 @@ function StatCard({ title, value, tone, description }: { title: string; value: s
   );
 }
 
+function buildDisplaySerialMap(rows: { customerName: string; serialNumber: number }[]): string[] {
+  const serialByCustomer = new Map<string, number>();
+  let nextSerial = 1;
+
+  return rows.map((row) => {
+    const key = row.customerName.trim().toLowerCase();
+    if (!key) return String(row.serialNumber);
+    if (serialByCustomer.has(key)) return "";
+    serialByCustomer.set(key, nextSerial);
+    nextSerial += 1;
+    return String(nextSerial - 1);
+  });
+}
+
 export default function OwnerDashboard() {
   const navigate = useNavigate();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [userSnapshots, setUserSnapshots] = useState<UserSnapshot[]>([]);
   const [totalEarnings, setTotalEarnings] = useState(0);
-  const [activeTab, setActiveTab] = useState("overview");
   const [selectedUserEmail, setSelectedUserEmail] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
-  const [editFarmName, setEditFarmName] = useState("");
-  const [editAvatarUrl, setEditAvatarUrl] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [pwResetMsg, setPwResetMsg] = useState<string | null>(null);
+  const [pwResetLoading, setPwResetLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleteInfo, setDeleteInfo] = useState("");
-  const hasLoadedActiveTab = useRef(false);
 
   useEffect(() => {
     if (!isOwnerLoggedIn()) {
@@ -57,23 +80,17 @@ export default function OwnerDashboard() {
 
     void loadDashboardData();
 
-    return subscribeAuthState(() => {
+    const interval = setInterval(() => { void loadDashboardData(); }, 3000);
+
+    const unsubscribe = subscribeAuthState(() => {
       void loadDashboardData();
     });
+
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+    };
   }, [navigate]);
-
-  useEffect(() => {
-    if (!isOwnerLoggedIn()) {
-      return;
-    }
-
-    if (!hasLoadedActiveTab.current) {
-      hasLoadedActiveTab.current = true;
-      return;
-    }
-
-    void loadDashboardData();
-  }, [activeTab]);
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -84,8 +101,8 @@ export default function OwnerDashboard() {
       const snapshots = await Promise.all(
         userProfiles.map(async (profile) => {
           const [customers, sheet] = await Promise.all([
-            getCustomersByEmail(profile.email),
-            getSheetByEmail(profile.email)
+            getCustomersByEmail(profile.email, true),
+            getSheetByEmail(profile.email, true)
           ]);
 
           const sheetTotal = sheet.rows.reduce(
@@ -93,11 +110,15 @@ export default function OwnerDashboard() {
             0
           );
 
+          const uniqueCustomers = new Set(
+            customers.filter((c) => c.name.trim()).map((c) => c.name.trim().toLowerCase())
+          ).size;
+
           return {
             ...profile,
             customers,
             sheet,
-            customerCount: customers.length,
+            customerCount: uniqueCustomers,
             sheetRowCount: sheet.rows.length,
             sheetTotal
           };
@@ -140,9 +161,9 @@ export default function OwnerDashboard() {
     if (!selectedUser) return;
     setEditName(selectedUser.name || "");
     setEditPhone(selectedUser.phone || "");
-    setEditFarmName(selectedUser.farmName || "");
-    setEditAvatarUrl(selectedUser.avatarUrl || "");
+    setEditEmail(selectedUser.email || "");
     setSaveMessage(null);
+    setPwResetMsg(null);
   }, [selectedUserEmail]);
 
   return (
@@ -180,63 +201,17 @@ export default function OwnerDashboard() {
             title="Total Earnings"
             value={`₹${totalEarnings.toLocaleString()}`}
             tone="text-violet-600"
-            description="Calculated from your Firestore-backed system data."
+            description="Calculated from your system data."
           />
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 overflow-x-auto">
-            <div className="flex gap-2 p-2 md:gap-4 md:p-4">
-              <button
-                onClick={() => setActiveTab("overview")}
-                className={`min-h-[44px] rounded-full px-4 py-3 text-sm font-medium transition ${
-                  activeTab === "overview"
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 active:bg-slate-200"
-                }`}
-              >
-                Overview
-              </button>
-              <button
-                onClick={() => setActiveTab("users")}
-                className={`min-h-[44px] rounded-full px-4 py-3 text-sm font-medium transition ${
-                  activeTab === "users"
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 active:bg-slate-200"
-                }`}
-              >
-                Users
-              </button>
-            </div>
-          </div>
-
           <div className="p-4 md:p-6">
-            {activeTab === "overview" && (
-              <div className="space-y-5">
-                <h2 className="text-xl font-semibold text-slate-800">System Overview</h2>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active Users</div>
-                    <div className="mt-2 text-2xl font-bold text-slate-900">{users.length}</div>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Revenue</div>
-                    <div className="mt-2 text-2xl font-bold text-slate-900">₹{totalEarnings.toLocaleString()}</div>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last Updated</div>
-                    <div className="mt-2 text-2xl font-bold text-slate-900">{new Date().toLocaleDateString()}</div>
-                  </div>
-                </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-slate-800 md:text-xl">All User Data</h2>
+                <div className="text-xs font-medium text-slate-500">{users.length} total</div>
               </div>
-            )}
-
-            {activeTab === "users" && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-slate-800 md:text-xl">All User Data</h2>
-                  <div className="text-xs font-medium text-slate-500">{users.length} total</div>
-                </div>
 
                 {loading && users.length === 0 ? (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
@@ -339,8 +314,7 @@ export default function OwnerDashboard() {
                   </table>
                 </div>
               </div>
-            )}
-
+            </div>
           </div>
         </div>
 
@@ -388,7 +362,7 @@ export default function OwnerDashboard() {
               </div>
 
                 <div className="max-h-[calc(90vh-81px)] overflow-y-auto p-5">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-3">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Name</div>
                     <div className="mt-2 text-base font-semibold text-slate-900">{selectedUser.name}</div>
@@ -398,14 +372,8 @@ export default function OwnerDashboard() {
                     <div className="mt-2 break-all text-base font-semibold text-slate-900">{selectedUser.email}</div>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Farm</div>
-                    <div className="mt-2 text-base font-semibold text-slate-900">{selectedUser.farmName || "-"}</div>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Updated</div>
-                    <div className="mt-2 text-base font-semibold text-slate-900">
-                      {selectedUser.updatedAt ? new Date(selectedUser.updatedAt).toLocaleString() : "-"}
-                    </div>
+                    <UpdatedCard updatedAt={selectedUser.sheet.updatedAt ?? selectedUser.updatedAt} />
                   </div>
                 </div>
 
@@ -416,20 +384,39 @@ export default function OwnerDashboard() {
                       {selectedUser.customers.length === 0 ? (
                         <p className="text-sm text-slate-500">No customers saved for this user yet.</p>
                       ) : (
-                        selectedUser.customers.map((customer) => (
-                          <div key={`${selectedUser.email}-${customer.serialNumber}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-medium text-slate-900">{customer.name || "Unnamed customer"}</p>
-                                <p className="text-sm text-slate-600">{customer.mobile || "-"}</p>
+                        (() => {
+                          const seen = new Map<string, { customer: typeof selectedUser.customers[0]; shifts: string[] }>();
+                          selectedUser.customers.forEach((c) => {
+                            const key = c.name.trim().toLowerCase();
+                            if (!key) return;
+                            if (seen.has(key)) {
+                              if (c.shift) seen.get(key)!.shifts.push(c.shift);
+                            } else {
+                              seen.set(key, { customer: c, shifts: c.shift ? [c.shift] : [] });
+                            }
+                          });
+                          return Array.from(seen.values()).map(({ customer, shifts }, idx) => (
+                            <div key={`${selectedUser.email}-${customer.name}-${idx}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-slate-900">{customer.name}</p>
+                                  <p className="text-sm text-slate-600">{customer.mobile || "-"}</p>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-800">
+                                    #{idx + 1}
+                                  </span>
+                                  {shifts.length > 0 && (
+                                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+                                      {shifts.join(" & ")}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-800">
-                                #{customer.serialNumber}
-                              </span>
+                              <p className="mt-2 text-sm text-slate-600">{customer.address || "No address provided"}</p>
                             </div>
-                            <p className="mt-2 text-sm text-slate-600">{customer.address || "No address provided"}</p>
-                          </div>
-                        ))
+                          ));
+                        })()
                       )}
                     </div>
                   </div>
@@ -442,37 +429,42 @@ export default function OwnerDashboard() {
                       </div>
                     </div>
 
-                    <div className="mt-4 overflow-x-auto">
-                      <table className="min-w-[760px] w-full border-collapse text-sm">
-                        <thead className="bg-slate-100 text-slate-700">
+                    <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="min-w-[900px] border-collapse text-center text-xs">
+                        <thead className="bg-slate-100 font-semibold text-slate-800">
                           <tr>
-                            <th className="border border-slate-200 px-3 py-2 text-left">S No</th>
-                            <th className="border border-slate-200 px-3 py-2 text-left">Customer Name</th>
+                            <th className="border border-slate-300 px-1 py-2">S No</th>
+                            <th className="border border-slate-300 px-1 py-2">Customer Name</th>
+                            <th className="border border-slate-300 px-1 py-2">Shift</th>
                             {Array.from({ length: selectedUser.sheet.dayCount }, (_, index) => (
-                              <th key={`selected-day-${index + 1}`} className="border border-slate-200 px-3 py-2 text-left">
+                              <th key={`selected-day-${index + 1}`} className="border border-slate-300 px-1 py-2">
                                 Day {index + 1}
                               </th>
                             ))}
-                            <th className="border border-slate-200 px-3 py-2 text-left">Row Total</th>
+                            <th className="border border-slate-300 px-1 py-2">Total</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedUser.sheet.rows.map((row) => {
-                            const rowTotal = row.days.reduce((sum, value) => sum + (value || 0), 0);
+                          {(() => {
+                            const displaySerials = buildDisplaySerialMap(selectedUser.sheet.rows);
+                            return selectedUser.sheet.rows.map((row, rowIndex) => {
+                            const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
 
                             return (
-                              <tr key={`${selectedUser.email}-sheet-${row.serialNumber}`} className="odd:bg-white even:bg-slate-50">
-                                <td className="border border-slate-200 px-3 py-2">{row.serialNumber}</td>
-                                <td className="border border-slate-200 px-3 py-2">{row.customerName || "-"}</td>
+                              <tr key={`${selectedUser.email}-sheet-${row.serialNumber}`} className="even:bg-slate-50">
+                                <td className="border border-slate-200 px-1 py-1 font-semibold">{displaySerials[rowIndex]}</td>
+                                <td className="border border-slate-200 px-1 py-1 text-left">{row.customerName}</td>
+                                <td className="border border-slate-200 px-1 py-1">{row.shift}</td>
                                 {row.days.map((value, dayIndex) => (
-                                  <td key={`${selectedUser.email}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-3 py-2">
-                                    {value || 0}
+                                  <td key={`${selectedUser.email}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-1 py-1">
+                                    {value}
                                   </td>
                                 ))}
-                                <td className="border border-slate-200 px-3 py-2 font-semibold text-slate-900">{rowTotal}</td>
+                                <td className="border border-slate-200 px-1 py-1 font-semibold">{rowTotal}</td>
                               </tr>
                             );
-                          })}
+                          });
+                          })()}
                         </tbody>
                       </table>
                     </div>
@@ -495,17 +487,39 @@ export default function OwnerDashboard() {
                       className="rounded-lg border border-slate-300 px-3 py-2"
                     />
                     <input
-                      value={editFarmName}
-                      onChange={(e) => setEditFarmName(e.target.value)}
-                      placeholder="Farm name"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      placeholder="Email"
+                      type="email"
                       className="rounded-lg border border-slate-300 px-3 py-2"
                     />
-                    <input
-                      value={editAvatarUrl}
-                      onChange={(e) => setEditAvatarUrl(e.target.value)}
-                      placeholder="Avatar URL"
-                      className="rounded-lg border border-slate-300 px-3 py-2"
-                    />
+                    <div className="flex flex-col gap-1">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!selectedUser) return;
+                          setPwResetMsg(null);
+                          setPwResetLoading(true);
+                          try {
+                            const token = generateResetToken();
+                            await savePasswordResetOtp(selectedUser.email, token, RESET_TOKEN_VALIDITY_MS);
+                            const appUrl = (import.meta.env.VITE_APP_URL as string | undefined)?.replace(/\/$/, "") || window.location.origin;
+                            const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(selectedUser.email)}`;
+                            await sendPasswordResetLinkEmail(selectedUser.email, selectedUser.name, resetUrl);
+                            setPwResetMsg("Password reset link sent via email!");
+                          } catch (err) {
+                            setPwResetMsg(err instanceof Error ? err.message : "Failed to send reset email");
+                          } finally {
+                            setPwResetLoading(false);
+                          }
+                        }}
+                        disabled={pwResetLoading || loading}
+                        className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition"
+                      >
+                        {pwResetLoading ? "Sending..." : "Send Password Reset Email"}
+                      </button>
+                      {pwResetMsg && <div className="text-xs text-slate-600">{pwResetMsg}</div>}
+                    </div>
                   </div>
                   <div className="mt-4 flex gap-3">
                     <button
@@ -517,8 +531,7 @@ export default function OwnerDashboard() {
                           await updateUserProfileByEmail(selectedUser.email, {
                             name: editName,
                             phone: editPhone,
-                            farmName: editFarmName,
-                            avatarUrl: editAvatarUrl
+                            email: editEmail
                           });
                           await loadDashboardData();
                           setSaveMessage("Saved successfully");
@@ -547,7 +560,6 @@ export default function OwnerDashboard() {
             </div>
           </div>
         )}
-      </div>
     </Layout>
   );
 }

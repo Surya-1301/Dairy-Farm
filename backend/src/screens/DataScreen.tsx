@@ -9,7 +9,7 @@ import {
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getCustomers, getSheet, saveSheet, archiveSheet } from "../storage";
+import { getCustomers, getSheet, saveSheet, archiveSheet, subscribeSheet } from "../storage";
 import { colors } from "../theme";
 import type { SheetState } from "../types";
 
@@ -46,6 +46,9 @@ export default function DataScreen() {
 
   useEffect(() => {
     loadSheet();
+    return subscribeSheet((nextSheet) => {
+      setSheet(nextSheet);
+    });
   }, []);
 
   const loadSheet = async () => {

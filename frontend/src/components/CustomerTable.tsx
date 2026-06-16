@@ -8,11 +8,12 @@ import {
   createInitialSheet,
   getSheetByEmail,
   saveSheetByEmail,
+  subscribeSheetByEmail,
   type SheetState,
   type SheetRow
 } from "../firebase/data";
 
-const INITIAL_DAYS = 15;
+const INITIAL_DAYS = 16;
 
 function buildDisplaySerialMap(rows: SheetRow[]): string[] {
   const serialByCustomer = new Map<string, number>();
@@ -70,6 +71,13 @@ function CustomerTable() {
     }
 
     void getSheetByEmail(activeUser.email).then((sheet) => {
+      setSheetState({
+        dayCount: sheet.dayCount,
+        rows: normalizeRows(sheet.rows, sheet.dayCount)
+      });
+    });
+
+    return subscribeSheetByEmail(activeUser.email, (sheet) => {
       setSheetState({
         dayCount: sheet.dayCount,
         rows: normalizeRows(sheet.rows, sheet.dayCount)
