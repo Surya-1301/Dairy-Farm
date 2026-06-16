@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   preview: {
-    allowedHosts: ["dairy-farm-qlw1.onrender.com"]
+    host: true,
+    allowedHosts: "all",
+    port: parseInt(process.env.PORT ?? "4173")
   }
 });
