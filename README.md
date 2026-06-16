@@ -5,6 +5,12 @@ A web + mobile dairy management system for tracking customers, daily milk entrie
 - **Web app** — React + Vite PWA in `frontend/`
 - **Mobile app** — Expo / React Native in `backend/`
 
+ <p align="center">
+  <a href="https://portfolio-three-nu-xwijllxu80.vercel.app/">
+    <img src="https://img.shields.io/badge/View Demo-0077B5?style=for-the-badge&logo=linkedin&logoColor=white"/>
+  </a>
+</p>
+
 ---
 
 ## What The App Does
