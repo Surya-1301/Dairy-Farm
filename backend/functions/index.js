@@ -7,6 +7,7 @@ initializeApp();
 const OWNER_EMAIL = "ss058012@gmail.com";
 
 exports.generatePasswordResetLink = onCall({
+  invoker: "public",
   cors: [
     "http://localhost:5173",
     "http://localhost:5174",
