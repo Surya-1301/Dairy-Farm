@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide explains how to deploy the Dairy Farm application to Vercel and Render.
+This guide explains how to deploy the Dairy Farm application to Vercel, Render, and Azure.
 
 ## Prerequisites
 
@@ -141,6 +141,74 @@ The `render.yaml` file is already configured with:
 2. Add your domain
 3. Follow DNS configuration
 4. HTTPS is automatic
+
+---
+
+## Deploy to Azure (Storage Static Website)
+
+> **Note:** Azure Static Web Apps was the original plan, but it's only available in `centralus`, `eastus2`, `westus2`, `westeurope`, `eastasia` — none of which this subscription's region-allowlist policy permits (Azure for Students subscriptions are often restricted to a specific set of regions, check yours with `az policy assignment list`). We used **Azure Storage static website hosting** instead, which works in any region and has no fixed monthly cost (pay-per-use, effectively pennies for a small site).
+
+Live resources created for this project:
+
+- Resource group: `dairy-farm-rg` (region: `centralindia`)
+- Storage account: `dairyfarmstatic`
+- Static website endpoint: `https://dairyfarmstatic.z29.web.core.windows.net/`
+
+The repo ships a GitHub Actions workflow at `.github/workflows/azure-storage-deploy.yml` that builds `frontend/` and uploads `frontend/dist` to the storage account's `$web` container on every push to `main`.
+
+### Step 1: Create the storage account (already done for this project)
+
+```bash
+az group create --name dairy-farm-rg --location centralindia
+
+az storage account create \
+  --name dairyfarmstatic \
+  --resource-group dairy-farm-rg \
+  --location centralindia \
+  --sku Standard_LRS \
+  --kind StorageV2 \
+  --allow-blob-public-access true
+
+az storage blob service-properties update \
+  --account-name dairyfarmstatic \
+  --static-website \
+  --index-document index.html \
+  --404-document index.html
+```
+
+The 404 document is set to `index.html` too so client-side routes (React Router) resolve correctly on refresh — Storage static websites don't support full rewrite rules like Static Web Apps does.
+
+### Step 2: Add GitHub repository secrets
+
+In GitHub → repo **Settings → Secrets and variables → Actions**, add:
+
+- `AZURE_STORAGE_CONNECTION_STRING` — get it with:
+  ```bash
+  az storage account show-connection-string --name dairyfarmstatic --resource-group dairy-farm-rg -o tsv
+  ```
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
+- `VITE_FIREBASE_MEASUREMENT_ID`
+
+### Step 3: Deploy
+
+Push to `main`. The workflow builds `frontend` with Vite and uploads `frontend/dist` to the `$web` container. Track progress under the repo's **Actions** tab.
+
+The first deploy was done manually as a smoke test:
+
+```bash
+cd frontend && npm run build
+AZ_KEY=$(az storage account keys list --account-name dairyfarmstatic --resource-group dairy-farm-rg --query "[0].value" -o tsv)
+az storage blob upload-batch --account-name dairyfarmstatic --account-key "$AZ_KEY" --destination '$web' --source dist --overwrite
+```
+
+### Custom Domain / CDN
+
+Storage static websites serve HTTPS only on the default `*.web.core.windows.net` endpoint. For a custom domain with HTTPS, front it with Azure CDN or Azure Front Door pointing at the static website endpoint.
 
 ---
 
