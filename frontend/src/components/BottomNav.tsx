@@ -88,8 +88,12 @@ function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white shadow-sm">
       <div
-        className="grid w-full items-center px-2 py-2"
-        style={{ gridTemplateColumns: `repeat(${links.length}, minmax(0, 1fr))` }}
+        className={
+          isOwner
+            ? "flex w-full items-center justify-center px-2 py-2"
+            : "grid w-full items-center px-2 py-2"
+        }
+        style={isOwner ? { gap: "150px" } : { gridTemplateColumns: `repeat(${links.length}, minmax(0, 1fr))` }}
       >
         {links.map((link) => (
           <NavLink
