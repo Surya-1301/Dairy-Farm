@@ -8,7 +8,7 @@
       var params = new URLSearchParams(window.location.search);
       var mode = params.get('mode');
       var oobCode = params.get('oobCode');
-      var appUrl = 'https://dairy-farm-qlw1.onrender.com';
+      var appUrl = 'https://dairy-farm.tech';
 
       if (mode === 'resetPassword' && oobCode) {
         window.location.replace(appUrl + '/reset-password?oobCode=' + encodeURIComponent(oobCode));

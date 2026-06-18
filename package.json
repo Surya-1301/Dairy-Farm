@@ -5,7 +5,9 @@
     "dev": "npm --prefix 'frontend' run dev",
     "build": "npm --prefix 'frontend' ci --include=dev && npm --prefix 'frontend' run build",
     "postinstall": "npm run build",
-    "start": "npm --prefix 'frontend' run preview"
+    "start": "npm --prefix 'frontend' run preview",
+    "android:prebuild": "npm --prefix 'backend' run android:prebuild",
+    "android:build": "npm --prefix 'backend' run android:build"
   },
   "dependencies": {
     "firebase": "^12.12.1"

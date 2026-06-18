@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "5c1021ba-50f4-4fad-82bf-5e03cfaa510e"
+      }
+    },
+    "android": {
+      "package": "com.shubham0102.dairyfarmroot"
+    }
+  }
+}

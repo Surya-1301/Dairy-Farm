@@ -5,6 +5,7 @@ import {
   getActiveUser,
   getCurrentUserProfile,
   isAuthReady,
+  logout,
   requestPasswordReset,
   subscribeAuthState,
   updateCurrentUserProfile
@@ -151,6 +152,11 @@ function Profile() {
     }
   };
 
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login", { replace: true });
+  };
+
   const handleDeleteAccount = async () => {
     const confirmed = window.confirm(
       "Are you sure you want to delete your account permanently? This action cannot be undone and all your data will be removed."
@@ -274,13 +280,8 @@ function Profile() {
       <form onSubmit={onSave} className="space-y-4 rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="text-base md:text-lg font-semibold text-slate-900">Edit Profile</h3>
-          {profile && (
-            <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded">
-              Saved
-            </span>
-          )}
         </div>
-        
+
         {message && (
           <div
             className={`rounded-lg px-3 py-2 text-xs md:text-sm ${
@@ -386,6 +387,16 @@ function Profile() {
           </button>
         </div>
       </form>
+
+      <div className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
+        <button
+          type="button"
+          onClick={() => { void handleLogout(); }}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 active:bg-red-200 min-h-[48px] transition"
+        >
+          Logout
+        </button>
+      </div>
     </section>
   );
 }

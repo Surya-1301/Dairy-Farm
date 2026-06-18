@@ -1,17 +1,21 @@
 {
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "backend/firestore.rules"
   },
   "functions": {
-    "source": "functions"
+    "source": "backend/functions"
   },
   "hosting": {
-    "public": "public",
+    "public": "frontend/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       {
         "source": "/__/auth/action",
         "destination": "/reset-redirect.html"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
       }
     ]
   }

@@ -7,6 +7,7 @@ import {
   signUpWithEmailPassword,
 } from "../firebase/auth";
 import { generateOtp, OTP_VALIDITY_MS, sendEmailOtp } from "../utils/emailOtp";
+import raipurBanner from "../assets/raipur-banner.png";
 
 type AuthMode = "signin" | "signup" | "reset";
 
@@ -26,7 +27,7 @@ function Login() {
   const [otpInput, setOtpInput] = useState("");
   const [pendingOtp, setPendingOtp] = useState("");
   const [otpExpiry, setOtpExpiry] = useState<number | null>(null);
-  const [infoMessage, setInfoMessage] = useState("Use your email address and password to access the app.");
+  const [infoMessage, setInfoMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -100,7 +101,7 @@ function Login() {
     setOtpInput("");
     setPendingOtp("");
     setOtpExpiry(null);
-    setInfoMessage("Use your email address and password to access the app.");
+    setInfoMessage("");
     setPassword("");
     setConfirmPassword("");
     if (nextMode === "signin") {
@@ -121,6 +122,11 @@ function Login() {
         onSubmit={onSubmit}
         className="w-full max-w-md space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8"
       >
+        <img
+          src={raipurBanner}
+          alt="Raipur Duggdh Utapadan Association"
+          className="w-full rounded-lg"
+        />
         <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
           <button
             type="button"

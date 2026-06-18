@@ -142,7 +142,7 @@ export async function signUp(email: string, password: string, name: string, phon
 
 const CLOUD_FUNCTION_URL =
   "https://us-central1-raipur-dairy-farmm.cloudfunctions.net/generatePasswordResetLink";
-const RESET_REDIRECT_URL = "https://dairy-farm-qlw1.onrender.com/reset-password";
+const RESET_REDIRECT_URL = "https://dairy-farm.tech/reset-password";
 
 export async function resetPassword(email: string) {
   const normalizedEmail = normalizeEmail(email);

@@ -1,6 +1,6 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { getActiveUser, logout, subscribeAuthState } from "../firebase/auth";
+import { getActiveUser, subscribeAuthState } from "../firebase/auth";
 
 type IconProps = {
   className?: string;
@@ -51,16 +51,6 @@ function SettingsIcon({ className }: IconProps) {
   );
 }
 
-function LogoutIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M9.5 4.5H7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-      <path d="M12 12h7" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-      <path d="M16.5 8.5 20 12l-3.5 3.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 type NavItem = {
   to: string;
   label: string;
@@ -81,7 +71,6 @@ const ownerLinks = [
 ] as const satisfies readonly NavItem[];
 
 function BottomNav() {
-  const navigate = useNavigate();
   const [isOwner, setIsOwner] = useState(false);
 
   useEffect(() => {
@@ -94,19 +83,13 @@ function BottomNav() {
     return subscribeAuthState(syncUserRole);
   }, []);
 
-  const onLogout = async () => {
-    await logout();
-    navigate("/login", { replace: true });
-  };
-
   const links = isOwner ? ownerLinks : userLinks;
-  const itemCount = links.length + 1;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white shadow-sm">
       <div
         className="grid w-full items-center px-2 py-2"
-        style={{ gridTemplateColumns: `repeat(${itemCount}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${links.length}, minmax(0, 1fr))` }}
       >
         {links.map((link) => (
           <NavLink
@@ -124,14 +107,6 @@ function BottomNav() {
             <span className="max-w-full truncate">{link.label}</span>
           </NavLink>
         ))}
-
-        <button
-          onClick={onLogout}
-          className="flex min-w-0 flex-col items-center justify-center text-center text-xs font-medium text-red-600 hover:text-red-700"
-        >
-          <LogoutIcon className="mb-1 h-6 w-6" />
-          <span className="max-w-full truncate">Logout</span>
-        </button>
       </div>
     </nav>
   );

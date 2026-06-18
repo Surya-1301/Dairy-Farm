@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide explains how to deploy the Dairy Farm application to Vercel, Render, and Azure.
+This guide explains how to deploy the Dairy Farm application to Vercel, Render, Azure, and Firebase Hosting.
 
 ## Prerequisites
 
@@ -36,10 +36,47 @@ Registered user profiles are shared through Firestore so the owner dashboard can
 4. Deploy the rules from repository root:
 
 ```bash
-cd backend && firebase deploy --only firestore:rules
+firebase deploy --only firestore:rules
 ```
 
 5. Redeploy Render or Vercel after adding/updating Firebase environment variables.
+
+---
+
+## Deploy to Firebase Hosting
+
+Firebase Hosting serves the same `frontend/dist` build and lives in the same Firebase project (`raipur-dairy-farmm`) already used for Auth/Firestore, so it shares the project's `authDomain` — handy for password-reset links.
+
+### Step 1: Install the CLI and log in (one-time)
+
+```bash
+npm install -g firebase-tools
+firebase login
+```
+
+### Step 2: Build and deploy
+
+Run from the repository root, where `firebase.json` and `.firebaserc` live:
+
+```bash
+cd frontend && npm run build && cd ..
+firebase deploy --only hosting
+```
+
+The build reads `frontend/.env` (or whatever env is active in your shell) at build time, same as the other targets — make sure the `VITE_FIREBASE_*` and EmailJS variables are set there before building.
+
+### Step 3: Get the URL
+
+Deploy output prints the live URL: `https://raipur-dairy-farmm.web.app` (also reachable at `https://raipur-dairy-farmm.firebaseapp.com`).
+
+### Routing and the auth-action redirect
+
+- `firebase.json`'s `hosting.rewrites` sends all unmatched routes to `/index.html` so React Router's client-side routes resolve on refresh.
+- `/__/auth/action` is rewritten to `frontend/public/reset-redirect.html`, which Firebase Auth calls for password-reset links (since it's served from the project's `authDomain`); it forwards the user to the configured app URL. Update the `appUrl` constant in that file if the canonical app URL changes.
+
+### Automatic Deployments
+
+There's no CI workflow wired up for Firebase Hosting yet — deploys are manual via `firebase deploy --only hosting`. Add a GitHub Actions step calling that command if you want it to deploy on push like the other targets.
 
 ---
 

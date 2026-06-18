@@ -76,14 +76,18 @@ Install EAS CLI and build for Android:
 npm install -g eas-cli
 eas login
 eas build:configure
-eas build -p android
+npm run android:build      # APK via the "preview" profile (sideload/testing)
 ```
+
+`npm run android:build` runs `eas build --platform android --profile preview`, which produces a sideloadable APK. For the Play Store AAB instead, run `eas build -p android --profile production` directly (see `eas.json`).
+
+> **Download promptly:** EAS deletes build artifacts (the APK/AAB download link) **30 days** after a build finishes. Download and archive the file (or run `eas submit -p android` to push it straight to Play Console) before that window closes — the build log/record stays, but the binary itself does not.
 
 ## Password Reset Flow
 
 Password resets use a Firebase Cloud Function (`functions/index.js`) to generate a reset `oobCode` server-side, then EmailJS sends a branded HTML email with a link to the web app's `/reset-password` page. This replaces Firebase's default reset email with a fully custom email.
 
-To deploy the Cloud Function:
+To deploy the Cloud Function (from the repository root, where `firebase.json` lives):
 
 ```bash
 firebase deploy --only functions

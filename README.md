@@ -196,7 +196,6 @@ backend/functions/
 ### Deploy
 
 ```bash
-cd backend
 firebase deploy --only functions
 ```
 

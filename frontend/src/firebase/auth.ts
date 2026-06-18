@@ -507,7 +507,7 @@ export async function requestPasswordReset(email: string): Promise<"firebase"> {
 
   try {
     const oobCode = await generatePasswordResetOobCode(normalizedEmail);
-    const resetUrl = `https://dairy-farm-qlw1.onrender.com/reset-password?oobCode=${encodeURIComponent(oobCode)}`;
+    const resetUrl = `https://dairy-farm.tech/reset-password?oobCode=${encodeURIComponent(oobCode)}`;
     const { sendPasswordResetLinkEmail } = await import("../utils/emailOtp");
     await sendPasswordResetLinkEmail(normalizedEmail, normalizedEmail, resetUrl);
     return "firebase";

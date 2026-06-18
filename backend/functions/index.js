@@ -10,7 +10,9 @@ const ALLOWED_ORIGINS = [
   "http://localhost:5174",
   "https://dairy-farm-qlw1.onrender.com",
   "https://raipur-dairy-farmm.web.app",
-  "https://raipur-dairy-farmm.firebaseapp.com"
+  "https://raipur-dairy-farmm.firebaseapp.com",
+  "https://dairy-farm.tech",
+  "https://www.dairy-farm.tech"
 ];
 
 exports.generatePasswordResetLink = onRequest({ invoker: "public" }, async (req, res) => {
@@ -55,7 +57,7 @@ exports.generatePasswordResetLink = onRequest({ invoker: "public" }, async (req,
   }
 
   const link = await getAuth().generatePasswordResetLink(targetEmail, {
-    url: "https://dairy-farm-qlw1.onrender.com"
+    url: "https://dairy-farm.tech"
   });
   const oobCode = new URL(link).searchParams.get("oobCode");
 
