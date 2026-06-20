@@ -8,11 +8,37 @@ import {
 } from "../utils/customerData";
 import type { Customer } from "../firebase/data";
 
+function groupCustomersByName(customers: Customer[]): Customer[][] {
+  const groups: Customer[][] = [];
+  let currentKey: string | null = null;
+
+  for (const customer of customers) {
+    const key = customer.name.trim().toLowerCase();
+    if (key && key === currentKey) {
+      groups[groups.length - 1].push(customer);
+    } else {
+      groups.push([customer]);
+      currentKey = key || null;
+    }
+  }
+
+  return groups;
+}
+
+function formatShiftLabel(group: Customer[]): string {
+  if (group.length > 1) {
+    const shifts = group.map((c) => c.shift).filter(Boolean);
+    return shifts.length > 0 ? shifts.join(" & ") : "M & E";
+  }
+
+  return group[0].shift || "—";
+}
+
 function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingIds, setEditingIds] = useState<number[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     mobile: "",
@@ -39,18 +65,19 @@ function Customers() {
   }, []);
 
   const handleAddClick = () => {
-    setEditingId(null);
+    setEditingIds([]);
     setFormData({ name: "", mobile: "", address: "", shift: "" });
     setShowForm(true);
   };
 
-  const handleEditClick = (customer: Customer) => {
-    setEditingId(customer.serialNumber);
+  const handleEditClick = (group: Customer[]) => {
+    const [primary] = group;
+    setEditingIds(group.map((customer) => customer.serialNumber));
     setFormData({
-      name: customer.name,
-      mobile: customer.mobile,
-      address: customer.address,
-      shift: customer.shift ?? ""
+      name: primary.name,
+      mobile: primary.mobile,
+      address: primary.address,
+      shift: group.length > 1 ? "M/E" : primary.shift ?? ""
     });
     setShowForm(true);
   };
@@ -63,17 +90,31 @@ function Customers() {
       return;
     }
 
+    const isEditing = editingIds.length > 0;
+
     if (formData.shift === "M/E") {
-      if (editingId !== null) {
-        await updateCustomer(editingId, formData.name, formData.mobile, formData.address, "M");
+      if (isEditing && editingIds.length === 2) {
+        for (const id of editingIds) {
+          const original = customers.find((c) => c.serialNumber === id);
+          await updateCustomer(id, formData.name, formData.mobile, formData.address, original?.shift || "M");
+        }
+      } else if (isEditing) {
+        await updateCustomer(editingIds[0], formData.name, formData.mobile, formData.address, "M");
         await addCustomer(formData.name, formData.mobile, formData.address, "E");
       } else {
         await addCustomer(formData.name, formData.mobile, formData.address, "M");
         await addCustomer(formData.name, formData.mobile, formData.address, "E");
       }
     } else {
-      if (editingId !== null) {
-        await updateCustomer(editingId, formData.name, formData.mobile, formData.address, formData.shift);
+      if (isEditing && editingIds.length === 2) {
+        const originals = editingIds.map((id) => customers.find((c) => c.serialNumber === id));
+        let keepIndex = originals.findIndex((c) => c?.shift === formData.shift);
+        if (keepIndex === -1) keepIndex = 0;
+
+        await updateCustomer(editingIds[keepIndex], formData.name, formData.mobile, formData.address, formData.shift);
+        await deleteCustomer(editingIds[1 - keepIndex]);
+      } else if (isEditing) {
+        await updateCustomer(editingIds[0], formData.name, formData.mobile, formData.address, formData.shift);
       } else {
         await addCustomer(formData.name, formData.mobile, formData.address, formData.shift);
       }
@@ -81,18 +122,26 @@ function Customers() {
 
     setShowForm(false);
     setFormData({ name: "", mobile: "", address: "", shift: "" });
+    setEditingIds([]);
   };
 
-  const handleDelete = async (serialNumber: number) => {
-    if (window.confirm("Are you sure you want to delete this customer?")) {
-      await deleteCustomer(serialNumber);
+  const handleDelete = async (serialNumbers: number[]) => {
+    const message =
+      serialNumbers.length > 1
+        ? "Are you sure you want to delete this customer (both shifts)?"
+        : "Are you sure you want to delete this customer?";
+
+    if (window.confirm(message)) {
+      for (const serialNumber of serialNumbers) {
+        await deleteCustomer(serialNumber);
+      }
     }
   };
 
   const handleCancel = () => {
     setShowForm(false);
     setFormData({ name: "", mobile: "", address: "", shift: "" });
-    setEditingId(null);
+    setEditingIds([]);
   };
 
   return (
@@ -112,7 +161,7 @@ function Customers() {
       {showForm && (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 md:p-6">
           <h2 className="mb-4 text-base md:text-xl font-semibold text-slate-900">
-            {editingId !== null ? "Edit Customer" : "Add New Customer"}
+            {editingIds.length > 0 ? "Edit Customer" : "Add New Customer"}
           </h2>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 md:gap-5">
             <div>
@@ -123,7 +172,7 @@ function Customers() {
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
                 placeholder="Enter customer name"
                 autoComplete="name"
               />
@@ -137,7 +186,7 @@ function Customers() {
                 type="tel"
                 value={formData.mobile}
                 onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
                 placeholder="Enter mobile number"
                 autoComplete="tel"
               />
@@ -150,7 +199,7 @@ function Customers() {
               <textarea
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500 min-h-[120px]"
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500 min-h-[120px]"
                 placeholder="Enter address"
                 rows={3}
               />
@@ -184,7 +233,7 @@ function Customers() {
                 type="submit"
                 className="rounded-lg bg-brand-500 px-4 py-3 text-sm text-white font-medium hover:bg-brand-600 active:bg-brand-700 transition min-h-[48px] flex items-center justify-center"
               >
-                {editingId !== null ? "Update" : "Add"} Customer
+                {editingIds.length > 0 ? "Update" : "Add"} Customer
               </button>
             </div>
           </form>
@@ -213,29 +262,33 @@ function Customers() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {customers.map((customer) => (
-                <tr key={customer.serialNumber} className="hover:bg-slate-50">
-                  <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">{customer.serialNumber}</td>
-                  <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 font-medium">{customer.name}</td>
-                  <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden md:table-cell">{customer.mobile}</td>
-                  <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden sm:table-cell">{customer.shift || "—"}</td>
-                  <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden lg:table-cell truncate">{customer.address}</td>
-                  <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm flex gap-2 md:gap-3 flex-col sm:flex-row">
-                    <button
-                      onClick={() => handleEditClick(customer)}
-                      className="text-brand-600 hover:text-brand-700 active:text-brand-800 font-medium px-3 py-2 rounded hover:bg-brand-50 active:bg-brand-100 transition min-h-[40px] flex items-center justify-center"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(customer.serialNumber)}
-                      className="text-red-600 hover:text-red-700 active:text-red-800 font-medium px-3 py-2 rounded hover:bg-red-50 active:bg-red-100 transition min-h-[40px] flex items-center justify-center"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {groupCustomersByName(customers).map((group, groupIndex) => {
+                const primary = group[0];
+
+                return (
+                  <tr key={primary.serialNumber} className="hover:bg-slate-50">
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">{groupIndex + 1}</td>
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 font-medium">{primary.name}</td>
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden md:table-cell">{primary.mobile}</td>
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden sm:table-cell">{formatShiftLabel(group)}</td>
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden lg:table-cell truncate">{primary.address}</td>
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm flex gap-2 md:gap-3 flex-col sm:flex-row">
+                      <button
+                        onClick={() => handleEditClick(group)}
+                        className="text-brand-600 hover:text-brand-700 active:text-brand-800 font-medium px-3 py-2 rounded hover:bg-brand-50 active:bg-brand-100 transition min-h-[40px] flex items-center justify-center"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(group.map((customer) => customer.serialNumber))}
+                        className="text-red-600 hover:text-red-700 active:text-red-800 font-medium px-3 py-2 rounded hover:bg-red-50 active:bg-red-100 transition min-h-[40px] flex items-center justify-center"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

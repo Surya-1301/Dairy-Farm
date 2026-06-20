@@ -36,6 +36,38 @@ function buildDisplaySerialMap(rows: SheetRow[]): string[] {
   });
 }
 
+function buildGroupStartIndices(rows: SheetRow[]): number[] {
+  const groupStart = rows.map((_, index) => index);
+
+  for (let i = 1; i < rows.length; i++) {
+    const key = rows[i].customerName.trim().toLowerCase();
+    if (key && rows[i - 1].customerName.trim().toLowerCase() === key) {
+      groupStart[i] = groupStart[i - 1];
+    }
+  }
+
+  return groupStart;
+}
+
+function buildNameCellSpans(groupStartIndices: number[]): number[] {
+  const groupSizes = new Array(groupStartIndices.length).fill(0);
+  groupStartIndices.forEach((start) => {
+    groupSizes[start] += 1;
+  });
+
+  return groupStartIndices.map((start, index) => (start === index ? groupSizes[start] : 0));
+}
+
+function buildCombinedTotals(rows: SheetRow[], groupStartIndices: number[]): number[] {
+  const totals = rows.map((row) => row.days.reduce((sum, value) => sum + value, 0));
+  const groupSums = new Array(rows.length).fill(0);
+  groupStartIndices.forEach((start, index) => {
+    groupSums[start] += totals[index];
+  });
+
+  return groupStartIndices.map((start, index) => (start === index ? groupSums[start] : 0));
+}
+
 function createEmptyRow(serialNumber: number, dayCount: number): SheetRow {
   return {
     serialNumber,
@@ -153,9 +185,18 @@ function CustomerTable() {
   };
 
   const updateCustomerName = (serialNumber: number, customerName: string) => {
-    const nextRows = rows.map((row) =>
-      row.serialNumber === serialNumber ? { ...row, customerName } : row
-    );
+    const targetRow = rows.find((row) => row.serialNumber === serialNumber);
+    const oldKey = targetRow?.customerName.trim().toLowerCase() ?? "";
+
+    const nextRows = rows.map((row) => {
+      if (row.serialNumber === serialNumber) {
+        return { ...row, customerName };
+      }
+      if (oldKey && row.customerName.trim().toLowerCase() === oldKey) {
+        return { ...row, customerName };
+      }
+      return row;
+    });
 
     saveState({ dayCount, rows: nextRows });
   };
@@ -288,24 +329,31 @@ function CustomerTable() {
           <tbody>
             {(() => {
               const displaySerialNumbers = buildDisplaySerialMap(rows);
+              const groupStartIndices = buildGroupStartIndices(rows);
+              const nameCellSpans = buildNameCellSpans(groupStartIndices);
+              const combinedTotals = buildCombinedTotals(rows, groupStartIndices);
               return rows.map((row, rowIndex) => {
               const total = row.days.reduce((sum, value) => sum + value, 0);
+              const nameSpan = nameCellSpans[rowIndex];
+              const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : total;
 
               return (
                 <tr key={row.serialNumber} className="bg-white even:bg-slate-50">
                   <td className="border border-slate-300 px-1 py-1 md:px-2 font-semibold">{displaySerialNumbers[rowIndex]}</td>
-                  <td className="border border-slate-300 px-1 py-1 md:px-2">
-                    <input
-                      value={row.customerName}
-                      onChange={(event) => updateCustomerName(row.serialNumber, event.target.value)}
-                      className="h-9 w-full rounded border border-slate-300 px-2 py-1 text-left"
-                    />
-                  </td>
+                  {nameSpan > 0 && (
+                    <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 md:px-2">
+                      <input
+                        value={row.customerName}
+                        onChange={(event) => updateCustomerName(row.serialNumber, event.target.value)}
+                        className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-left"
+                      />
+                    </td>
+                  )}
                   <td className="border border-slate-300 px-1 py-1 md:px-2">
                     <input
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
-                      className="h-9 w-full rounded border border-slate-300 px-2 py-1 text-left"
+                      className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-left"
                       placeholder="M/E"
                     />
                   </td>
@@ -322,11 +370,15 @@ function CustomerTable() {
                         onChange={(event) =>
                           updateDayValue(row.serialNumber, dayIndex, event.target.value)
                         }
-                        className="h-9 w-full rounded border border-slate-300 px-2 py-1 text-center"
+                        className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-center"
                       />
                     </td>
                   ))}
-                  <td className="border border-slate-300 px-1 py-1 font-semibold md:px-2">{total}</td>
+                  {nameSpan > 0 && (
+                    <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 font-semibold md:px-2">
+                      {displayTotal}
+                    </td>
+                  )}
                 </tr>
               );
             });

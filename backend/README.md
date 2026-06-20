@@ -11,12 +11,12 @@ Expo / React Native app for the Dairy Farm management system. Shares the same Fi
 ## Features
 
 - Email/password sign in, sign up, and custom password reset via EmailJS
-- Customer management — add, edit, delete with scrollable table view
-- Editable milk data sheet (50 rows × 16 days default) — add/remove rows and columns, swipe to scroll
+- Customer management — add, edit, delete with scrollable table view; a customer with both Morning and Evening shifts is grouped into a single row (shift shown as "M & E") and edited/deleted as one unit
+- Editable milk data sheet (50 rows × 16 days default) — add/remove rows and columns, swipe to scroll; editing a customer's name syncs across their shift rows, and the Total column shows the combined Morning + Evening total for grouped customers
 - PDF export of archived history sheets via `expo-print` + `expo-sharing`
 - Dashboard summary — customer count and total milk amount with tab navigation shortcuts
 - User profile — edit name, phone, avatar; reset password; logout; delete account
-- Owner-only screen — registered users, analytics, and reset password for any user
+- Owner-only screen — registered users and analytics; view any user's customer records and milk sheet; edit any user's profile (name, phone, email); save a user's current sheet to history, view their saved history, export any saved sheet as PDF, or delete it; reset password or delete any user
 
 ## Setup
 

@@ -52,18 +52,21 @@ export async function updateCustomer(
     return null;
   }
 
-  const updated = {
-    ...customers[index],
-    name,
-    mobile,
-    address,
-    shift
-  };
+  const oldKey = customers[index].name.trim().toLowerCase();
 
-  customers[index] = updated;
-  await saveCustomersByEmail(getRequiredUserEmail(), customers);
+  const nextCustomers = customers.map((customer, i) => {
+    if (i === index) {
+      return { ...customer, name, mobile, address, shift };
+    }
+    if (oldKey && customer.name.trim().toLowerCase() === oldKey) {
+      return { ...customer, name, mobile, address };
+    }
+    return customer;
+  });
+
+  await saveCustomersByEmail(getRequiredUserEmail(), nextCustomers);
   notifyCustomersChanged();
-  return updated;
+  return nextCustomers[index];
 }
 
 export async function deleteCustomer(serialNumber: number): Promise<boolean> {

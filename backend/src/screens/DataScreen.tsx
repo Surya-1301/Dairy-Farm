@@ -40,6 +40,29 @@ function buildDisplaySerialMap(rows: SheetState["rows"]) {
   });
 }
 
+function buildGroupStartIndices(rows: SheetState["rows"]): number[] {
+  const groupStart = rows.map((_, index) => index);
+
+  for (let i = 1; i < rows.length; i++) {
+    const key = rows[i].customerName.trim().toLowerCase();
+    if (key && rows[i - 1].customerName.trim().toLowerCase() === key) {
+      groupStart[i] = groupStart[i - 1];
+    }
+  }
+
+  return groupStart;
+}
+
+function buildCombinedTotals(rows: SheetState["rows"], groupStartIndices: number[]): number[] {
+  const totals = rows.map((row) => row.days.reduce((sum, value) => sum + (value || 0), 0));
+  const groupSums = new Array(rows.length).fill(0);
+  groupStartIndices.forEach((start, index) => {
+    groupSums[start] += totals[index];
+  });
+
+  return groupStartIndices.map((start, index) => (start === index ? groupSums[start] : 0));
+}
+
 export default function DataScreen() {
   const [sheet, setSheet] = useState<SheetState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -85,9 +108,20 @@ export default function DataScreen() {
 
   const updateCustomerName = (serialNumber: number, customerName: string) => {
     if (!sheet) return;
+    const targetRow = sheet.rows.find((row) => row.serialNumber === serialNumber);
+    const oldKey = targetRow?.customerName.trim().toLowerCase() ?? "";
+
     persist({
       ...sheet,
-      rows: sheet.rows.map((row) => row.serialNumber === serialNumber ? { ...row, customerName } : row)
+      rows: sheet.rows.map((row) => {
+        if (row.serialNumber === serialNumber) {
+          return { ...row, customerName };
+        }
+        if (oldKey && row.customerName.trim().toLowerCase() === oldKey) {
+          return { ...row, customerName };
+        }
+        return row;
+      })
     });
   };
 
@@ -172,6 +206,8 @@ export default function DataScreen() {
   }
 
   const displaySerialNumbers = buildDisplaySerialMap(sheet.rows);
+  const groupStartIndices = buildGroupStartIndices(sheet.rows);
+  const combinedTotals = buildCombinedTotals(sheet.rows, groupStartIndices);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -232,6 +268,10 @@ export default function DataScreen() {
 
               {sheet.rows.map((row, rowIndex) => {
                 const total = row.days.reduce((sum, v) => sum + v, 0);
+                const isGroupStart = groupStartIndices[rowIndex] === rowIndex;
+                const groupSize = groupStartIndices.filter((start) => start === rowIndex).length;
+                const displayTotal = isGroupStart && groupSize > 1 ? combinedTotals[rowIndex] : total;
+                const isMergedAway = !isGroupStart;
                 return (
                   <View
                     key={row.serialNumber}
@@ -271,7 +311,7 @@ export default function DataScreen() {
                       </View>
                     ))}
                     <View style={[styles.tableCell, styles.totalCell]}>
-                      <Text style={styles.totalText}>{total}</Text>
+                      <Text style={styles.totalText}>{isMergedAway ? "" : displayTotal}</Text>
                     </View>
                   </View>
                 );

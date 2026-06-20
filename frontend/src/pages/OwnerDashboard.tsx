@@ -1,8 +1,58 @@
 import { useEffect, useState } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import Layout from "../components/Layout";
 import { useNavigate } from "react-router-dom";
 import { deleteUserByEmail, fetchAllUserProfiles, isOwnerLoggedIn, requestPasswordReset, subscribeAuthState, updateUserProfileByEmail } from "../firebase/auth";
-import { getCustomersByEmail, getSheetByEmail, type Customer, type SheetState } from "../firebase/data";
+import {
+  archiveSheetByEmail,
+  getCustomersByEmail,
+  getHistoryByEmail,
+  getSheetByEmail,
+  saveHistoryByEmail,
+  type Customer,
+  type SheetHistoryEntry,
+  type SheetState
+} from "../firebase/data";
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleString();
+}
+
+function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
+  const doc = new jsPDF({ orientation: "landscape" });
+
+  const total = entry.rows.reduce(
+    (entryTotal, row) => entryTotal + row.days.reduce((rowTotal, value) => rowTotal + value, 0),
+    0
+  );
+
+  doc.setFontSize(14);
+  doc.text(`Dairy Farm — Sheet ${sheetNumber} (${ownerLabel})`, 14, 15);
+  doc.setFontSize(9);
+  doc.text(`Saved: ${formatDate(entry.savedAt)}   |   Rows: ${entry.rows.length}   |   Days: ${entry.dayCount}   |   Total: ${total}`, 14, 22);
+
+  const head = [
+    ["S No", "Customer Name", ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`), "Total"],
+  ];
+
+  const body = entry.rows.map((row) => {
+    const rowTotal = row.days.reduce((sum, v) => sum + v, 0);
+    return [row.serialNumber, row.customerName, ...row.days, rowTotal];
+  });
+
+  autoTable(doc, {
+    head,
+    body,
+    startY: 27,
+    styles: { fontSize: 7, cellPadding: 1.5, halign: "center" },
+    headStyles: { fillColor: [71, 85, 105], textColor: 255, fontStyle: "bold" },
+    columnStyles: { 1: { halign: "left" } },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+  });
+
+  doc.save(`dairy-farm-${ownerLabel}-sheet-${sheetNumber}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
+}
 
 type UserProfile = {
   email: string;
@@ -55,6 +105,38 @@ function buildDisplaySerialMap(rows: { customerName: string; serialNumber: numbe
   });
 }
 
+function buildGroupStartIndices(rows: { customerName: string }[]): number[] {
+  const groupStart = rows.map((_, index) => index);
+
+  for (let i = 1; i < rows.length; i++) {
+    const key = rows[i].customerName.trim().toLowerCase();
+    if (key && rows[i - 1].customerName.trim().toLowerCase() === key) {
+      groupStart[i] = groupStart[i - 1];
+    }
+  }
+
+  return groupStart;
+}
+
+function buildNameCellSpans(groupStartIndices: number[]): number[] {
+  const groupSizes = new Array(groupStartIndices.length).fill(0);
+  groupStartIndices.forEach((start) => {
+    groupSizes[start] += 1;
+  });
+
+  return groupStartIndices.map((start, index) => (start === index ? groupSizes[start] : 0));
+}
+
+function buildCombinedTotals(rows: { days: number[] }[], groupStartIndices: number[]): number[] {
+  const totals = rows.map((row) => row.days.reduce((sum, value) => sum + value, 0));
+  const groupSums = new Array(rows.length).fill(0);
+  groupStartIndices.forEach((start, index) => {
+    groupSums[start] += totals[index];
+  });
+
+  return groupStartIndices.map((start, index) => (start === index ? groupSums[start] : 0));
+}
+
 export default function OwnerDashboard() {
   const navigate = useNavigate();
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -70,6 +152,12 @@ export default function OwnerDashboard() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleteInfo, setDeleteInfo] = useState("");
+  const [archiving, setArchiving] = useState(false);
+  const [archiveMsg, setArchiveMsg] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<SheetHistoryEntry[]>([]);
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOwnerLoggedIn()) {
@@ -153,6 +241,62 @@ export default function OwnerDashboard() {
     }
   };
 
+  const handleArchiveToHistory = async (email: string, sheet: SheetState) => {
+    if (archiving) return;
+
+    if (sheet.rows.every((row) => !row.customerName.trim() && row.days.every((value) => !value))) {
+      setArchiveMsg("This user's sheet is empty — nothing to save.");
+      return;
+    }
+
+    if (!window.confirm(`Save ${email}'s current sheet to history and reset it for a new period?`)) {
+      return;
+    }
+
+    setArchiving(true);
+    setArchiveMsg(null);
+    try {
+      await archiveSheetByEmail(email, sheet);
+      await loadDashboardData();
+      if (showHistory) {
+        setHistoryEntries(await getHistoryByEmail(email));
+      }
+      setArchiveMsg("Sheet saved to history and reset.");
+    } catch (error) {
+      setArchiveMsg(error instanceof Error ? error.message : "Failed to save to history.");
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  const handleToggleHistory = async (email: string) => {
+    if (showHistory) {
+      setShowHistory(false);
+      return;
+    }
+
+    setShowHistory(true);
+    setHistoryLoading(true);
+    try {
+      setHistoryEntries(await getHistoryByEmail(email));
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleDeleteHistoryEntry = async (email: string, entryId: string) => {
+    if (!window.confirm("Delete this saved sheet? This cannot be undone.")) {
+      return;
+    }
+
+    const nextEntries = historyEntries.filter((entry) => entry.id !== entryId);
+    setHistoryEntries(nextEntries);
+    if (expandedEntryId === entryId) {
+      setExpandedEntryId(null);
+    }
+    await saveHistoryByEmail(email, nextEntries);
+  };
+
   const selectedUser = userSnapshots.find((snapshot) => snapshot.email === selectedUserEmail) ?? null;
 
   // initialize edit fields when selectedUser changes
@@ -163,6 +307,10 @@ export default function OwnerDashboard() {
     setEditEmail(selectedUser.email || "");
     setSaveMessage(null);
     setPwResetMsg(null);
+    setArchiveMsg(null);
+    setShowHistory(false);
+    setHistoryEntries([]);
+    setExpandedEntryId(null);
   }, [selectedUserEmail]);
 
   return (
@@ -421,10 +569,138 @@ export default function OwnerDashboard() {
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Sheet Data</h4>
-                      <div className="text-xs font-medium text-slate-500">
-                        {selectedUser.sheet.rows.length} rows · {selectedUser.sheet.dayCount} days · Total {selectedUser.sheetTotal}
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="text-xs font-medium text-slate-500">
+                          {selectedUser.sheet.rows.length} rows · {selectedUser.sheet.dayCount} days · Total {selectedUser.sheetTotal}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleArchiveToHistory(selectedUser.email, selectedUser.sheet)}
+                          disabled={archiving}
+                          className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {archiving ? "Saving..." : "Save to History"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleHistory(selectedUser.email)}
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          {showHistory ? "Hide History" : "View History"}
+                        </button>
                       </div>
                     </div>
+                    {archiveMsg && (
+                      <p className="mt-2 text-xs text-slate-600">{archiveMsg}</p>
+                    )}
+
+                    {showHistory && (
+                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <h5 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Saved History</h5>
+                        {historyLoading ? (
+                          <p className="text-xs text-slate-500">Loading history...</p>
+                        ) : historyEntries.length === 0 ? (
+                          <p className="text-xs text-slate-500">No saved sheets yet for this user.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {historyEntries.map((entry, index) => {
+                              const entryTotal = entry.rows.reduce(
+                                (sum, row) => sum + row.days.reduce((rowSum, value) => rowSum + value, 0),
+                                0
+                              );
+                              const isExpanded = expandedEntryId === entry.id;
+
+                              return (
+                                <div key={entry.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
+                                    className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+                                  >
+                                    <div>
+                                      <p className="text-sm font-semibold text-slate-800">Sheet {historyEntries.length - index}</p>
+                                      <p className="text-xs text-slate-500">Saved on {formatDate(entry.savedAt)}</p>
+                                    </div>
+                                    <span className="text-xs font-medium text-slate-600">
+                                      {entry.rows.length} rows · {entry.dayCount} days · Total {entryTotal}
+                                    </span>
+                                  </button>
+
+                                  <div className="mt-2 flex justify-between gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        downloadSheetAsPdf(entry, historyEntries.length - index, selectedUser.name || selectedUser.email)
+                                      }
+                                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                                    >
+                                      Save as PDF
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteHistoryEntry(selectedUser.email, entry.id)}
+                                      className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition"
+                                    >
+                                      Delete Sheet
+                                    </button>
+                                  </div>
+
+                                  {isExpanded && (
+                                    <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+                                      <table className="min-w-[700px] border-collapse text-center text-xs">
+                                        <thead className="bg-slate-100 font-semibold text-slate-800">
+                                          <tr>
+                                            <th className="border border-slate-300 px-1 py-1">S No</th>
+                                            <th className="border border-slate-300 px-1 py-1">Customer Name</th>
+                                            {Array.from({ length: entry.dayCount }, (_, dayIndex) => (
+                                              <th key={`hist-${entry.id}-day-${dayIndex + 1}`} className="border border-slate-300 px-1 py-1">
+                                                Day {dayIndex + 1}
+                                              </th>
+                                            ))}
+                                            <th className="border border-slate-300 px-1 py-1">Total</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {(() => {
+                                            const displaySerials = buildDisplaySerialMap(entry.rows);
+                                            const groupStartIndices = buildGroupStartIndices(entry.rows);
+                                            const nameCellSpans = buildNameCellSpans(groupStartIndices);
+                                            const combinedTotals = buildCombinedTotals(entry.rows, groupStartIndices);
+
+                                            return entry.rows.map((row, rowIndex) => {
+                                              const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
+                                              const nameSpan = nameCellSpans[rowIndex];
+                                              const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : rowTotal;
+
+                                              return (
+                                                <tr key={`${entry.id}-${row.serialNumber}`} className="even:bg-slate-50">
+                                                  <td className="border border-slate-200 px-1 py-1 font-semibold">{displaySerials[rowIndex]}</td>
+                                                  {nameSpan > 0 && (
+                                                    <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left">{row.customerName}</td>
+                                                  )}
+                                                  {row.days.map((value, dayIndex) => (
+                                                    <td key={`${entry.id}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-1 py-1">
+                                                      {value}
+                                                    </td>
+                                                  ))}
+                                                  {nameSpan > 0 && (
+                                                    <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold">{displayTotal}</td>
+                                                  )}
+                                                </tr>
+                                              );
+                                            });
+                                          })()}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
                       <table className="min-w-[900px] border-collapse text-center text-xs">
@@ -444,20 +720,29 @@ export default function OwnerDashboard() {
                         <tbody>
                           {(() => {
                             const displaySerials = buildDisplaySerialMap(selectedUser.sheet.rows);
+                            const groupStartIndices = buildGroupStartIndices(selectedUser.sheet.rows);
+                            const nameCellSpans = buildNameCellSpans(groupStartIndices);
+                            const combinedTotals = buildCombinedTotals(selectedUser.sheet.rows, groupStartIndices);
                             return selectedUser.sheet.rows.map((row, rowIndex) => {
                             const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
+                            const nameSpan = nameCellSpans[rowIndex];
+                            const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : rowTotal;
 
                             return (
                               <tr key={`${selectedUser.email}-sheet-${row.serialNumber}`} className="even:bg-slate-50">
                                 <td className="border border-slate-200 px-1 py-1 font-semibold">{displaySerials[rowIndex]}</td>
-                                <td className="border border-slate-200 px-1 py-1 text-left">{row.customerName}</td>
+                                {nameSpan > 0 && (
+                                  <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left">{row.customerName}</td>
+                                )}
                                 <td className="border border-slate-200 px-1 py-1">{row.shift}</td>
                                 {row.days.map((value, dayIndex) => (
                                   <td key={`${selectedUser.email}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-1 py-1">
                                     {value}
                                   </td>
                                 ))}
-                                <td className="border border-slate-200 px-1 py-1 font-semibold">{rowTotal}</td>
+                                {nameSpan > 0 && (
+                                  <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold">{displayTotal}</td>
+                                )}
                               </tr>
                             );
                           });
@@ -475,45 +760,43 @@ export default function OwnerDashboard() {
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
                       placeholder="Full name"
-                      className="rounded-lg border border-slate-300 px-3 py-2"
+                      className="min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
                     />
                     <input
                       value={editPhone}
                       onChange={(e) => setEditPhone(e.target.value)}
                       placeholder="Phone"
-                      className="rounded-lg border border-slate-300 px-3 py-2"
+                      className="min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
                     />
                     <input
                       value={editEmail}
                       onChange={(e) => setEditEmail(e.target.value)}
                       placeholder="Email"
                       type="email"
-                      className="rounded-lg border border-slate-300 px-3 py-2"
+                      className="min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
                     />
-                    <div className="flex flex-col gap-1">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!selectedUser) return;
-                          setPwResetMsg(null);
-                          setPwResetLoading(true);
-                          try {
-                            await requestPasswordReset(selectedUser.email);
-                            setPwResetMsg("Password reset email sent!");
-                          } catch (err) {
-                            setPwResetMsg(err instanceof Error ? err.message : "Failed to send reset email");
-                          } finally {
-                            setPwResetLoading(false);
-                          }
-                        }}
-                        disabled={pwResetLoading || loading}
-                        className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition"
-                      >
-                        {pwResetLoading ? "Sending..." : "Send Password Reset Email"}
-                      </button>
-                      {pwResetMsg && <div className="text-xs text-slate-600">{pwResetMsg}</div>}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!selectedUser) return;
+                        setPwResetMsg(null);
+                        setPwResetLoading(true);
+                        try {
+                          await requestPasswordReset(selectedUser.email);
+                          setPwResetMsg("Password reset email sent!");
+                        } catch (err) {
+                          setPwResetMsg(err instanceof Error ? err.message : "Failed to send reset email");
+                        } finally {
+                          setPwResetLoading(false);
+                        }
+                      }}
+                      disabled={pwResetLoading || loading}
+                      className="min-h-[48px] w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition"
+                    >
+                      {pwResetLoading ? "Sending..." : "Send Password Reset Email"}
+                    </button>
                   </div>
+                  {pwResetMsg && <p className="mt-2 text-xs text-slate-600">{pwResetMsg}</p>}
                   <div className="mt-4 flex gap-3">
                     <button
                       onClick={async () => {

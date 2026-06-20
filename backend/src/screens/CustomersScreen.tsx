@@ -31,10 +31,36 @@ const MOBILE_WIDTH = 130;
 const ADDRESS_WIDTH = 160;
 const ACTIONS_WIDTH = 120;
 
+function groupCustomersByName(customers: Customer[]): Customer[][] {
+  const groups: Customer[][] = [];
+  let currentKey: string | null = null;
+
+  for (const customer of customers) {
+    const key = customer.name.trim().toLowerCase();
+    if (key && key === currentKey) {
+      groups[groups.length - 1].push(customer);
+    } else {
+      groups.push([customer]);
+      currentKey = key || null;
+    }
+  }
+
+  return groups;
+}
+
+function formatShiftLabel(group: Customer[]): string {
+  if (group.length > 1) {
+    const shifts = group.map((c) => c.shift).filter(Boolean);
+    return shifts.length > 0 ? shifts.join(" & ") : "M & E";
+  }
+
+  return group[0].shift || "—";
+}
+
 export default function CustomersScreen() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [editingSerial, setEditingSerial] = useState<number | null>(null);
+  const [editingSerials, setEditingSerials] = useState<number[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -53,18 +79,19 @@ export default function CustomersScreen() {
   useEffect(() => { load(); }, [load]);
 
   function handleAddClick() {
-    setEditingSerial(null);
+    setEditingSerials([]);
     setForm(EMPTY_FORM);
     setShowForm(true);
   }
 
-  function handleEditClick(customer: Customer) {
-    setEditingSerial(customer.serialNumber);
+  function handleEditClick(group: Customer[]) {
+    const [primary] = group;
+    setEditingSerials(group.map((c) => c.serialNumber));
     setForm({
-      name: customer.name,
-      mobile: customer.mobile,
-      address: customer.address,
-      shift: customer.shift ?? "",
+      name: primary.name,
+      mobile: primary.mobile,
+      address: primary.address,
+      shift: group.length > 1 ? "M/E" : primary.shift ?? "",
     });
     setShowForm(true);
   }
@@ -72,7 +99,7 @@ export default function CustomersScreen() {
   function handleCancel() {
     setShowForm(false);
     setForm(EMPTY_FORM);
-    setEditingSerial(null);
+    setEditingSerials([]);
   }
 
   async function handleSubmit() {
@@ -81,22 +108,33 @@ export default function CustomersScreen() {
       return;
     }
 
+    const name = form.name.trim();
+    const mobile = form.mobile.trim();
+    const address = form.address.trim();
+    const isEditing = editingSerials.length > 0;
+
     setSaving(true);
     try {
       let updated: Customer[];
 
       if (form.shift === "M/E") {
-        if (editingSerial !== null) {
+        if (isEditing && editingSerials.length === 2) {
           const list = await getCustomers();
-          const idx = list.findIndex((c) => c.serialNumber === editingSerial);
+          const next = list.map((c) =>
+            editingSerials.includes(c.serialNumber) ? { ...c, name, mobile, address } : c
+          );
+          updated = await saveCustomers(next);
+        } else if (isEditing) {
+          const list = await getCustomers();
+          const idx = list.findIndex((c) => c.serialNumber === editingSerials[0]);
           if (idx !== -1) {
-            list[idx] = { ...list[idx], name: form.name.trim(), mobile: form.mobile.trim(), address: form.address.trim(), shift: "M" };
+            list[idx] = { ...list[idx], name, mobile, address, shift: "M" };
           }
           const eCustomer: Customer = {
             serialNumber: list.length + 1,
-            name: form.name.trim(),
-            mobile: form.mobile.trim(),
-            address: form.address.trim(),
+            name,
+            mobile,
+            address,
             shift: "E",
             createdAt: new Date().toISOString(),
           };
@@ -105,37 +143,51 @@ export default function CustomersScreen() {
           const list = await getCustomers();
           const mCustomer: Customer = {
             serialNumber: list.length + 1,
-            name: form.name.trim(),
-            mobile: form.mobile.trim(),
-            address: form.address.trim(),
+            name,
+            mobile,
+            address,
             shift: "M",
             createdAt: new Date().toISOString(),
           };
           const list2 = await saveCustomers([...list, mCustomer]);
           const eCustomer: Customer = {
             serialNumber: list2.length + 1,
-            name: form.name.trim(),
-            mobile: form.mobile.trim(),
-            address: form.address.trim(),
+            name,
+            mobile,
+            address,
             shift: "E",
             createdAt: new Date().toISOString(),
           };
           updated = await saveCustomers([...list2, eCustomer]);
         }
-      } else if (editingSerial !== null) {
+      } else if (isEditing && editingSerials.length === 2) {
         const list = await getCustomers();
-        const idx = list.findIndex((c) => c.serialNumber === editingSerial);
+        const candidates = editingSerials.map((sn) => list.find((c) => c.serialNumber === sn));
+        let keepIndex = candidates.findIndex((c) => c?.shift === form.shift);
+        if (keepIndex === -1) keepIndex = 0;
+        const keepSerial = editingSerials[keepIndex];
+        const removeSerial = editingSerials[1 - keepIndex];
+
+        const next = list
+          .filter((c) => c.serialNumber !== removeSerial)
+          .map((c) => (c.serialNumber === keepSerial ? { ...c, name, mobile, address, shift: form.shift } : c));
+
+        const [savedCustomers] = await Promise.all([saveCustomers(next), deleteSheetRow(removeSerial)]);
+        updated = savedCustomers;
+      } else if (isEditing) {
+        const list = await getCustomers();
+        const idx = list.findIndex((c) => c.serialNumber === editingSerials[0]);
         if (idx !== -1) {
-          list[idx] = { ...list[idx], name: form.name.trim(), mobile: form.mobile.trim(), address: form.address.trim(), shift: form.shift };
+          list[idx] = { ...list[idx], name, mobile, address, shift: form.shift };
         }
         updated = await saveCustomers(list);
       } else {
         const list = await getCustomers();
         const newCustomer: Customer = {
           serialNumber: list.length + 1,
-          name: form.name.trim(),
-          mobile: form.mobile.trim(),
-          address: form.address.trim(),
+          name,
+          mobile,
+          address,
           shift: form.shift,
           createdAt: new Date().toISOString(),
         };
@@ -146,7 +198,7 @@ export default function CustomersScreen() {
       setCustomers(updated);
       setForm(EMPTY_FORM);
       setShowForm(false);
-      setEditingSerial(null);
+      setEditingSerials([]);
     } catch {
       Alert.alert("Error", "Failed to save customer.");
     } finally {
@@ -154,10 +206,11 @@ export default function CustomersScreen() {
     }
   }
 
-  function handleDelete(customer: Customer) {
+  function handleDelete(group: Customer[]) {
+    const isGroup = group.length > 1;
     Alert.alert(
       "Delete Customer",
-      "Are you sure you want to delete this customer?",
+      isGroup ? "Are you sure you want to delete this customer (both shifts)?" : "Are you sure you want to delete this customer?",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -166,10 +219,11 @@ export default function CustomersScreen() {
           onPress: async () => {
             setSaving(true);
             try {
-              const filteredCustomers = customers.filter((c) => c.serialNumber !== customer.serialNumber);
+              const serials = group.map((c) => c.serialNumber);
+              const filteredCustomers = customers.filter((c) => !serials.includes(c.serialNumber));
               const [savedCustomers] = await Promise.all([
                 saveCustomers(filteredCustomers),
-                deleteSheetRow(customer.serialNumber),
+                ...serials.map((sn) => deleteSheetRow(sn)),
               ]);
               setCustomers(savedCustomers);
             } catch {
@@ -209,7 +263,7 @@ export default function CustomersScreen() {
           {showForm && (
             <View style={t.card}>
               <Text style={s.formTitle}>
-                {editingSerial !== null ? "Edit Customer" : "Add New Customer"}
+                {editingSerials.length > 0 ? "Edit Customer" : "Add New Customer"}
               </Text>
 
               <View style={s.field}>
@@ -275,7 +329,7 @@ export default function CustomersScreen() {
                 <Pressable style={[t.button, { flex: 1 }, saving && { opacity: 0.6 }]} onPress={handleSubmit} disabled={saving}>
                   {saving
                     ? <ActivityIndicator color="#fff" />
-                    : <Text style={t.buttonText}>{editingSerial !== null ? "Update" : "Add"} Customer</Text>
+                    : <Text style={t.buttonText}>{editingSerials.length > 0 ? "Update" : "Add"} Customer</Text>
                   }
                 </Pressable>
               </View>
@@ -311,46 +365,49 @@ export default function CustomersScreen() {
                   </View>
 
                   {/* Data rows */}
-                  {customers.map((customer, index) => (
-                    <View
-                      key={customer.serialNumber}
-                      style={[s.tableRow, index % 2 === 0 ? s.rowEven : s.rowOdd]}
-                    >
-                      <View style={[s.cell, { width: S_NO_WIDTH }]}>
-                        <Text style={s.cellText}>{customer.serialNumber}</Text>
-                      </View>
-                      <View style={[s.cell, { width: NAME_WIDTH }]}>
-                        <Text style={s.cellTextBold}>{customer.name}</Text>
-                      </View>
-                      <View style={[s.cell, { width: MOBILE_WIDTH }]}>
-                        <Text style={s.cellText}>{customer.mobile || "—"}</Text>
-                      </View>
-                      <View style={[s.cell, { width: SHIFT_WIDTH }]}>
-                        <Text style={s.cellText}>{customer.shift || "—"}</Text>
-                      </View>
-                      <View style={[s.cell, { width: ADDRESS_WIDTH }]}>
-                        <Text style={s.cellText} numberOfLines={2}>{customer.address || "—"}</Text>
-                      </View>
-                      <View style={[s.cell, { width: ACTIONS_WIDTH, borderRightWidth: 0 }]}>
-                        <View style={s.actionButtons}>
-                          <Pressable
-                            style={s.editButton}
-                            onPress={() => handleEditClick(customer)}
-                            disabled={saving}
-                          >
-                            <Text style={s.editText}>Edit</Text>
-                          </Pressable>
-                          <Pressable
-                            style={s.deleteButton}
-                            onPress={() => handleDelete(customer)}
-                            disabled={saving}
-                          >
-                            <Text style={s.deleteText}>Delete</Text>
-                          </Pressable>
+                  {groupCustomersByName(customers).map((group, index) => {
+                    const primary = group[0];
+                    return (
+                      <View
+                        key={primary.serialNumber}
+                        style={[s.tableRow, index % 2 === 0 ? s.rowEven : s.rowOdd]}
+                      >
+                        <View style={[s.cell, { width: S_NO_WIDTH }]}>
+                          <Text style={s.cellText}>{index + 1}</Text>
+                        </View>
+                        <View style={[s.cell, { width: NAME_WIDTH }]}>
+                          <Text style={s.cellTextBold}>{primary.name}</Text>
+                        </View>
+                        <View style={[s.cell, { width: MOBILE_WIDTH }]}>
+                          <Text style={s.cellText}>{primary.mobile || "—"}</Text>
+                        </View>
+                        <View style={[s.cell, { width: SHIFT_WIDTH }]}>
+                          <Text style={s.cellText}>{formatShiftLabel(group)}</Text>
+                        </View>
+                        <View style={[s.cell, { width: ADDRESS_WIDTH }]}>
+                          <Text style={s.cellText} numberOfLines={2}>{primary.address || "—"}</Text>
+                        </View>
+                        <View style={[s.cell, { width: ACTIONS_WIDTH, borderRightWidth: 0 }]}>
+                          <View style={s.actionButtons}>
+                            <Pressable
+                              style={s.editButton}
+                              onPress={() => handleEditClick(group)}
+                              disabled={saving}
+                            >
+                              <Text style={s.editText}>Edit</Text>
+                            </Pressable>
+                            <Pressable
+                              style={s.deleteButton}
+                              onPress={() => handleDelete(group)}
+                              disabled={saving}
+                            >
+                              <Text style={s.deleteText}>Delete</Text>
+                            </Pressable>
+                          </View>
                         </View>
                       </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               </ScrollView>
             )}

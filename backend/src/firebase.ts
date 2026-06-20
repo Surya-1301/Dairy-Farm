@@ -212,6 +212,31 @@ export async function fetchProfileForCurrentUser(): Promise<UserProfile | null> 
   return snapshot.data() as UserProfile;
 }
 
+export async function updateUserProfileByEmail(
+  email: string,
+  updates: Partial<Pick<UserProfile, "name" | "phone" | "email">>
+): Promise<UserProfile | null> {
+  const normalized = normalizeEmail(email);
+  const snapshot = await getDoc(doc(db, USER_PROFILES_COLLECTION, normalized));
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  const existing = snapshot.data() as UserProfile;
+  const newEmail = updates.email ? normalizeEmail(updates.email) : normalized;
+
+  const nextProfile: UserProfile = {
+    ...existing,
+    name: updates.name?.trim() ?? existing.name,
+    phone: normalizePhone(updates.phone ?? existing.phone),
+    updatedAt: new Date().toISOString(),
+    email: newEmail
+  };
+
+  await setDoc(doc(db, USER_PROFILES_COLLECTION, newEmail), nextProfile, { merge: true });
+  return nextProfile;
+}
+
 export async function updateProfileForCurrentUser(
   updates: Pick<UserProfile, "name" | "email" | "phone"> & { avatarUrl?: string; farmName?: string }
 ) {

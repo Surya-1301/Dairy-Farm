@@ -214,3 +214,54 @@ export async function getSheetByEmail(email: string): Promise<SheetState> {
   }
   return createDefaultSheet();
 }
+
+export async function saveSheetByEmail(email: string, sheet: SheetState) {
+  const normalizedEmail = normalizeEmail(email);
+  await setDoc(
+    doc(db, SHEET_STATES_COLLECTION, normalizedEmail),
+    { ...sheet, updatedAt: new Date().toISOString() },
+    { merge: true }
+  );
+  return sheet;
+}
+
+export async function getHistoryByEmail(email: string): Promise<SheetHistoryEntry[]> {
+  const normalizedEmail = normalizeEmail(email);
+  const snapshot = await getDoc(doc(db, SHEET_HISTORIES_COLLECTION, normalizedEmail));
+  if (!snapshot.exists()) return [];
+  try {
+    const data = snapshot.data() as { entries?: SheetHistoryEntry[] };
+    const parsed = data.entries ?? [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function archiveSheetByEmail(email: string, sheet: SheetState) {
+  const normalizedEmail = normalizeEmail(email);
+  const history = await getHistoryByEmail(normalizedEmail);
+  const entry: SheetHistoryEntry = {
+    ...sheet,
+    id: `history-${Date.now()}`,
+    savedAt: new Date().toISOString()
+  };
+  await setDoc(
+    doc(db, SHEET_HISTORIES_COLLECTION, normalizedEmail),
+    { entries: [entry, ...history], updatedAt: new Date().toISOString() },
+    { merge: true }
+  );
+  return saveSheetByEmail(normalizedEmail, createDefaultSheet());
+}
+
+export async function deleteHistoryEntryByEmail(email: string, entryId: string) {
+  const normalizedEmail = normalizeEmail(email);
+  const history = await getHistoryByEmail(normalizedEmail);
+  const filtered = history.filter((entry) => entry.id !== entryId);
+  await setDoc(
+    doc(db, SHEET_HISTORIES_COLLECTION, normalizedEmail),
+    { entries: filtered, updatedAt: new Date().toISOString() },
+    { merge: true }
+  );
+  return filtered;
+}

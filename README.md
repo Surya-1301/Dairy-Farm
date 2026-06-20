@@ -16,12 +16,12 @@ A web + mobile dairy management system for tracking customers, daily milk entrie
 ## What The App Does
 
 - Email/password sign in, sign up, and custom password reset via EmailJS
-- Customer management — add, edit, delete
-- Editable milk data sheet (50 rows × 15 days default) with add/remove row and column
+- Customer management — add, edit, delete; a customer with both Morning and Evening shifts is shown and edited as a single grouped entry (shift displayed as "M & E")
+- Editable milk data sheet (50 rows × 15 days default) with add/remove row and column; both-shift customers share one Customer Name field and a combined Morning + Evening total
 - Dashboard summary showing customer count and total milk amount
-- Sheet history archive — save snapshots and export as PDF (mobile) or JSON (web)
+- Sheet history archive — save snapshots, export any saved sheet as PDF, and delete old entries
 - User profile management with avatar upload and in-profile password reset
-- Owner dashboard — view all registered users, milk totals, earnings, delete accounts, and reset any user's password
+- Owner dashboard — view all registered users, milk totals, and earnings; edit any user's profile (name, phone, email); save/view/export/delete any user's sheet history; reset any user's password; delete accounts
 
 ---
 
@@ -51,6 +51,7 @@ Dairy Farm/
 | React Router DOM | 6 |
 | Recharts | 2.12 |
 | Firebase | 10 |
+| jsPDF + jspdf-autotable | 4 / 5 |
 
 ### Setup
 
@@ -95,7 +96,7 @@ npm run preview   # preview production build
 | `/history` | Archived sheet snapshots |
 | `/profile` | User profile, avatar, and password reset |
 | `/reset-password` | Password reset confirmation (via emailed link) |
-| `/owner-dashboard` | Owner-only — users, milk totals, earnings, reset passwords |
+| `/owner-dashboard` | Owner-only — users, milk totals, earnings; view/edit any user's data, profile, and sheet history; reset passwords |
 
 ### Deploy
 
@@ -164,11 +165,11 @@ npm run typecheck   # TypeScript check
 | Tab | Screen |
 |---|---|
 | Dashboard | Summary — customer count and total amount |
-| Customers | Customer list — add, edit, delete |
-| Data | Editable milk sheet |
+| Customers | Customer list — add, edit, delete; both-shift customers shown as one grouped row |
+| Data | Editable milk sheet — synced customer names and combined totals for both-shift customers |
 | History | Archived sheets — view, export PDF, delete |
 | Settings | Profile edit, avatar, password reset, logout, delete account |
-| Owner Dashboard | Owner-only — registered users, analytics, reset passwords |
+| Owner Dashboard | Owner-only — registered users, analytics; edit any user's profile; save/view/export/delete any user's sheet history; reset passwords |
 
 ### Build APK / AAB
 
