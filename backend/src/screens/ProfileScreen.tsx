@@ -22,12 +22,14 @@ import {
 } from "../firebase";
 import { colors, styles as t } from "../theme";
 import type { UserProfile } from "../types";
+import { uploadImageToCloudinary } from "../utils/cloudinary";
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [pendingAvatarUri, setPendingAvatarUri] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState(false);
@@ -66,12 +68,15 @@ export default function ProfileScreen() {
     });
 
     if (!result.canceled && result.assets?.[0]) {
-      setAvatarUrl(result.assets[0].uri);
+      const uri = result.assets[0].uri;
+      setAvatarUrl(uri);
+      setPendingAvatarUri(uri);
       setMessage("");
     }
   };
 
   const removeAvatar = () => {
+    setPendingAvatarUri(null);
     setAvatarUrl("");
     setMessageType("success");
     setMessage("Avatar removed.");
@@ -153,11 +158,18 @@ export default function ProfileScreen() {
     setMessage("");
 
     try {
+      let finalAvatarUrl = avatarUrl;
+      if (pendingAvatarUri) {
+        finalAvatarUrl = await uploadImageToCloudinary(pendingAvatarUri);
+        setPendingAvatarUri(null);
+        setAvatarUrl(finalAvatarUrl);
+      }
+
       const nextProfile = await updateProfileForCurrentUser({
         email,
         name: name.trim(),
         phone: phone.trim(),
-        avatarUrl: avatarUrl.trim()
+        avatarUrl: finalAvatarUrl.trim()
       });
       setProfile(nextProfile);
       setMessageType("success");

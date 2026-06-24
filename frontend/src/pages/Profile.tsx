@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import {
   deleteCurrentAccount,
   fetchCurrentUserProfile,
@@ -11,6 +11,7 @@ import {
   updateCurrentUserProfile
 } from "../firebase/auth";
 import { useNavigate } from "react-router-dom";
+import { uploadImageToCloudinary } from "../utils/cloudinary";
 
 function Profile() {
   const navigate = useNavigate();
@@ -29,6 +30,8 @@ function Profile() {
   const [avatarUrl, setAvatarUrl] = useState(
     profile?.avatarUrl?.trim() || ""
   );
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+  const blobUrlRef = useRef("");
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState(false);
@@ -105,12 +108,21 @@ function Profile() {
     setMessage("");
 
     try {
+      let finalAvatarUrl = avatarUrl;
+      if (pendingAvatarFile) {
+        finalAvatarUrl = await uploadImageToCloudinary(pendingAvatarFile);
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = "";
+        setPendingAvatarFile(null);
+        setAvatarUrl(finalAvatarUrl);
+      }
+
       const nextProfile = await updateCurrentUserProfile({
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim(),
         farmName: profile?.farmName ?? "",
-        avatarUrl
+        avatarUrl: finalAvatarUrl
       });
       
       if (!nextProfile) {
@@ -209,20 +221,22 @@ function Profile() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "";
-      setAvatarUrl(result);
-      setMessage("");
-    };
-    reader.onerror = () => {
-      setMessageType("error");
-      setMessage("Failed to read image file.");
-    };
-    reader.readAsDataURL(file);
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+    }
+    const blobUrl = URL.createObjectURL(file);
+    blobUrlRef.current = blobUrl;
+    setAvatarUrl(blobUrl);
+    setPendingAvatarFile(file);
+    setMessage("");
   };
 
   const handleRemoveAvatar = () => {
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = "";
+    }
+    setPendingAvatarFile(null);
     setAvatarUrl("");
     setMessageType("success");
     setMessage("Avatar removed.");

@@ -10,8 +10,9 @@ This guide explains how to deploy the Dairy Farm application to Vercel, Render, 
 
 ## Environment Variables
 
-Before deploying, ensure you have these Firebase environment variables ready:
+Before deploying, ensure you have these environment variables ready:
 
+**Firebase** (from your Firebase project settings at https://console.firebase.google.com):
 - `VITE_FIREBASE_API_KEY`
 - `VITE_FIREBASE_AUTH_DOMAIN`
 - `VITE_FIREBASE_PROJECT_ID`
@@ -20,7 +21,9 @@ Before deploying, ensure you have these Firebase environment variables ready:
 - `VITE_FIREBASE_APP_ID`
 - `VITE_FIREBASE_MEASUREMENT_ID`
 
-Get these values from your Firebase project settings at https://console.firebase.google.com
+**Cloudinary** (from https://cloudinary.com — Settings → Upload → Upload presets):
+- `VITE_CLOUDINARY_CLOUD_NAME` — your cloud name shown on the dashboard
+- `VITE_CLOUDINARY_UPLOAD_PRESET` — an **unsigned** upload preset name
 
 ## Firebase Firestore Setup
 
@@ -230,6 +233,8 @@ In GitHub → repo **Settings → Secrets and variables → Actions**, add:
 - `VITE_FIREBASE_MESSAGING_SENDER_ID`
 - `VITE_FIREBASE_APP_ID`
 - `VITE_FIREBASE_MEASUREMENT_ID`
+- `VITE_CLOUDINARY_CLOUD_NAME`
+- `VITE_CLOUDINARY_UPLOAD_PRESET`
 
 ### Step 3: Deploy
 
@@ -273,6 +278,8 @@ In Vercel Dashboard → Project Settings → Environment Variables:
 |------|-------|--------------|
 | VITE_FIREBASE_API_KEY | your-api-key-here | Production, Preview, Development |
 | VITE_FIREBASE_AUTH_DOMAIN | your-project.firebaseapp.com | Production, Preview, Development |
+| VITE_CLOUDINARY_CLOUD_NAME | your-cloud-name | Production, Preview, Development |
+| VITE_CLOUDINARY_UPLOAD_PRESET | your-unsigned-preset | Production, Preview, Development |
 | ... | ... | ... |
 
 ### For Render (UI Method)

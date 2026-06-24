@@ -52,6 +52,7 @@ Dairy Farm/
 | Recharts | 2.12 |
 | Firebase | 10 |
 | jsPDF + jspdf-autotable | 4 / 5 |
+| Cloudinary | REST API |
 
 ### Setup
 
@@ -71,11 +72,15 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
 VITE_OWNER_EMAIL=owner@example.com
+VITE_CLOUDINARY_CLOUD_NAME=your_cloud_name
+VITE_CLOUDINARY_UPLOAD_PRESET=your_unsigned_upload_preset
 VITE_EMAILJS_SERVICE_ID=your_emailjs_service_id
 VITE_EMAILJS_TEMPLATE_ID=your_emailjs_otp_template_id
 VITE_EMAILJS_RESET_TEMPLATE_ID=your_emailjs_reset_template_id
 VITE_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
 ```
+
+`VITE_CLOUDINARY_CLOUD_NAME` is the cloud name shown on your Cloudinary dashboard. `VITE_CLOUDINARY_UPLOAD_PRESET` must be an **unsigned** upload preset (Settings → Upload → Upload presets). Avatar images are uploaded to Cloudinary on profile save; the returned `secure_url` is stored in Firestore.
 
 ### Scripts
 
@@ -122,6 +127,7 @@ Deploy `dist/` to Vercel, Netlify, Firebase Hosting, or any static host. See `DE
 | React Navigation | 6 |
 | expo-print | 13 |
 | expo-sharing | 12 |
+| Cloudinary | REST API |
 
 ### Setup
 
@@ -143,13 +149,15 @@ EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
 EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
 EXPO_PUBLIC_OWNER_EMAIL=owner@example.com
+EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME=your_cloud_name
+EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET=your_unsigned_upload_preset
 EXPO_PUBLIC_EMAILJS_SERVICE_ID=your_emailjs_service_id
 EXPO_PUBLIC_EMAILJS_TEMPLATE_ID=your_emailjs_otp_template_id
 EXPO_PUBLIC_EMAILJS_RESET_TEMPLATE_ID=your_emailjs_reset_template_id
 EXPO_PUBLIC_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
 ```
 
-Use the same Firebase project as the web app.
+Use the same Firebase project as the web app. Use the same Cloudinary cloud name and upload preset as the web app.
 
 ### Scripts
 
