@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   addCustomer,
   deleteCustomer,
@@ -39,6 +39,9 @@ function Customers() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingIds, setEditingIds] = useState<number[]>([]);
+  const rowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
+  const pendingScrollToSerial = useRef<number | null>(null);
+  const shouldScrollBack = useRef(false);
   const [formData, setFormData] = useState({
     name: "",
     mobile: "",
@@ -64,6 +67,31 @@ function Customers() {
     return unsubscribe;
   }, []);
 
+  useEffect(() => {
+    if (
+      showForm ||
+      !shouldScrollBack.current ||
+      pendingScrollToSerial.current == null
+    ) {
+      return;
+    }
+
+    const serialNumber = pendingScrollToSerial.current;
+    const row = rowRefs.current[serialNumber];
+    if (!row) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      row.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      shouldScrollBack.current = false;
+      pendingScrollToSerial.current = null;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [customers, showForm]);
+
   const handleAddClick = () => {
     setEditingIds([]);
     setFormData({ name: "", mobile: "", address: "", shift: "" });
@@ -72,6 +100,7 @@ function Customers() {
 
   const handleEditClick = (group: Customer[]) => {
     const [primary] = group;
+    pendingScrollToSerial.current = primary.serialNumber;
     setEditingIds(group.map((customer) => customer.serialNumber));
     setFormData({
       name: primary.name,
@@ -80,6 +109,10 @@ function Customers() {
       shift: group.length > 1 ? "M/E" : primary.shift ?? ""
     });
     setShowForm(true);
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,6 +151,12 @@ function Customers() {
       } else {
         await addCustomer(formData.name, formData.mobile, formData.address, formData.shift);
       }
+    }
+
+    const targetSerial = editingIds[0] ?? null;
+    if (targetSerial != null) {
+      pendingScrollToSerial.current = targetSerial;
+      shouldScrollBack.current = true;
     }
 
     setShowForm(false);
@@ -266,7 +305,13 @@ function Customers() {
                 const primary = group[0];
 
                 return (
-                  <tr key={primary.serialNumber} className="hover:bg-slate-50">
+                  <tr
+                    key={primary.serialNumber}
+                    ref={(node) => {
+                      rowRefs.current[primary.serialNumber] = node;
+                    }}
+                    className="hover:bg-slate-50"
+                  >
                     <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">{groupIndex + 1}</td>
                     <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 font-medium">{primary.name}</td>
                     <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden md:table-cell">{primary.mobile}</td>
