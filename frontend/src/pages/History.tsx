@@ -4,12 +4,34 @@ import autoTable from "jspdf-autotable";
 import { getActiveUser } from "../firebase/auth";
 import { getHistoryByEmail, saveHistoryByEmail, type SheetHistoryEntry } from "../firebase/data";
 
+function buildDisplaySerialMap(rows: { customerName: string; serialNumber: number }[]): string[] {
+  const serialByCustomer = new Map<string, number>();
+  let nextSerial = 1;
+
+  return rows.map((row) => {
+    const key = row.customerName.trim().toLowerCase();
+
+    if (!key) {
+      return String(row.serialNumber);
+    }
+
+    if (serialByCustomer.has(key)) {
+      return "";
+    }
+
+    serialByCustomer.set(key, nextSerial);
+    nextSerial += 1;
+    return String(nextSerial - 1);
+  });
+}
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
 function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
   const doc = new jsPDF({ orientation: "landscape" });
+  const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
 
   const total = entry.rows.reduce(
     (entryTotal, row) => entryTotal + row.days.reduce((rowTotal, value) => rowTotal + value, 0),
@@ -25,9 +47,9 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
     ["S No", "Customer Name", ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`), "Total"],
   ];
 
-  const body = entry.rows.map((row) => {
+  const body = entry.rows.map((row, index) => {
     const rowTotal = row.days.reduce((sum, v) => sum + v, 0);
-    return [row.serialNumber, row.customerName, ...row.days, rowTotal];
+    return [displaySerialNumbers[index] ?? String(row.serialNumber), row.customerName, ...row.days, rowTotal];
   });
 
   autoTable(doc, {
@@ -139,12 +161,15 @@ function History() {
                       </tr>
                     </thead>
                     <tbody>
-                      {entry.rows.map((row) => {
+                      {(() => {
+                        const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
+
+                        return entry.rows.map((row, index) => {
                         const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
 
                         return (
                           <tr key={row.serialNumber} className="even:bg-slate-50">
-                            <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">{row.serialNumber}</td>
+                            <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">{displaySerialNumbers[index]}</td>
                             <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1 text-left">{row.customerName}</td>
                             {row.days.map((dayValue, dayIndex) => (
                               <td key={`${row.serialNumber}-${dayIndex}`} className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">
@@ -154,7 +179,8 @@ function History() {
                             <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1 font-semibold">{rowTotal}</td>
                           </tr>
                         );
-                      })}
+                        });
+                      })()}
                     </tbody>
                   </table>
                 </div>

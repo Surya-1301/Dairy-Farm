@@ -102,8 +102,16 @@ export default function DataScreen() {
   };
 
   const persist = (nextSheet: SheetState) => {
-    setSheet(nextSheet);
-    void saveSheet(nextSheet);
+    const normalizedSheet = {
+      ...nextSheet,
+      rows: nextSheet.rows.map((row, index) => ({
+        ...row,
+        serialNumber: index + 1
+      }))
+    };
+
+    setSheet(normalizedSheet);
+    void saveSheet(normalizedSheet);
   };
 
   const updateCustomerName = (serialNumber: number, customerName: string) => {

@@ -64,6 +64,23 @@ function normalizeRows(rows: SheetRow[], dayCount: number): SheetRow[] {
   }));
 }
 
+function normalizeSheetState(sheet: SheetState): SheetState {
+  return {
+    dayCount: sheet.dayCount,
+    rows: normalizeRows(sheet.rows, sheet.dayCount)
+  };
+}
+
+function cloneSheetState(sheet: SheetState): SheetState {
+  return {
+    dayCount: sheet.dayCount,
+    rows: sheet.rows.map((row) => ({
+      ...row,
+      days: [...row.days]
+    }))
+  };
+}
+
 function normalizeCustomers(customers: Customer[]): Customer[] {
   return customers.map((customer, index) => ({
     serialNumber: index + 1,
@@ -141,13 +158,10 @@ export function subscribeSheetByEmail(email: string, callback: (sheet: SheetStat
 
 export async function saveSheetByEmail(email: string, sheet: SheetState): Promise<SheetState> {
   if (!db) {
-    return sheet;
+    return normalizeSheetState(sheet);
   }
 
-  const normalized: SheetState = {
-    dayCount: sheet.dayCount,
-    rows: normalizeRows(sheet.rows, sheet.dayCount)
-  };
+  const normalized = normalizeSheetState(sheet);
 
   await setDoc(
     doc(db, SHEET_STATES_COLLECTION, normalizeEmail(email)),
@@ -188,8 +202,9 @@ export async function saveHistoryByEmail(email: string, entries: SheetHistoryEnt
 
 export async function archiveSheetByEmail(email: string, sheet: SheetState): Promise<SheetState> {
   const history = await getHistoryByEmail(email);
+  const archivedSheet = cloneSheetState(sheet);
   const entry: SheetHistoryEntry = {
-    ...sheet,
+    ...archivedSheet,
     id: `history-${Date.now()}`,
     savedAt: new Date().toISOString()
   };

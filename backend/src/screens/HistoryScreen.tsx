@@ -8,25 +8,24 @@ import { getHistory, deleteHistoryEntry } from "../storage";
 import { colors } from "../theme";
 import type { SheetHistoryEntry } from "../types";
 
-function buildDisplaySerialMap(entry: SheetHistoryEntry) {
+function buildDisplaySerialMap(rows: { customerName: string; serialNumber: number }[]) {
   const serialByCustomer = new Map<string, number>();
   let nextSerial = 1;
 
-  return entry.rows.map((row) => {
+  return rows.map((row) => {
     const key = row.customerName.trim().toLowerCase();
 
     if (!key) {
       return String(row.serialNumber);
     }
 
-    const existingSerial = serialByCustomer.get(key);
-    if (existingSerial) {
+    if (serialByCustomer.has(key)) {
       return "";
     }
 
     serialByCustomer.set(key, nextSerial);
     nextSerial += 1;
-    return String(serialByCustomer.get(key) as number);
+    return String(nextSerial - 1);
   });
 }
 
@@ -40,13 +39,13 @@ function escapeHtml(value: string) {
 }
 
 function buildHistoryPdfHtml(entry: SheetHistoryEntry) {
-  const displaySerialNumbers = buildDisplaySerialMap(entry);
+  const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
   const savedDate = new Date(entry.savedAt).toLocaleString();
   const rowsHtml = entry.rows
     .map((row, index) => {
       const total = row.days.reduce((sum, value) => sum + value, 0);
       const cells = [
-        `<td class="serial">${escapeHtml(displaySerialNumbers[index] ?? "")}</td>`,
+        `<td class="serial">${escapeHtml(displaySerialNumbers[index] ?? String(row.serialNumber))}</td>`,
         `<td class="name">${escapeHtml(row.customerName)}</td>`,
         `<td class="shift">${escapeHtml(row.shift ?? "")}</td>`,
         ...row.days.map((value) => `<td class="day">${value === 0 ? "" : String(value)}</td>`),
@@ -309,53 +308,42 @@ export default function HistoryScreen() {
           {selectedEntry && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.previewTable}>
-                <View style={[styles.previewRow, styles.previewHeaderRow]}>
-                  <Text style={[styles.previewCell, styles.serialPreviewCell, styles.previewHeaderText]}>S No</Text>
-                  <Text style={[styles.previewCell, styles.namePreviewCell, styles.previewHeaderText]}>Customer</Text>
-                  <Text style={[styles.previewCell, styles.shiftPreviewCell, styles.previewHeaderText]}>Shift</Text>
-                  {Array.from({ length: selectedEntry.dayCount }, (_, index) => (
-                    <Text key={index} style={[styles.previewCell, styles.dayPreviewCell, styles.previewHeaderText]}>
-                      Day {index + 1}
-                    </Text>
-                  ))}
-                  <Text style={[styles.previewCell, styles.totalPreviewCell, styles.previewHeaderText]}>Total</Text>
-                </View>
-
-                {selectedEntry.rows.map((row, index) => {
-                  const total = row.days.reduce((sum, value) => sum + value, 0);
-                  const serialByCustomer = new Map<string, number>();
-                  let nextSerial = 1;
-                  const displaySerialNumbers = selectedEntry.rows.map((currentRow) => {
-                    const key = currentRow.customerName.trim().toLowerCase();
-
-                    if (!key) {
-                      return String(currentRow.serialNumber);
-                    }
-
-                    const existingSerial = serialByCustomer.get(key);
-                    if (existingSerial) {
-                      return "";
-                    }
-
-                    serialByCustomer.set(key, nextSerial);
-                    nextSerial += 1;
-                    return String(serialByCustomer.get(key) as number);
-                  });
+                {(() => {
+                  const displaySerialNumbers = buildDisplaySerialMap(selectedEntry.rows);
 
                   return (
-                    <View key={`${row.serialNumber}-${index}`} style={styles.previewRow}>
-                      <Text style={[styles.previewCell, styles.serialPreviewCell]}>{displaySerialNumbers[index]}</Text>
-                      <Text style={[styles.previewCell, styles.namePreviewCell]}>{row.customerName}</Text>
-                      <Text style={[styles.previewCell, styles.shiftPreviewCell]}>{row.shift ?? ""}</Text>
-                      {row.days.map((value, dayIndex) => (
-                        <Text key={dayIndex} style={[styles.previewCell, styles.dayPreviewCell]}>
-                          {value === 0 ? "" : String(value)}
-                        </Text>
-                      ))}
-                      <Text style={[styles.previewCell, styles.totalPreviewCell]}>{total.toFixed(1)}</Text>
-                    </View>
+                    <>
+                      <View style={[styles.previewRow, styles.previewHeaderRow]}>
+                        <Text style={[styles.previewCell, styles.serialPreviewCell, styles.previewHeaderText]}>S No</Text>
+                        <Text style={[styles.previewCell, styles.namePreviewCell, styles.previewHeaderText]}>Customer</Text>
+                        <Text style={[styles.previewCell, styles.shiftPreviewCell, styles.previewHeaderText]}>Shift</Text>
+                        {Array.from({ length: selectedEntry.dayCount }, (_, index) => (
+                          <Text key={index} style={[styles.previewCell, styles.dayPreviewCell, styles.previewHeaderText]}>
+                            Day {index + 1}
+                          </Text>
+                        ))}
+                        <Text style={[styles.previewCell, styles.totalPreviewCell, styles.previewHeaderText]}>Total</Text>
+                      </View>
+
+                      {selectedEntry.rows.map((row, index) => {
+                        const total = row.days.reduce((sum, value) => sum + value, 0);
+                        return (
+                          <View key={`${row.serialNumber}-${index}`} style={styles.previewRow}>
+                            <Text style={[styles.previewCell, styles.serialPreviewCell]}>{displaySerialNumbers[index]}</Text>
+                            <Text style={[styles.previewCell, styles.namePreviewCell]}>{row.customerName}</Text>
+                            <Text style={[styles.previewCell, styles.shiftPreviewCell]}>{row.shift ?? ""}</Text>
+                            {row.days.map((value, dayIndex) => (
+                              <Text key={dayIndex} style={[styles.previewCell, styles.dayPreviewCell]}>
+                                {value === 0 ? "" : String(value)}
+                              </Text>
+                            ))}
+                            <Text style={[styles.previewCell, styles.totalPreviewCell]}>{total.toFixed(1)}</Text>
+                          </View>
+                        );
+                      })}
+                    </>
                   );
-                })}
+                })()}
               </View>
             </ScrollView>
           )}

@@ -38,16 +38,35 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
+function buildDisplaySerialMap(rows: { customerName: string; serialNumber: number }[]): string[] {
+  const serialByCustomer = new Map<string, number>();
+  let nextSerial = 1;
+
+  return rows.map((row) => {
+    const key = row.customerName.trim().toLowerCase();
+
+    if (!key) {
+      return String(row.serialNumber);
+    }
+
+    if (serialByCustomer.has(key)) {
+      return "";
+    }
+
+    serialByCustomer.set(key, nextSerial);
+    nextSerial += 1;
+    return String(nextSerial - 1);
+  });
+}
+
 function buildHistoryPdfHtml(entry: SheetHistoryEntry, ownerLabel: string) {
-  const displaySerialNumbers = buildGroupStartIndices(entry.rows).map((start, index) =>
-    start === index ? String(index + 1) : ""
-  );
+  const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
   const savedDate = formatDate(entry.savedAt);
   const rowsHtml = entry.rows
     .map((row, index) => {
       const total = row.days.reduce((sum, value) => sum + (value || 0), 0);
       const cells = [
-        `<td class="serial">${escapeHtml(displaySerialNumbers[index] ?? "")}</td>`,
+        `<td class="serial">${escapeHtml(displaySerialNumbers[index] ?? String(row.serialNumber))}</td>`,
         `<td class="name">${escapeHtml(row.customerName)}</td>`,
         `<td class="shift">${escapeHtml(row.shift ?? "")}</td>`,
         ...row.days.map((value) => `<td class="day">${value === 0 ? "" : String(value)}</td>`),
@@ -681,6 +700,7 @@ export default function OwnerDashboardScreen() {
                                     const groupStartIndices = buildGroupStartIndices(entry.rows);
                                     const nameCellSpans = buildNameCellSpans(groupStartIndices);
                                     const combinedTotals = buildCombinedTotals(entry.rows, groupStartIndices);
+                                    const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
 
                                     return entry.rows.map((row, ri) => {
                                       const rowTotal = row.days.reduce((sum, v) => sum + (v || 0), 0);
@@ -690,7 +710,7 @@ export default function OwnerDashboardScreen() {
 
                                       return (
                                         <View key={`hist-${entry.id}-row-${ri}`} style={[s.tableRow, ri % 2 === 1 && s.tableRowAlt]}>
-                                          <Text style={[s.tableCell, { width: 40 }]}>{row.serialNumber}</Text>
+                                          <Text style={[s.tableCell, { width: 40 }]}>{displaySerialNumbers[ri]}</Text>
                                           <Text style={[s.tableCell, { width: 120 }]} numberOfLines={1}>
                                             {isMergedAway ? "" : row.customerName || "-"}
                                           </Text>

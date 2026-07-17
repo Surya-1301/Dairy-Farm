@@ -25,6 +25,23 @@ function normalizeRows(rows: SheetRow[], dayCount: number) {
   }));
 }
 
+function normalizeSheetState(sheet: SheetState): SheetState {
+  return {
+    dayCount: sheet.dayCount,
+    rows: normalizeRows(sheet.rows, sheet.dayCount)
+  };
+}
+
+function cloneSheetState(sheet: SheetState): SheetState {
+  return {
+    dayCount: sheet.dayCount,
+    rows: sheet.rows.map((row) => ({
+      ...row,
+      days: [...row.days]
+    }))
+  };
+}
+
 function loadDefaultSheet(): SheetState {
   return createDefaultSheet();
 }
@@ -121,12 +138,17 @@ export async function saveSheet(sheet: SheetState) {
 
 export async function syncSheetCustomerNames(customers: Customer[]) {
   const sheet = await getSheet();
-  const rows = sheet.rows.map((row) => {
+  const rows = sheet.rows.map((row, index) => {
     const customer = customers.find((item) => item.serialNumber === row.serialNumber);
     if (customer?.name) {
-      return { ...row, customerName: customer.name, shift: customer.shift || row.shift };
+      return {
+        ...row,
+        serialNumber: index + 1,
+        customerName: customer.name,
+        shift: customer.shift || row.shift
+      };
     }
-    return row;
+    return { ...row, serialNumber: index + 1 };
   });
   return saveSheet({ ...sheet, rows });
 }
@@ -158,8 +180,9 @@ export async function getHistory(): Promise<SheetHistoryEntry[]> {
 export async function archiveSheet(sheet: SheetState) {
   const email = requireActiveUserEmail();
   const history = await getHistory();
+  const archivedSheet = cloneSheetState(sheet);
   const entry: SheetHistoryEntry = {
-    ...sheet,
+    ...archivedSheet,
     id: `history-${Date.now()}`,
     savedAt: new Date().toISOString()
   };

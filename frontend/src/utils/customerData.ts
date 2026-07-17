@@ -39,6 +39,24 @@ export async function addCustomer(name: string, mobile: string, address: string,
   return savedCustomers[savedCustomers.length - 1];
 }
 
+async function saveReorderedCustomers(customers: Customer[]): Promise<Customer[]> {
+  const normalizedCustomers = customers.map((customer, index) => ({
+    ...customer,
+    serialNumber: index + 1
+  }));
+
+  await saveCustomersByEmail(getRequiredUserEmail(), normalizedCustomers);
+  notifyCustomersChanged();
+  return normalizedCustomers;
+}
+
+function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
+  const nextItems = [...items];
+  const [item] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, item);
+  return nextItems;
+}
+
 export async function updateCustomer(
   serialNumber: number,
   name: string,
@@ -67,6 +85,71 @@ export async function updateCustomer(
   await saveCustomersByEmail(getRequiredUserEmail(), nextCustomers);
   notifyCustomersChanged();
   return nextCustomers[index];
+}
+
+export async function moveCustomer(serialNumber: number, direction: "up" | "down"): Promise<Customer[] | null> {
+  const email = getRequiredUserEmail();
+  const customers = await getCustomersByEmail(email);
+  const index = customers.findIndex((customer) => customer.serialNumber === serialNumber);
+  if (index === -1) {
+    return null;
+  }
+
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= customers.length) {
+    return customers;
+  }
+
+  const nextCustomers = moveItem(customers, index, targetIndex);
+
+  const sheet = await getSheetByEmail(email);
+  const nextRows = index < sheet.rows.length && targetIndex < sheet.rows.length
+    ? moveItem(sheet.rows, index, targetIndex)
+    : sheet.rows;
+
+  await Promise.all([
+    saveReorderedCustomers(nextCustomers),
+    saveSheetByEmail(email, {
+      dayCount: sheet.dayCount,
+      rows: nextRows.map((row, rowIndex) => ({ ...row, serialNumber: rowIndex + 1 }))
+    })
+  ]);
+
+  notifyMilkDataChanged();
+  return nextCustomers;
+}
+
+export async function moveCustomerToPosition(
+  serialNumber: number,
+  targetSerialNumber: number,
+  position: "before" | "after" = "before"
+): Promise<Customer[] | null> {
+  const email = getRequiredUserEmail();
+  const customers = await getCustomersByEmail(email);
+  const fromIndex = customers.findIndex((customer) => customer.serialNumber === serialNumber);
+  const targetIndex = customers.findIndex((customer) => customer.serialNumber === targetSerialNumber);
+
+  if (fromIndex === -1 || targetIndex === -1 || fromIndex === targetIndex) {
+    return customers;
+  }
+
+  const destinationIndex = position === "after" ? targetIndex + 1 : targetIndex;
+  const nextCustomers = moveItem(customers, fromIndex, destinationIndex > customers.length ? customers.length : destinationIndex);
+  const sheet = await getSheetByEmail(email);
+  const nextRows = fromIndex < sheet.rows.length && targetIndex < sheet.rows.length
+    ? moveItem(sheet.rows, fromIndex, destinationIndex > sheet.rows.length ? sheet.rows.length : destinationIndex)
+    : sheet.rows;
+
+  await Promise.all([
+    saveReorderedCustomers(nextCustomers),
+    saveSheetByEmail(email, {
+      dayCount: sheet.dayCount,
+      rows: nextRows.map((row, rowIndex) => ({ ...row, serialNumber: rowIndex + 1 }))
+    })
+  ]);
+
+  notifyMilkDataChanged();
+  return nextCustomers;
 }
 
 export async function deleteCustomer(serialNumber: number): Promise<boolean> {

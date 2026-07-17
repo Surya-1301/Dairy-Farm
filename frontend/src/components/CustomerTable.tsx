@@ -125,16 +125,17 @@ function CustomerTable() {
 
         setSheetState((prev) => {
           const { dayCount: prevDayCount, rows: prevRows } = prev;
-          const updatedRows = prevRows.map((row) => {
+          const updatedRows = prevRows.map((row, index) => {
             const customer = customers.find((c) => c.serialNumber === row.serialNumber);
             if (customer && customer.name) {
               return {
                 ...row,
+                serialNumber: index + 1,
                 customerName: customer.name,
                 shift: customer.shift || row.shift
               };
             }
-            return row;
+            return { ...row, serialNumber: index + 1 };
           });
 
           const changed = updatedRows.some(
@@ -163,10 +164,16 @@ function CustomerTable() {
   }, []);
 
   const saveState = (nextState: SheetState) => {
-    setSheetState(nextState);
+    const normalizedRows = nextState.rows.map((row, index) => ({
+      ...row,
+      serialNumber: index + 1
+    }));
+    const normalizedState = { ...nextState, rows: normalizedRows };
+
+    setSheetState(normalizedState);
     const activeUser = getActiveUser();
     if (activeUser?.email) {
-      void saveSheetByEmail(activeUser.email, nextState);
+      void saveSheetByEmail(activeUser.email, normalizedState);
     }
 
     notifyMilkDataChanged();
@@ -365,8 +372,13 @@ function CustomerTable() {
                       <input
                         type="number"
                         min="0"
-                        step="0.1"
+                        step="1"
                         value={value === 0 ? "" : value}
+                        onKeyDown={(event) => {
+                          if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                            event.preventDefault();
+                          }
+                        }}
                         onChange={(event) =>
                           updateDayValue(row.serialNumber, dayIndex, event.target.value)
                         }

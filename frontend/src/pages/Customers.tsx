@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   addCustomer,
   deleteCustomer,
   getCustomers,
+  moveCustomerToPosition,
   subscribeCustomersChanged,
   updateCustomer
 } from "../utils/customerData";
@@ -36,15 +37,21 @@ function formatShiftLabel(group: Customer[]): string {
 
 function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [draggedSerial, setDraggedSerial] = useState<number | null>(null);
+  const [dropSerial, setDropSerial] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingIds, setEditingIds] = useState<number[]>([]);
+  const rowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
+  const pendingScrollToSerial = useRef<number | null>(null);
+  const shouldScrollBack = useRef(false);
   const [formData, setFormData] = useState({
     name: "",
     mobile: "",
     address: "",
     shift: ""
   });
+  const groupedCustomers = groupCustomersByName(customers);
 
   useEffect(() => {
     const loadCustomers = async () => {
@@ -64,6 +71,31 @@ function Customers() {
     return unsubscribe;
   }, []);
 
+  useEffect(() => {
+    if (
+      showForm ||
+      !shouldScrollBack.current ||
+      pendingScrollToSerial.current == null
+    ) {
+      return;
+    }
+
+    const serialNumber = pendingScrollToSerial.current;
+    const row = rowRefs.current[serialNumber];
+    if (!row) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      row.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      shouldScrollBack.current = false;
+      pendingScrollToSerial.current = null;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [customers, showForm]);
+
   const handleAddClick = () => {
     setEditingIds([]);
     setFormData({ name: "", mobile: "", address: "", shift: "" });
@@ -72,6 +104,7 @@ function Customers() {
 
   const handleEditClick = (group: Customer[]) => {
     const [primary] = group;
+    pendingScrollToSerial.current = primary.serialNumber;
     setEditingIds(group.map((customer) => customer.serialNumber));
     setFormData({
       name: primary.name,
@@ -80,6 +113,10 @@ function Customers() {
       shift: group.length > 1 ? "M/E" : primary.shift ?? ""
     });
     setShowForm(true);
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -120,6 +157,12 @@ function Customers() {
       }
     }
 
+    const targetSerial = editingIds[0] ?? null;
+    if (targetSerial != null) {
+      pendingScrollToSerial.current = targetSerial;
+      shouldScrollBack.current = true;
+    }
+
     setShowForm(false);
     setFormData({ name: "", mobile: "", address: "", shift: "" });
     setEditingIds([]);
@@ -136,6 +179,55 @@ function Customers() {
         await deleteCustomer(serialNumber);
       }
     }
+  };
+
+  const handleMove = async (serialNumber: number, direction: "up" | "down") => {
+    await moveCustomerToPosition(
+      serialNumber,
+      direction === "up" ? serialNumber - 1 : serialNumber + 1,
+      direction === "up" ? "before" : "after"
+    );
+  };
+
+  const handleDragStart = (serialNumber: number) => (event: React.DragEvent<HTMLTableRowElement>) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(serialNumber));
+    setDraggedSerial(serialNumber);
+  };
+
+  const handleDragOver = (serialNumber: number) => (event: React.DragEvent<HTMLTableRowElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropSerial(serialNumber);
+  };
+
+  const handleDrop = (serialNumber: number) => async (event: React.DragEvent<HTMLTableRowElement>) => {
+    event.preventDefault();
+    const sourceSerial = draggedSerial ?? Number(event.dataTransfer.getData("text/plain"));
+
+    if (!Number.isFinite(sourceSerial) || sourceSerial === serialNumber) {
+      setDraggedSerial(null);
+      setDropSerial(null);
+      return;
+    }
+
+    const targetRow = rowRefs.current[serialNumber];
+    if (!targetRow) {
+      setDraggedSerial(null);
+      setDropSerial(null);
+      return;
+    }
+
+    const rect = targetRow.getBoundingClientRect();
+    const insertAfter = event.clientY > rect.top + rect.height / 2;
+    await moveCustomerToPosition(sourceSerial, serialNumber, insertAfter ? "after" : "before");
+    setDraggedSerial(null);
+    setDropSerial(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedSerial(null);
+    setDropSerial(null);
   };
 
   const handleCancel = () => {
@@ -262,11 +354,24 @@ function Customers() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {groupCustomersByName(customers).map((group, groupIndex) => {
+              {groupedCustomers.map((group, groupIndex) => {
                 const primary = group[0];
+                const isDragging = draggedSerial === primary.serialNumber;
+                const isDropTarget = dropSerial === primary.serialNumber;
 
                 return (
-                  <tr key={primary.serialNumber} className="hover:bg-slate-50">
+                  <tr
+                    key={primary.serialNumber}
+                    ref={(node) => {
+                      rowRefs.current[primary.serialNumber] = node;
+                    }}
+                    draggable
+                    onDragStart={handleDragStart(primary.serialNumber)}
+                    onDragOver={handleDragOver(primary.serialNumber)}
+                    onDrop={handleDrop(primary.serialNumber)}
+                    onDragEnd={handleDragEnd}
+                    className={`hover:bg-slate-50 ${isDragging ? "opacity-50" : ""} ${isDropTarget ? "ring-2 ring-brand-500 ring-inset" : ""} cursor-grab active:cursor-grabbing`}
+                  >
                     <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">{groupIndex + 1}</td>
                     <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 font-medium">{primary.name}</td>
                     <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden md:table-cell">{primary.mobile}</td>
