@@ -366,8 +366,6 @@ function Customers() {
                       rowRefs.current[primary.serialNumber] = node;
                     }}
 
-                    className="hover:bg-slate-50"
-
                     draggable
                     onDragStart={handleDragStart(primary.serialNumber)}
                     onDragOver={handleDragOver(primary.serialNumber)}
