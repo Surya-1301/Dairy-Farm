@@ -365,14 +365,24 @@ function Customers() {
                     ref={(node) => {
                       rowRefs.current[primary.serialNumber] = node;
                     }}
+<<<<<<< HEAD
 
+=======
+<<<<<<< HEAD
+                    className="hover:bg-slate-50"
+=======
+>>>>>>> 4d4df79 (Update customer data and history screens)
                     draggable
                     onDragStart={handleDragStart(primary.serialNumber)}
                     onDragOver={handleDragOver(primary.serialNumber)}
                     onDrop={handleDrop(primary.serialNumber)}
                     onDragEnd={handleDragEnd}
                     className={`hover:bg-slate-50 ${isDragging ? "opacity-50" : ""} ${isDropTarget ? "ring-2 ring-brand-500 ring-inset" : ""} cursor-grab active:cursor-grabbing`}
+<<<<<<< HEAD
 
+=======
+>>>>>>> f389299 (Update customer data and history screens)
+>>>>>>> 4d4df79 (Update customer data and history screens)
                   >
                     <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">{groupIndex + 1}</td>
                     <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 font-medium">{primary.name}</td>
