@@ -75,8 +75,11 @@ type UserSnapshot = UserProfile & {
 
 function UpdatedCard({ updatedAt }: { updatedAt?: string }) {
   return (
-    <div className="mt-2 text-base font-semibold text-slate-900">
-      {updatedAt ? new Date(updatedAt).toLocaleString([], { hour12: true, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-"}
+    <div className="text-right text-xs font-medium text-slate-500">
+      <div>Last Updated</div>
+      <div className="mt-1">
+        {updatedAt ? new Date(updatedAt).toLocaleString([], { hour12: true, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-"}
+      </div>
     </div>
   );
 }
@@ -103,6 +106,22 @@ function buildDisplaySerialMap(rows: { customerName: string; serialNumber: numbe
     nextSerial += 1;
     return String(nextSerial - 1);
   });
+}
+
+function getCustomerCount(rows: { customerName: string; serialNumber: number }[]): number {
+  const customerNames = new Set<string>();
+  let unnamedCount = 0;
+
+  rows.forEach((row) => {
+    const key = row.customerName.trim().toLowerCase();
+    if (key) {
+      customerNames.add(key);
+    } else {
+      unnamedCount += 1;
+    }
+  });
+
+  return customerNames.size + unnamedCount;
 }
 
 function buildGroupStartIndices(rows: { customerName: string }[]): number[] {
@@ -206,7 +225,7 @@ export default function OwnerDashboard() {
             customers,
             sheet,
             customerCount: uniqueCustomers,
-            sheetRowCount: sheet.rows.length,
+            sheetRowCount: sheet.rows.filter((row) => row.customerName.trim() || row.shift.trim()).length,
             sheetTotal
           };
         })
@@ -278,6 +297,7 @@ export default function OwnerDashboard() {
     setShowHistory(true);
     setHistoryLoading(true);
     try {
+      await loadDashboardData();
       setHistoryEntries(await getHistoryByEmail(email));
     } finally {
       setHistoryLoading(false);
@@ -312,6 +332,31 @@ export default function OwnerDashboard() {
     setHistoryEntries([]);
     setExpandedEntryId(null);
   }, [selectedUserEmail]);
+
+  // Keep the opened user details screen updated with the latest customers, data sheet, and history.
+  useEffect(() => {
+    if (!selectedUserEmail) return;
+
+    let cancelled = false;
+
+    const refreshSelectedUserData = async () => {
+      await loadDashboardData();
+
+      if (!cancelled && showHistory) {
+        setHistoryEntries(await getHistoryByEmail(selectedUserEmail));
+      }
+    };
+
+    void refreshSelectedUserData();
+    const interval = window.setInterval(() => {
+      void refreshSelectedUserData();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedUserEmail, showHistory]);
 
   return (
     <Layout>
@@ -372,7 +417,7 @@ export default function OwnerDashboard() {
                   </div>
                 ) : null}
 
-                <div className="space-y-3 md:hidden">
+                <div className="hidden">
                   {userSnapshots.map((user) => (
                     <div key={user.email} className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
@@ -388,12 +433,12 @@ export default function OwnerDashboard() {
                         <p>Farm: {user.farmName || "-"}</p>
                         <p>{user.phone || "-"}</p>
                         <p>Customers: {user.customerCount}</p>
-                        <p>Sheet rows: {user.sheetRowCount}</p>
+                        <p>Sheet rows: {user.customerCount}</p>
                         <p>Sheet total: {user.sheetTotal}</p>
                       </div>
                       <div className="mt-4 grid grid-cols-2 gap-3">
                         <button
-                          onClick={() => setSelectedUserEmail(user.email)}
+                          onClick={() => { setSelectedUserEmail(user.email); setShowHistory(false); setHistoryEntries([]); }}
                           className="flex min-h-[44px] items-center justify-center rounded-lg bg-blue-100 px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-200 active:bg-blue-300"
                         >
                           View Data
@@ -410,7 +455,7 @@ export default function OwnerDashboard() {
                   ))}
                 </div>
 
-                <div className="hidden overflow-x-auto md:block">
+                <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-100 border-b border-slate-200">
                       <tr>
@@ -439,7 +484,7 @@ export default function OwnerDashboard() {
                           <td className="px-4 py-4">
                             <div className="flex flex-wrap gap-2">
                               <button
-                                onClick={() => setSelectedUserEmail(user.email)}
+                                onClick={() => { setSelectedUserEmail(user.email); setShowHistory(false); setHistoryEntries([]); }}
                                 className="flex min-h-[40px] items-center justify-center rounded-lg bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-200 active:bg-blue-300"
                               >
                                 View Data
@@ -491,38 +536,37 @@ export default function OwnerDashboard() {
         )}
 
         {selectedUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
-              <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
+          <div className="fixed inset-0 z-50 bg-white">
+            <div className="flex h-screen w-screen flex-col overflow-hidden bg-white">
+              <div className="relative flex items-start justify-between gap-4 border-b border-slate-200 p-5 pr-16">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">User Data</h3>
                   <p className="text-sm text-slate-500">Complete profile, customer list, and sheet data for this account.</p>
                 </div>
-                <button
-                  onClick={() => setSelectedUserEmail(null)}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                >
-                  Close
-                </button>
+                <div className="flex items-start gap-3">
+                  <div className="flex flex-col items-end gap-2 text-right">
+                    <UpdatedCard updatedAt={selectedUser.sheet.updatedAt ?? selectedUser.updatedAt} />
+                    <button
+                      type="button"
+                      onClick={() => handleToggleHistory(selectedUser.email)}
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      {showHistory ? "Hide History" : "View History"}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => setSelectedUserEmail(null)}
+                    className="absolute right-1 top-1 z-10 flex h-7 w-7 items-center justify-center bg-transparent p-0 text-xl font-bold leading-none text-red-500 transition hover:text-red-600 active:text-red-700"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
 
-                <div className="max-h-[calc(90vh-81px)] overflow-y-auto p-5">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Name</div>
-                    <div className="mt-2 text-base font-semibold text-slate-900">{selectedUser.name}</div>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email</div>
-                    <div className="mt-2 break-all text-base font-semibold text-slate-900">{selectedUser.email}</div>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Updated</div>
-                    <UpdatedCard updatedAt={selectedUser.sheet.updatedAt ?? selectedUser.updatedAt} />
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-4 lg:grid-cols-3">
+                <div className="flex-1 overflow-y-auto p-5">
+                <div className="grid gap-4 lg:grid-cols-3">
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-1">
                     <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Customer Records</h4>
                     <div className="mt-3 space-y-3">
@@ -567,6 +611,7 @@ export default function OwnerDashboard() {
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
+                    {!showHistory && (
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Sheet Data</h4>
                       <div className="flex flex-wrap items-center gap-3">
@@ -581,127 +626,108 @@ export default function OwnerDashboard() {
                         >
                           {archiving ? "Saving..." : "Save to History"}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleHistory(selectedUser.email)}
-                          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                        >
-                          {showHistory ? "Hide History" : "View History"}
-                        </button>
                       </div>
                     </div>
+                    )}
                     {archiveMsg && (
                       <p className="mt-2 text-xs text-slate-600">{archiveMsg}</p>
                     )}
 
                     {showHistory && (
-                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <h5 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Saved History</h5>
+                      <div className="mt-4 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                         {historyLoading ? (
-                          <p className="text-xs text-slate-500">Loading history...</p>
+                          <div className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-500">
+                            Loading history...
+                          </div>
                         ) : historyEntries.length === 0 ? (
-                          <p className="text-xs text-slate-500">No saved sheets yet for this user.</p>
+                          <div className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-500">
+                            No saved sheets yet for this user.
+                          </div>
                         ) : (
-                          <div className="space-y-2">
-                            {historyEntries.map((entry, index) => {
-                              const entryTotal = entry.rows.reduce(
-                                (sum, row) => sum + row.days.reduce((rowSum, value) => rowSum + value, 0),
-                                0
-                              );
-                              const isExpanded = expandedEntryId === entry.id;
+                          historyEntries.map((entry, index) => {
+                            const entryTotal = entry.rows.reduce(
+                              (sum, row) => sum + row.days.reduce((rowSum, value) => rowSum + value, 0),
+                              0
+                            );
+                            const sheetNumber = historyEntries.length - index;
 
-                              return (
-                                <div key={entry.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                            return (
+                              <div key={entry.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                  <div>
+                                    <h5 className="text-base font-semibold text-slate-900">
+                                      {entry.name || `Sheet ${sheetNumber}`}
+                                    </h5>
+                                    <p className="text-xs text-slate-500">Saved on {formatDate(entry.savedAt)}</p>
+                                  </div>
+                                  <div className="text-xs font-medium text-slate-600">
+                                    {getCustomerCount(entry.rows)} Customer · {entry.dayCount} days · Total {entryTotal}
+                                  </div>
+                                </div>
+
+                                <div className="mb-3 flex flex-wrap gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
-                                    className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+                                    onClick={() => downloadSheetAsPdf(entry, sheetNumber, selectedUser.name || selectedUser.email)}
+                                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
                                   >
-                                    <div>
-                                      <p className="text-sm font-semibold text-slate-800">Sheet {historyEntries.length - index}</p>
-                                      <p className="text-xs text-slate-500">Saved on {formatDate(entry.savedAt)}</p>
-                                    </div>
-                                    <span className="text-xs font-medium text-slate-600">
-                                      {entry.rows.length} rows · {entry.dayCount} days · Total {entryTotal}
-                                    </span>
+                                    Save to Local Device
                                   </button>
-
-                                  <div className="mt-2 flex justify-between gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        downloadSheetAsPdf(entry, historyEntries.length - index, selectedUser.name || selectedUser.email)
-                                      }
-                                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
-                                    >
-                                      Save as PDF
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteHistoryEntry(selectedUser.email, entry.id)}
-                                      className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition"
-                                    >
-                                      Delete Sheet
-                                    </button>
-                                  </div>
-
-                                  {isExpanded && (
-                                    <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
-                                      <table className="min-w-[700px] border-collapse text-center text-xs">
-                                        <thead className="bg-slate-100 font-semibold text-slate-800">
-                                          <tr>
-                                            <th className="border border-slate-300 px-1 py-1">S No</th>
-                                            <th className="border border-slate-300 px-1 py-1">Customer Name</th>
-                                            {Array.from({ length: entry.dayCount }, (_, dayIndex) => (
-                                              <th key={`hist-${entry.id}-day-${dayIndex + 1}`} className="border border-slate-300 px-1 py-1">
-                                                Day {dayIndex + 1}
-                                              </th>
-                                            ))}
-                                            <th className="border border-slate-300 px-1 py-1">Total</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {(() => {
-                                            const displaySerials = buildDisplaySerialMap(entry.rows);
-                                            const groupStartIndices = buildGroupStartIndices(entry.rows);
-                                            const nameCellSpans = buildNameCellSpans(groupStartIndices);
-                                            const combinedTotals = buildCombinedTotals(entry.rows, groupStartIndices);
-
-                                            return entry.rows.map((row, rowIndex) => {
-                                              const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
-                                              const nameSpan = nameCellSpans[rowIndex];
-                                              const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : rowTotal;
-
-                                              return (
-                                                <tr key={`${entry.id}-${row.serialNumber}`} className="even:bg-slate-50">
-                                                  <td className="border border-slate-200 px-1 py-1 font-semibold">{displaySerials[rowIndex]}</td>
-                                                  {nameSpan > 0 && (
-                                                    <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left">{row.customerName}</td>
-                                                  )}
-                                                  {row.days.map((value, dayIndex) => (
-                                                    <td key={`${entry.id}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-1 py-1">
-                                                      {value}
-                                                    </td>
-                                                  ))}
-                                                  {nameSpan > 0 && (
-                                                    <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold">{displayTotal}</td>
-                                                  )}
-                                                </tr>
-                                              );
-                                            });
-                                          })()}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteHistoryEntry(selectedUser.email, entry.id)}
+                                    className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition"
+                                  >
+                                    Delete Sheet
+                                  </button>
                                 </div>
-                              );
-                            })}
-                          </div>
+
+                                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                                  <table className="min-w-[900px] border-collapse text-center text-xs">
+                                    <thead className="bg-slate-100 font-semibold text-slate-800">
+                                      <tr>
+                                        <th className="border border-slate-300 px-1 py-2">S No</th>
+                                        <th className="border border-slate-300 px-1 py-2">Customer Name</th>
+                                        <th className="border border-slate-300 px-1 py-2">Shift</th>
+                                        {Array.from({ length: entry.dayCount }, (_, dayIndex) => (
+                                          <th key={`owner-history-${entry.id}-day-${dayIndex + 1}`} className="border border-slate-300 px-1 py-2">
+                                            Day {dayIndex + 1}
+                                          </th>
+                                        ))}
+                                        <th className="border border-slate-300 px-1 py-2">Total</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {(() => {
+                                        const displaySerials = buildDisplaySerialMap(entry.rows);
+                                        return entry.rows.map((row, rowIndex) => {
+                                          const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
+                                          return (
+                                            <tr key={`${entry.id}-${row.serialNumber}`} className="even:bg-slate-50">
+                                              <td className="border border-slate-200 px-1 py-1 font-semibold">{displaySerials[rowIndex]}</td>
+                                              <td className="border border-slate-200 px-1 py-1 text-left">{row.customerName}</td>
+                                              <td className="border border-slate-200 px-1 py-1">{row.shift || "—"}</td>
+                                              {row.days.map((value, dayIndex) => (
+                                                <td key={`${entry.id}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-1 py-1">
+                                                  {value}
+                                                </td>
+                                              ))}
+                                              <td className="border border-slate-200 px-1 py-1 font-semibold">{rowTotal}</td>
+                                            </tr>
+                                          );
+                                        });
+                                      })()}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })
                         )}
                       </div>
                     )}
 
+                    {!showHistory && (
                     <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
                       <table className="min-w-[900px] border-collapse text-center text-xs">
                         <thead className="bg-slate-100 font-semibold text-slate-800">
@@ -750,6 +776,7 @@ export default function OwnerDashboard() {
                         </tbody>
                       </table>
                     </div>
+                    )}
                   </div>
                 </div>
 
