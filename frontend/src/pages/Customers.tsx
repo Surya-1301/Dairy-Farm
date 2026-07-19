@@ -35,6 +35,21 @@ function formatShiftLabel(group: Customer[]): string {
   return group[0].shift || "—";
 }
 
+function getGroupShiftPriority(group: Customer[]): number {
+  if (group.length > 1) return 0; // Both shift first
+  if (group[0].shift === "M") return 1; // Morning second
+  if (group[0].shift === "E") return 2; // Evening third
+  return 3;
+}
+
+function sortCustomerGroups(groups: Customer[][]): Customer[][] {
+  return [...groups].sort((a, b) => {
+    const priorityDifference = getGroupShiftPriority(a) - getGroupShiftPriority(b);
+    if (priorityDifference !== 0) return priorityDifference;
+    return a[0].serialNumber - b[0].serialNumber;
+  });
+}
+
 function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [draggedSerial, setDraggedSerial] = useState<number | null>(null);
@@ -51,7 +66,7 @@ function Customers() {
     address: "",
     shift: ""
   });
-  const groupedCustomers = groupCustomersByName(customers);
+  const groupedCustomers = sortCustomerGroups(groupCustomersByName(customers));
 
   useEffect(() => {
     const loadCustomers = async () => {
@@ -307,9 +322,9 @@ function Customers() {
                 className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
               >
                 <option value="">Select shift</option>
-                <option value="M">Morning (M)</option>
-                <option value="E">Evening (E)</option>
-                <option value="M/E">Both (M/E)</option>
+                <option value="M/E">Both Shift</option>
+                <option value="M">Morning Shift</option>
+                <option value="E">Evening Shift</option>
               </select>
             </div>
 

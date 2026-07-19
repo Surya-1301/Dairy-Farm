@@ -10,6 +10,7 @@
     "android:build": "npm --prefix 'backend' run android:build"
   },
   "dependencies": {
+    "@emailjs/nodejs": "^5.0.2",
     "firebase": "^12.12.1"
   }
 }

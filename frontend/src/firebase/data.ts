@@ -26,6 +26,7 @@ export type SheetState = {
 export type SheetHistoryEntry = SheetState & {
   id: string;
   savedAt: string;
+  name?: string;
 };
 
 const INITIAL_ROWS = 50;
@@ -200,13 +201,14 @@ export async function saveHistoryByEmail(email: string, entries: SheetHistoryEnt
   return entries;
 }
 
-export async function archiveSheetByEmail(email: string, sheet: SheetState): Promise<SheetState> {
+export async function archiveSheetByEmail(email: string, sheet: SheetState, name = ""): Promise<SheetState> {
   const history = await getHistoryByEmail(email);
   const archivedSheet = cloneSheetState(sheet);
   const entry: SheetHistoryEntry = {
     ...archivedSheet,
     id: `history-${Date.now()}`,
-    savedAt: new Date().toISOString()
+    savedAt: new Date().toISOString(),
+    name: name.trim() || `Sheet ${history.length + 1}`
   };
 
   await saveHistoryByEmail(email, [entry, ...history]);

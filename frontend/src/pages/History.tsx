@@ -25,6 +25,22 @@ function buildDisplaySerialMap(rows: { customerName: string; serialNumber: numbe
   });
 }
 
+function getCustomerCount(rows: { customerName: string; serialNumber: number }[]): number {
+  const customerNames = new Set<string>();
+  let unnamedCount = 0;
+
+  rows.forEach((row) => {
+    const key = row.customerName.trim().toLowerCase();
+    if (key) {
+      customerNames.add(key);
+    } else {
+      unnamedCount += 1;
+    }
+  });
+
+  return customerNames.size + unnamedCount;
+}
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
@@ -39,17 +55,17 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
   );
 
   doc.setFontSize(14);
-  doc.text(`Dairy Farm — Sheet ${sheetNumber}`, 14, 15);
+  doc.text(`Dairy Farm — ${entry.name || `Sheet ${sheetNumber}`}`, 14, 15);
   doc.setFontSize(9);
-  doc.text(`Saved: ${formatDate(entry.savedAt)}   |   Rows: ${entry.rows.length}   |   Days: ${entry.dayCount}   |   Total: ${total}`, 14, 22);
+  doc.text(`Saved: ${formatDate(entry.savedAt)}   |   Customer: ${getCustomerCount(entry.rows)}   |   Days: ${entry.dayCount}   |   Total: ${total}`, 14, 22);
 
   const head = [
-    ["S No", "Customer Name", ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`), "Total"],
+    ["S No", "Customer Name", "Shift", ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`), "Total"],
   ];
 
   const body = entry.rows.map((row, index) => {
     const rowTotal = row.days.reduce((sum, v) => sum + v, 0);
-    return [displaySerialNumbers[index] ?? String(row.serialNumber), row.customerName, ...row.days, rowTotal];
+    return [displaySerialNumbers[index] ?? String(row.serialNumber), row.customerName, row.shift || "—", ...row.days, rowTotal];
   });
 
   autoTable(doc, {
@@ -62,7 +78,7 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
     alternateRowStyles: { fillColor: [248, 250, 252] },
   });
 
-  doc.save(`dairy-farm-sheet-${sheetNumber}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
+  doc.save(`${(entry.name || `dairy-farm-sheet-${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
 }
 
 
@@ -96,7 +112,7 @@ function History() {
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-slate-900">History</h1>
         <p className="mt-1 text-xs md:text-sm text-slate-600">
-          Saved 16-day sheet snapshots appear here after you archive them.
+          Saved sheet snapshots appear here after you archive them.
         </p>
       </div>
 
@@ -117,12 +133,12 @@ function History() {
               <div key={entry.id} className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-3 md:p-4 shadow-sm">
                 <div className="mb-3 md:mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 md:gap-3">
                   <div>
-                    <h2 className="text-base md:text-lg font-semibold text-slate-800">Sheet {history.length - index}</h2>
+                    <h2 className="text-base md:text-lg font-semibold text-slate-800">{entry.name || `Sheet ${history.length - index}`}</h2>
                     <p className="text-xs md:text-sm text-slate-500">Saved on {formatDate(entry.savedAt)}</p>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 md:gap-2 text-xs md:text-sm text-slate-600">
                     <span className="font-medium">
-                      {entry.rows.length} rows · {entry.dayCount} days · Total {total}
+                      {getCustomerCount(entry.rows)} Customer · {entry.dayCount} days · Total {total}
                     </span>
                   </div>
                 </div>
@@ -152,6 +168,7 @@ function History() {
                       <tr>
                         <th className="border border-slate-300 px-1 md:px-2 py-1 md:py-2">S No</th>
                         <th className="border border-slate-300 px-1 md:px-2 py-1 md:py-2">Customer Name</th>
+                        <th className="border border-slate-300 px-1 md:px-2 py-1 md:py-2">Shift</th>
                         {Array.from({ length: entry.dayCount }, (_, dayIndex) => (
                           <th key={dayIndex} className="border border-slate-300 px-1 md:px-2 py-1 md:py-2">
                             Day {dayIndex + 1}
@@ -171,6 +188,7 @@ function History() {
                           <tr key={row.serialNumber} className="even:bg-slate-50">
                             <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">{displaySerialNumbers[index]}</td>
                             <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1 text-left">{row.customerName}</td>
+                            <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">{row.shift || "—"}</td>
                             {row.days.map((dayValue, dayIndex) => (
                               <td key={`${row.serialNumber}-${dayIndex}`} className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">
                                 {dayValue}

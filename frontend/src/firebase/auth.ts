@@ -506,36 +506,15 @@ export async function requestPasswordReset(email: string): Promise<"firebase"> {
   if (!normalizedEmail) throw new Error("Enter an email address.");
 
   try {
-    const oobCode = await generatePasswordResetOobCode(normalizedEmail);
-    const resetUrl = `https://dairy-farm.tech/reset-password?oobCode=${encodeURIComponent(oobCode)}`;
+    const resetUrl = `${window.location.origin}/reset-password?email=${encodeURIComponent(normalizedEmail)}`;
     const { sendPasswordResetLinkEmail } = await import("../utils/emailOtp");
     await sendPasswordResetLinkEmail(normalizedEmail, normalizedEmail, resetUrl);
     return "firebase";
   } catch (error) {
     if (isConfigurationError(error)) throw toFriendlyAuthError(error);
-    throw new Error("We could not send a reset email for this account.");
+    console.error("Password reset email error:", error);
+    throw new Error(error instanceof Error ? error.message : "We could not send a reset email for this account.");
   }
-}
-
-export async function generatePasswordResetOobCode(email: string): Promise<string> {
-  const firebaseAuth = requireFirebaseAuth();
-  const idToken = await firebaseAuth.currentUser?.getIdToken();
-
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-
-  const response = await fetch(
-    "https://us-central1-raipur-dairy-farmm.cloudfunctions.net/generatePasswordResetLink",
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ email: normalizeEmail(email) })
-    }
-  );
-
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error ?? "Failed to generate reset link.");
-  return data.oobCode;
 }
 
 export async function confirmNewPassword(oobCode: string, newPassword: string): Promise<void> {

@@ -150,15 +150,16 @@ export async function resetPassword(email: string) {
 
   const idToken = await auth.currentUser?.getIdToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+  if (idToken) headers.Authorization = `Bearer ${idToken}`;
 
   const response = await fetch(CLOUD_FUNCTION_URL, {
     method: "POST",
     headers,
     body: JSON.stringify({ email: normalizedEmail })
   });
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error ?? "Failed to generate reset link.");
+
   const resetUrl = `${RESET_REDIRECT_URL}?oobCode=${encodeURIComponent(data.oobCode)}`;
   await sendPasswordResetLinkEmail(normalizedEmail, normalizedEmail, resetUrl);
 }

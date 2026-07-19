@@ -68,6 +68,48 @@ function buildCombinedTotals(rows: SheetRow[], groupStartIndices: number[]): num
   return groupStartIndices.map((start, index) => (start === index ? groupSums[start] : 0));
 }
 
+function getShiftPriority(shift: string): number {
+  const normalizedShift = shift.trim().toUpperCase();
+  if (normalizedShift === "M" || normalizedShift.includes("MORNING")) return 1;
+  if (normalizedShift === "E" || normalizedShift.includes("EVENING")) return 2;
+  return 3;
+}
+
+function sortRowsForDisplay(rows: SheetRow[]): SheetRow[] {
+  const groups: SheetRow[][] = [];
+  const used = new Set<number>();
+
+  rows.forEach((row, index) => {
+    if (used.has(index)) return;
+
+    const customerKey = row.customerName.trim().toLowerCase();
+    const group = customerKey
+      ? rows
+          .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+          .filter(({ candidate, candidateIndex }) => {
+            return !used.has(candidateIndex) && candidate.customerName.trim().toLowerCase() === customerKey;
+          })
+      : [{ candidate: row, candidateIndex: index }];
+
+    group.forEach(({ candidateIndex }) => used.add(candidateIndex));
+    groups.push(group.map(({ candidate }) => candidate));
+  });
+
+  return groups
+    .sort((a, b) => {
+      const aHasMorning = a.some((row) => getShiftPriority(row.shift) === 1);
+      const aHasEvening = a.some((row) => getShiftPriority(row.shift) === 2);
+      const bHasMorning = b.some((row) => getShiftPriority(row.shift) === 1);
+      const bHasEvening = b.some((row) => getShiftPriority(row.shift) === 2);
+      const aPriority = aHasMorning && aHasEvening ? 0 : aHasMorning ? 1 : aHasEvening ? 2 : 3;
+      const bPriority = bHasMorning && bHasEvening ? 0 : bHasMorning ? 1 : bHasEvening ? 2 : 3;
+
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      return a[0].serialNumber - b[0].serialNumber;
+    })
+    .flatMap((group) => [...group].sort((a, b) => getShiftPriority(a.shift) - getShiftPriority(b.shift)));
+}
+
 function createEmptyRow(serialNumber: number, dayCount: number): SheetRow {
   return {
     serialNumber,
@@ -90,10 +132,39 @@ function normalizeRows(rows: SheetRow[], dayCount: number): SheetRow[] {
   }));
 }
 
+function createFilledHistorySheet(rows: SheetRow[], dayCount: number): SheetState {
+  const displayRows = sortRowsForDisplay(rows);
+  const enteredRows = displayRows.filter((row) => row.customerName.trim() || row.shift.trim());
+
+  const lastFilledDayIndex = enteredRows.reduce((lastIndex, row) => {
+    const rowLastFilledDayIndex = row.days.reduce(
+      (rowLastIndex, value, dayIndex) => (Number(value) > 0 ? dayIndex : rowLastIndex),
+      -1
+    );
+    return Math.max(lastIndex, rowLastFilledDayIndex);
+  }, -1);
+
+  if (enteredRows.length === 0) {
+    return { dayCount: 0, rows: [] };
+  }
+
+  const daysToSave = lastFilledDayIndex >= 0 ? lastFilledDayIndex + 1 : 1;
+
+  return {
+    dayCount: daysToSave,
+    rows: enteredRows.map((row, index) => ({
+      ...row,
+      serialNumber: index + 1,
+      days: Array.from({ length: daysToSave }, (_, dayIndex) => row.days[dayIndex] ?? 0)
+    }))
+  };
+}
+
 function CustomerTable() {
   const [sheetState, setSheetState] = useState<SheetState>(createInitialState());
 
   const { rows, dayCount } = sheetState;
+  const displayRows = sortRowsForDisplay(rows);
 
   useEffect(() => {
     const activeUser = getActiveUser();
@@ -185,7 +256,20 @@ function CustomerTable() {
       return;
     }
 
-    void archiveSheetByEmail(activeUser.email, { dayCount, rows }).then((nextSheet) => {
+    const filledHistorySheet = createFilledHistorySheet(rows, dayCount);
+
+    if (filledHistorySheet.rows.length === 0) {
+      alert("No entered rows found to save in history.");
+      return;
+    }
+
+    const sheetName = window.prompt("Enter history sheet name:", `Sheet ${new Date().toLocaleDateString()}`);
+
+    if (sheetName === null) {
+      return;
+    }
+
+    void archiveSheetByEmail(activeUser.email, filledHistorySheet, sheetName).then((nextSheet) => {
       setSheetState(nextSheet);
       notifyMilkDataChanged();
     });
@@ -335,11 +419,11 @@ function CustomerTable() {
           </thead>
           <tbody>
             {(() => {
-              const displaySerialNumbers = buildDisplaySerialMap(rows);
-              const groupStartIndices = buildGroupStartIndices(rows);
+              const displaySerialNumbers = buildDisplaySerialMap(displayRows);
+              const groupStartIndices = buildGroupStartIndices(displayRows);
               const nameCellSpans = buildNameCellSpans(groupStartIndices);
-              const combinedTotals = buildCombinedTotals(rows, groupStartIndices);
-              return rows.map((row, rowIndex) => {
+              const combinedTotals = buildCombinedTotals(displayRows, groupStartIndices);
+              return displayRows.map((row, rowIndex) => {
               const total = row.days.reduce((sum, value) => sum + value, 0);
               const nameSpan = nameCellSpans[rowIndex];
               const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : total;
@@ -360,7 +444,7 @@ function CustomerTable() {
                     <input
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
-                      className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-left"
+                      className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-center"
                       placeholder="M/E"
                     />
                   </td>
@@ -370,18 +454,20 @@ function CustomerTable() {
                       className="border border-slate-300 px-1 py-1"
                     >
                       <input
-                        type="number"
-                        min="0"
-                        step="1"
+                        type="text"
+                        inputMode="decimal"
+                        pattern="[0-9]*[.]?[0-9]*"
                         value={value === 0 ? "" : value}
                         onKeyDown={(event) => {
                           if (event.key === "ArrowUp" || event.key === "ArrowDown") {
                             event.preventDefault();
                           }
                         }}
-                        onChange={(event) =>
-                          updateDayValue(row.serialNumber, dayIndex, event.target.value)
-                        }
+                        onWheel={(event) => event.currentTarget.blur()}
+                        onChange={(event) => {
+                          const nextValue = event.target.value.replace(/[^0-9.]/g, "");
+                          updateDayValue(row.serialNumber, dayIndex, nextValue);
+                        }}
                         className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-center"
                       />
                     </td>

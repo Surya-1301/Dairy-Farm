@@ -17,8 +17,14 @@ const ALLOWED_ORIGINS = [
 
 exports.generatePasswordResetLink = onRequest({ invoker: "public" }, async (req, res) => {
   const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.includes(origin)) {
+  const isAllowedOrigin =
+    ALLOWED_ORIGINS.includes(origin) ||
+    /^http:\/\/localhost:\d+$/.test(origin || "") ||
+    /^http:\/\/127\.0\.0\.1:\d+$/.test(origin || "");
+
+  if (isAllowedOrigin) {
     res.set("Access-Control-Allow-Origin", origin);
+    res.set("Vary", "Origin");
   }
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
