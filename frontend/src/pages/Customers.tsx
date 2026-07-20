@@ -5,7 +5,7 @@ import {
   getCustomers,
   moveCustomerToPosition,
   subscribeCustomersChanged,
-  updateCustomer
+  updateCustomer,
 } from "../utils/customerData";
 import type { Customer } from "../firebase/data";
 
@@ -44,7 +44,8 @@ function getGroupShiftPriority(group: Customer[]): number {
 
 function sortCustomerGroups(groups: Customer[][]): Customer[][] {
   return [...groups].sort((a, b) => {
-    const priorityDifference = getGroupShiftPriority(a) - getGroupShiftPriority(b);
+    const priorityDifference =
+      getGroupShiftPriority(a) - getGroupShiftPriority(b);
     if (priorityDifference !== 0) return priorityDifference;
     return a[0].serialNumber - b[0].serialNumber;
   });
@@ -64,7 +65,7 @@ function Customers() {
     name: "",
     mobile: "",
     address: "",
-    shift: ""
+    shift: "",
   });
   const groupedCustomers = sortCustomerGroups(groupCustomersByName(customers));
 
@@ -125,7 +126,7 @@ function Customers() {
       name: primary.name,
       mobile: primary.mobile,
       address: primary.address,
-      shift: group.length > 1 ? "M/E" : primary.shift ?? ""
+      shift: group.length > 1 ? "M/E" : (primary.shift ?? ""),
     });
     setShowForm(true);
 
@@ -148,27 +149,73 @@ function Customers() {
       if (isEditing && editingIds.length === 2) {
         for (const id of editingIds) {
           const original = customers.find((c) => c.serialNumber === id);
-          await updateCustomer(id, formData.name, formData.mobile, formData.address, original?.shift || "M");
+          await updateCustomer(
+            id,
+            formData.name,
+            formData.mobile,
+            formData.address,
+            original?.shift || "M",
+          );
         }
       } else if (isEditing) {
-        await updateCustomer(editingIds[0], formData.name, formData.mobile, formData.address, "M");
-        await addCustomer(formData.name, formData.mobile, formData.address, "E");
+        await updateCustomer(
+          editingIds[0],
+          formData.name,
+          formData.mobile,
+          formData.address,
+          "M",
+        );
+        await addCustomer(
+          formData.name,
+          formData.mobile,
+          formData.address,
+          "E",
+        );
       } else {
-        await addCustomer(formData.name, formData.mobile, formData.address, "M");
-        await addCustomer(formData.name, formData.mobile, formData.address, "E");
+        await addCustomer(
+          formData.name,
+          formData.mobile,
+          formData.address,
+          "M",
+        );
+        await addCustomer(
+          formData.name,
+          formData.mobile,
+          formData.address,
+          "E",
+        );
       }
     } else {
       if (isEditing && editingIds.length === 2) {
-        const originals = editingIds.map((id) => customers.find((c) => c.serialNumber === id));
+        const originals = editingIds.map((id) =>
+          customers.find((c) => c.serialNumber === id),
+        );
         let keepIndex = originals.findIndex((c) => c?.shift === formData.shift);
         if (keepIndex === -1) keepIndex = 0;
 
-        await updateCustomer(editingIds[keepIndex], formData.name, formData.mobile, formData.address, formData.shift);
+        await updateCustomer(
+          editingIds[keepIndex],
+          formData.name,
+          formData.mobile,
+          formData.address,
+          formData.shift,
+        );
         await deleteCustomer(editingIds[1 - keepIndex]);
       } else if (isEditing) {
-        await updateCustomer(editingIds[0], formData.name, formData.mobile, formData.address, formData.shift);
+        await updateCustomer(
+          editingIds[0],
+          formData.name,
+          formData.mobile,
+          formData.address,
+          formData.shift,
+        );
       } else {
-        await addCustomer(formData.name, formData.mobile, formData.address, formData.shift);
+        await addCustomer(
+          formData.name,
+          formData.mobile,
+          formData.address,
+          formData.shift,
+        );
       }
     }
 
@@ -196,49 +243,132 @@ function Customers() {
     }
   };
 
-  const handleMove = async (serialNumber: number, direction: "up" | "down") => {
-    await moveCustomerToPosition(
-      serialNumber,
-      direction === "up" ? serialNumber - 1 : serialNumber + 1,
-      direction === "up" ? "before" : "after"
+  const getCustomerKey = (customer: Customer) =>
+    `${customer.name.trim().toLowerCase()}::${customer.shift}`;
+
+  const moveCustomerGroupToPosition = async (
+    sourceGroup: Customer[],
+    targetGroup: Customer[],
+    position: "before" | "after",
+  ) => {
+    if (sourceGroup.length === 0 || targetGroup.length === 0) return;
+
+    const sourceKeys = new Set(sourceGroup.map(getCustomerKey));
+    const targetKeys = new Set(targetGroup.map(getCustomerKey));
+
+    if ([...sourceKeys].some((key) => targetKeys.has(key))) return;
+
+    const sourceOrder =
+      position === "after" ? [...sourceGroup].reverse() : sourceGroup;
+
+    for (const sourceCustomer of sourceOrder) {
+      const latestCustomers = await getCustomers();
+      const latestSource = latestCustomers.find(
+        (customer) =>
+          getCustomerKey(customer) === getCustomerKey(sourceCustomer),
+      );
+      const latestTargetGroup = latestCustomers.filter((customer) =>
+        targetKeys.has(getCustomerKey(customer)),
+      );
+      const latestTarget =
+        position === "after"
+          ? latestTargetGroup[latestTargetGroup.length - 1]
+          : latestTargetGroup[0];
+
+      if (!latestSource || !latestTarget) continue;
+
+      await moveCustomerToPosition(
+        latestSource.serialNumber,
+        latestTarget.serialNumber,
+        position,
+      );
+    }
+
+    setCustomers(await getCustomers());
+  };
+
+  const handleMove = async (group: Customer[], direction: "up" | "down") => {
+    if (group.length === 0) return;
+
+    const currentGroupIndex = groupedCustomers.findIndex((item) =>
+      item.some((customer) => customer.serialNumber === group[0].serialNumber),
+    );
+
+    if (currentGroupIndex === -1) return;
+
+    const targetGroupIndex =
+      direction === "up" ? currentGroupIndex - 1 : currentGroupIndex + 1;
+    if (targetGroupIndex < 0 || targetGroupIndex >= groupedCustomers.length)
+      return;
+
+    await moveCustomerGroupToPosition(
+      groupedCustomers[currentGroupIndex],
+      groupedCustomers[targetGroupIndex],
+      direction === "up" ? "before" : "after",
     );
   };
 
-  const handleDragStart = (serialNumber: number) => (event: React.DragEvent<HTMLTableRowElement>) => {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", String(serialNumber));
-    setDraggedSerial(serialNumber);
-  };
+  const handleDragStart =
+    (serialNumber: number) => (event: React.DragEvent<HTMLTableRowElement>) => {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(serialNumber));
+      setDraggedSerial(serialNumber);
+    };
 
-  const handleDragOver = (serialNumber: number) => (event: React.DragEvent<HTMLTableRowElement>) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    setDropSerial(serialNumber);
-  };
+  const handleDragOver =
+    (serialNumber: number) => (event: React.DragEvent<HTMLTableRowElement>) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      setDropSerial(serialNumber);
+    };
 
-  const handleDrop = (serialNumber: number) => async (event: React.DragEvent<HTMLTableRowElement>) => {
-    event.preventDefault();
-    const sourceSerial = draggedSerial ?? Number(event.dataTransfer.getData("text/plain"));
+  const handleDrop =
+    (serialNumber: number) =>
+    async (event: React.DragEvent<HTMLTableRowElement>) => {
+      event.preventDefault();
+      const sourceSerial =
+        draggedSerial ?? Number(event.dataTransfer.getData("text/plain"));
 
-    if (!Number.isFinite(sourceSerial) || sourceSerial === serialNumber) {
+      if (!Number.isFinite(sourceSerial) || sourceSerial === serialNumber) {
+        setDraggedSerial(null);
+        setDropSerial(null);
+        return;
+      }
+
+      const targetRow = rowRefs.current[serialNumber];
+      if (!targetRow) {
+        setDraggedSerial(null);
+        setDropSerial(null);
+        return;
+      }
+
+      const sourceGroup = groupedCustomers.find((group) =>
+        group.some((customer) => customer.serialNumber === sourceSerial),
+      );
+      const targetGroup = groupedCustomers.find((group) =>
+        group.some((customer) => customer.serialNumber === serialNumber),
+      );
+
+      if (
+        !sourceGroup ||
+        !targetGroup ||
+        sourceGroup[0].serialNumber === targetGroup[0].serialNumber
+      ) {
+        setDraggedSerial(null);
+        setDropSerial(null);
+        return;
+      }
+
+      const rect = targetRow.getBoundingClientRect();
+      const insertAfter = event.clientY > rect.top + rect.height / 2;
+      await moveCustomerGroupToPosition(
+        sourceGroup,
+        targetGroup,
+        insertAfter ? "after" : "before",
+      );
       setDraggedSerial(null);
       setDropSerial(null);
-      return;
-    }
-
-    const targetRow = rowRefs.current[serialNumber];
-    if (!targetRow) {
-      setDraggedSerial(null);
-      setDropSerial(null);
-      return;
-    }
-
-    const rect = targetRow.getBoundingClientRect();
-    const insertAfter = event.clientY > rect.top + rect.height / 2;
-    await moveCustomerToPosition(sourceSerial, serialNumber, insertAfter ? "after" : "before");
-    setDraggedSerial(null);
-    setDropSerial(null);
-  };
+    };
 
   const handleDragEnd = () => {
     setDraggedSerial(null);
@@ -254,7 +384,9 @@ function Customers() {
   return (
     <div className="flex flex-col gap-4 md:gap-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-xl md:text-3xl font-bold text-slate-900">Add Customer</h1>
+        <h1 className="text-xl md:text-3xl font-bold text-slate-900">
+          Add Customer
+        </h1>
         {!showForm && (
           <button
             onClick={handleAddClick}
@@ -270,7 +402,10 @@ function Customers() {
           <h2 className="mb-4 text-base md:text-xl font-semibold text-slate-900">
             {editingIds.length > 0 ? "Edit Customer" : "Add New Customer"}
           </h2>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4 md:gap-5">
+          <form
+            onSubmit={handleSubmit}
+            className="flex flex-col gap-4 md:gap-5"
+          >
             <div>
               <label className="block text-xs md:text-sm font-medium text-slate-700 mb-2">
                 Customer Name
@@ -278,7 +413,9 @@ function Customers() {
               <input
                 type="text"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
                 className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
                 placeholder="Enter customer name"
                 autoComplete="name"
@@ -292,7 +429,9 @@ function Customers() {
               <input
                 type="tel"
                 value={formData.mobile}
-                onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, mobile: e.target.value })
+                }
                 className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
                 placeholder="Enter mobile number"
                 autoComplete="tel"
@@ -305,7 +444,9 @@ function Customers() {
               </label>
               <textarea
                 value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, address: e.target.value })
+                }
                 className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500 min-h-[120px]"
                 placeholder="Enter address"
                 rows={3}
@@ -318,7 +459,9 @@ function Customers() {
               </label>
               <select
                 value={formData.shift}
-                onChange={(e) => setFormData({ ...formData, shift: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, shift: e.target.value })
+                }
                 className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
               >
                 <option value="">Select shift</option>
@@ -360,12 +503,24 @@ function Customers() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">S.No</th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">Name</th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden md:table-cell">Mobile</th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden sm:table-cell">Shift</th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden lg:table-cell">Address</th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">Actions</th>
+                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
+                  S.No
+                </th>
+                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
+                  Name
+                </th>
+                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden md:table-cell">
+                  Mobile
+                </th>
+                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden sm:table-cell">
+                  Shift
+                </th>
+                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden lg:table-cell">
+                  Address
+                </th>
+                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -387,13 +542,22 @@ function Customers() {
                     onDrop={handleDrop(primary.serialNumber)}
                     onDragEnd={handleDragEnd}
                     className={`hover:bg-slate-50 ${isDragging ? "opacity-50" : ""} ${isDropTarget ? "ring-2 ring-brand-500 ring-inset" : ""} cursor-grab active:cursor-grabbing`}
-
                   >
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">{groupIndex + 1}</td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 font-medium">{primary.name}</td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden md:table-cell">{primary.mobile}</td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden sm:table-cell">{formatShiftLabel(group)}</td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden lg:table-cell truncate">{primary.address}</td>
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">
+                      {groupIndex + 1}
+                    </td>
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 font-medium">
+                      {primary.name}
+                    </td>
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden md:table-cell">
+                      {primary.mobile}
+                    </td>
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden sm:table-cell">
+                      {formatShiftLabel(group)}
+                    </td>
+                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden lg:table-cell truncate">
+                      {primary.address}
+                    </td>
                     <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm flex gap-2 md:gap-3 flex-col sm:flex-row">
                       <button
                         onClick={() => handleEditClick(group)}
@@ -402,7 +566,11 @@ function Customers() {
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(group.map((customer) => customer.serialNumber))}
+                        onClick={() =>
+                          handleDelete(
+                            group.map((customer) => customer.serialNumber),
+                          )
+                        }
                         className="text-red-600 hover:text-red-700 active:text-red-800 font-medium px-3 py-2 rounded hover:bg-red-50 active:bg-red-100 transition min-h-[40px] flex items-center justify-center"
                       >
                         Delete

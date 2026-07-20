@@ -8,7 +8,7 @@ type LayoutProps = {
 function Layout({ children }: LayoutProps) {
   return (
     <div
-      className="min-h-screen"
+      className="min-h-screen bg-slate-50"
       style={{
         paddingTop: "var(--safe-area-inset-top)",
         paddingLeft: "var(--safe-area-inset-left)",
@@ -23,6 +23,7 @@ function Layout({ children }: LayoutProps) {
       >
         {children}
       </main>
+
       <BottomNav />
     </div>
   );

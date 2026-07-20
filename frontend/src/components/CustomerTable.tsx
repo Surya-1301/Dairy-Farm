@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCustomers, subscribeCustomersChanged } from "../utils/customerData";
 import { notifyMilkDataChanged } from "../utils/milkData";
 
@@ -162,6 +162,8 @@ function createFilledHistorySheet(rows: SheetRow[], dayCount: number): SheetStat
 
 function CustomerTable() {
   const [sheetState, setSheetState] = useState<SheetState>(createInitialState());
+  const [showActionBar, setShowActionBar] = useState(true);
+  const lastScrollTopRef = useRef(0);
 
   const { rows, dayCount } = sheetState;
   const displayRows = sortRowsForDisplay(rows);
@@ -196,22 +198,47 @@ function CustomerTable() {
 
         setSheetState((prev) => {
           const { dayCount: prevDayCount, rows: prevRows } = prev;
-          const updatedRows = prevRows.map((row, index) => {
-            const customer = customers.find((c) => c.serialNumber === row.serialNumber);
-            if (customer && customer.name) {
-              return {
-                ...row,
-                serialNumber: index + 1,
-                customerName: customer.name,
-                shift: customer.shift || row.shift
-              };
-            }
-            return { ...row, serialNumber: index + 1 };
-          });
+          const requiredRowCount = Math.max(prevRows.length, customers.length);
 
-          const changed = updatedRows.some(
-            (r, i) => r.customerName !== prevRows[i].customerName || r.shift !== prevRows[i].shift
-          );
+const updatedRows = Array.from({ length: requiredRowCount }, (_, index) => {
+  const serialNumber = index + 1;
+  const existingRow = prevRows[index] ?? createEmptyRow(serialNumber, prevDayCount);
+  const customer = customers.find((c) => c.serialNumber === serialNumber);
+
+  if (customer && customer.name) {
+    return {
+      ...existingRow,
+      serialNumber,
+      customerName: customer.name,
+      shift: customer.shift || existingRow.shift,
+      days: Array.from(
+        { length: prevDayCount },
+        (_, dayIndex) => existingRow.days?.[dayIndex] ?? 0
+      )
+    };
+  }
+
+  return {
+    ...existingRow,
+    serialNumber,
+    days: Array.from(
+      { length: prevDayCount },
+      (_, dayIndex) => existingRow.days?.[dayIndex] ?? 0
+    )
+  };
+});
+
+          const changed =
+  updatedRows.length !== prevRows.length ||
+  updatedRows.some((row, index) => {
+    const previousRow = prevRows[index];
+    return (
+      !previousRow ||
+      row.customerName !== previousRow.customerName ||
+      row.shift !== previousRow.shift ||
+      row.days.length !== previousRow.days.length
+    );
+  });
 
           if (changed) {
             const activeUser = getActiveUser();
@@ -358,13 +385,32 @@ function CustomerTable() {
     saveState({ dayCount: dayCount - 1, rows: nextRows });
   };
 
+  const handleSheetScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const nextScrollTop = event.currentTarget.scrollTop;
+    const previousScrollTop = lastScrollTopRef.current;
+
+    if (nextScrollTop < previousScrollTop || nextScrollTop <= 8) {
+      setShowActionBar(true);
+    } else if (nextScrollTop > previousScrollTop + 8) {
+      setShowActionBar(false);
+    }
+
+    lastScrollTopRef.current = nextScrollTop;
+  };
+
   return (
-    <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3 shadow-sm md:p-4">
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+    <div className="relative flex h-full min-h-0 flex-col rounded-xl border border-slate-300 bg-white p-3 shadow-sm md:p-4">
+      <div
+        className={`absolute left-3 right-3 top-3 z-20 grid grid-cols-2 gap-2 rounded-lg bg-white/95 transition-all duration-200 sm:flex sm:flex-wrap sm:items-center ${
+          showActionBar
+            ? "translate-y-0 opacity-100 shadow-sm"
+            : "pointer-events-none -translate-y-full opacity-0"
+        }`}
+      >
         <button
           type="button"
-          onClick={addRow}
-          className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
+          onClick={addRow} 
+         className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
         >
           Add Row
         </button>
@@ -394,15 +440,15 @@ function CustomerTable() {
         <button
           type="button"
           onClick={archiveToHistory}
-          className="col-span-2 min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:col-auto sm:text-sm"
+          className="col-span-2 ml-auto min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:col-auto sm:text-sm"
         >
           Save to History
         </button>
       </div>
 
-      <p className="text-xs text-slate-500 sm:hidden">Swipe left/right to view all day columns.</p>
+      
 
-      <div className="overflow-auto">
+     <div className={`min-h-0 flex-1 overflow-auto pb-2 ${showActionBar ? "pt-16 sm:pt-14" : "pt-0"}`} onScroll={handleSheetScroll}>
         <table className="min-w-[1080px] border-collapse text-center text-xs md:text-sm">
           <thead className="bg-slate-100 font-semibold text-slate-800">
             <tr>

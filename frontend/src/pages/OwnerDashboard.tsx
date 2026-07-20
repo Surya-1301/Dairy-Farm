@@ -21,37 +21,53 @@ function formatDate(value: string) {
 
 function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
   const doc = new jsPDF({ orientation: "landscape" });
+  const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
+  const groupStartIndices = buildGroupStartIndices(entry.rows);
+  const nameCellSpans = buildNameCellSpans(groupStartIndices);
+  const combinedTotals = buildCombinedTotals(entry.rows, groupStartIndices);
 
   const total = entry.rows.reduce(
     (entryTotal, row) => entryTotal + row.days.reduce((rowTotal, value) => rowTotal + value, 0),
     0
   );
 
-  doc.setFontSize(14);
-  doc.text(`Dairy Farm — Sheet ${sheetNumber} (${ownerLabel})`, 14, 15);
-  doc.setFontSize(9);
-  doc.text(`Saved: ${formatDate(entry.savedAt)}   |   Rows: ${entry.rows.length}   |   Days: ${entry.dayCount}   |   Total: ${total}`, 14, 22);
+  const pageWidth = doc.internal.pageSize.getWidth();
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text("RAIPUR DUGDH UTPADAN ASSOCIATION", pageWidth / 2, 8, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(12);
+  doc.text(`${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${entry.dayCount} days · Total ${total}`, pageWidth / 2, 15, { align: "center" });
 
   const head = [
-    ["S No", "Customer Name", ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`), "Total"],
+    ["S No", "Customer Name", "Shift", ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`), "Total"],
   ];
 
-  const body = entry.rows.map((row) => {
+  const body = entry.rows.map((row, index) => {
     const rowTotal = row.days.reduce((sum, v) => sum + v, 0);
-    return [row.serialNumber, row.customerName, ...row.days, rowTotal];
+    const nameSpan = nameCellSpans[index];
+    const displayTotal = nameSpan > 1 ? combinedTotals[index] : rowTotal;
+
+    return [
+      displaySerialNumbers[index] ?? String(row.serialNumber),
+      nameSpan > 0 ? { content: row.customerName, rowSpan: nameSpan } : "",
+      row.shift || "—",
+      ...row.days,
+      nameSpan > 0 ? { content: displayTotal, rowSpan: nameSpan } : ""
+    ];
   });
 
   autoTable(doc, {
     head,
     body,
-    startY: 27,
+    startY: 22,
     styles: { fontSize: 7, cellPadding: 1.5, halign: "center" },
     headStyles: { fillColor: [71, 85, 105], textColor: 255, fontStyle: "bold" },
     columnStyles: { 1: { halign: "left" } },
     alternateRowStyles: { fillColor: [248, 250, 252] },
   });
 
-  doc.save(`dairy-farm-${ownerLabel}-sheet-${sheetNumber}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
+  doc.save(`${(entry.name || `dairy-farm-${ownerLabel}-sheet-${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
 }
 
 type UserProfile = {
@@ -671,7 +687,7 @@ export default function OwnerDashboard() {
                                     onClick={() => downloadSheetAsPdf(entry, sheetNumber, selectedUser.name || selectedUser.email)}
                                     className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
                                   >
-                                    Save to Local Device
+                                    Save Pdf
                                   </button>
                                   <button
                                     type="button"
@@ -700,19 +716,28 @@ export default function OwnerDashboard() {
                                     <tbody>
                                       {(() => {
                                         const displaySerials = buildDisplaySerialMap(entry.rows);
+                                        const groupStartIndices = buildGroupStartIndices(entry.rows);
+                                        const nameCellSpans = buildNameCellSpans(groupStartIndices);
+                                        const combinedTotals = buildCombinedTotals(entry.rows, groupStartIndices);
                                         return entry.rows.map((row, rowIndex) => {
                                           const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
+                                          const nameSpan = nameCellSpans[rowIndex];
+                                          const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : rowTotal;
                                           return (
                                             <tr key={`${entry.id}-${row.serialNumber}`} className="even:bg-slate-50">
                                               <td className="border border-slate-200 px-1 py-1 font-semibold">{displaySerials[rowIndex]}</td>
-                                              <td className="border border-slate-200 px-1 py-1 text-left">{row.customerName}</td>
+                                              {nameSpan > 0 && (
+                                                <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left align-middle">{row.customerName}</td>
+                                              )}
                                               <td className="border border-slate-200 px-1 py-1">{row.shift || "—"}</td>
                                               {row.days.map((value, dayIndex) => (
                                                 <td key={`${entry.id}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-1 py-1">
                                                   {value}
                                                 </td>
                                               ))}
-                                              <td className="border border-slate-200 px-1 py-1 font-semibold">{rowTotal}</td>
+                                              {nameSpan > 0 && (
+                                                <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold align-middle">{displayTotal}</td>
+                                              )}
                                             </tr>
                                           );
                                         });

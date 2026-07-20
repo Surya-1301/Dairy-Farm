@@ -86,34 +86,38 @@ function BottomNav() {
   const links = isOwner ? ownerLinks : userLinks;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white shadow-sm">
-      <div
-        className={
-          isOwner
-            ? "flex w-full items-center justify-center px-2 py-2"
-            : "grid w-full items-center px-2 py-2"
-        }
-        style={isOwner ? { gap: "150px" } : { gridTemplateColumns: `repeat(${links.length}, minmax(0, 1fr))` }}
-      >
-        {links.map((link) => (
-          <NavLink
-            key={link.to}
-            to={link.to}
-            className={({ isActive }) =>
-              `flex min-w-0 flex-col items-center justify-center text-center text-xs font-medium transition ${
-                isActive
-                  ? "text-blue-600"
-                  : "text-gray-500 hover:text-blue-500"
-              }`
-            }
-          >
-            <link.Icon className="mb-1 h-6 w-6" />
-            <span className="max-w-full truncate">{link.label}</span>
-          </NavLink>
-        ))}
-      </div>
-    </nav>
-  );
+  <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white shadow-sm">
+    <div
+      className={
+        isOwner
+          ? "flex w-full items-center justify-center px-2 py-2"
+          : "grid w-full items-center px-2 py-2"
+      }
+      style={
+        isOwner
+          ? { gap: "150px" }
+          : { gridTemplateColumns: `repeat(${links.length}, minmax(0, 1fr))` }
+      }
+    >
+      {links.map((link) => (
+        <NavLink
+          key={link.to}
+          to={link.to}
+          className={({ isActive }) =>
+            `flex min-w-0 flex-col items-center justify-center text-center text-xs font-medium transition ${
+              isActive
+                ? "text-blue-600"
+                : "text-gray-500 hover:text-blue-500"
+            }`
+          }
+        >
+          <link.Icon className="mb-1 h-6 w-6" />
+          <span className="max-w-full truncate">{link.label}</span>
+        </NavLink>
+      ))}
+    </div>
+  </nav>
+);
 }
 
 export default BottomNav;
