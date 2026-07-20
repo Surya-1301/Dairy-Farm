@@ -552,9 +552,9 @@ export default function OwnerDashboard() {
         )}
 
         {selectedUser && (
-          <div className="fixed inset-0 z-50 bg-white">
-            <div className="flex h-screen w-screen flex-col overflow-hidden bg-white">
-              <div className="relative flex items-start justify-between gap-4 border-b border-slate-200 p-5 pr-16">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 md:bg-white md:p-0">
+            <div className="max-h-[88vh] w-[94vw] max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl md:flex md:h-screen md:max-h-none md:w-screen md:max-w-none md:flex-col md:rounded-none md:shadow-none">
+              <div className="relative flex items-start justify-between gap-3 border-b border-slate-200 p-4 pr-10 md:p-5 md:pr-16">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">User Data</h3>
                   <p className="text-sm text-slate-500">Complete profile, customer list, and sheet data for this account.</p>
@@ -581,7 +581,7 @@ export default function OwnerDashboard() {
                 </div>
               </div>
 
-                <div className="flex-1 overflow-y-auto p-5">
+                <div className="max-h-[calc(88vh-96px)] overflow-y-auto p-3 md:max-h-none md:flex-1 md:p-5">
                 <div className="grid gap-4 lg:grid-cols-3">
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-1">
                     <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Customer Records</h4>
