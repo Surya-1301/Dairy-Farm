@@ -55,7 +55,7 @@ function Dashboard() {
   return (
     <section className="space-y-4 md:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2 md:gap-3">
-        <h1 className="text-xl md:text-2xl font-bold text-slate-900">Dashboard</h1>
+        <h1 className="text-xl md:text-3xl font-bold text-slate-900">Dashboard</h1>
       </div>
 
       <SummaryTable

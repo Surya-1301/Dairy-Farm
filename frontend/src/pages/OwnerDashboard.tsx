@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import ExcelJS from "exceljs";
 import Layout from "../components/Layout";
 import { useNavigate } from "react-router-dom";
 import { deleteUserByEmail, fetchAllUserProfiles, isOwnerLoggedIn, requestPasswordReset, subscribeAuthState, updateUserProfileByEmail } from "../firebase/auth";
@@ -115,6 +116,131 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, owner
   });
 
   doc.save(`${(entry.name || `dairy-farm-${ownerLabel}-sheet-${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
+}
+
+function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
+  void (async () => {
+    const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
+    const groupStartIndices = buildGroupStartIndices(entry.rows);
+    const nameCellSpans = buildNameCellSpans(groupStartIndices);
+    const combinedTotals = buildCombinedTotals(entry.rows, groupStartIndices);
+
+    const total = entry.rows.reduce(
+      (entryTotal, row) => entryTotal + row.days.reduce((rowTotal, value) => rowTotal + value, 0),
+      0
+    );
+
+    const columnCount = 4 + entry.dayCount;
+    const title = `${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${entry.dayCount} days · Total ${total}`;
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Sheet1", {
+      views: [{ showGridLines: false }],
+    });
+
+    const thinBorder = {
+      top: { style: "thin" as const, color: { argb: "FFCBD5E1" } },
+      left: { style: "thin" as const, color: { argb: "FFCBD5E1" } },
+      bottom: { style: "thin" as const, color: { argb: "FFCBD5E1" } },
+      right: { style: "thin" as const, color: { argb: "FFCBD5E1" } },
+    };
+
+    worksheet.mergeCells(1, 1, 1, columnCount);
+    const titleCell = worksheet.getCell(1, 1);
+    titleCell.value = "RAIPUR DUGDH UTPADAN ASSOCIATION";
+    titleCell.font = { name: "Calibri", size: 14, bold: true, color: { argb: "FF0F172A" } };
+    titleCell.alignment = { horizontal: "center", vertical: "middle" };
+    worksheet.getRow(1).height = 22;
+
+    worksheet.mergeCells(2, 1, 2, columnCount);
+    const subtitleCell = worksheet.getCell(2, 1);
+    subtitleCell.value = title;
+    subtitleCell.font = { name: "Calibri", size: 11, color: { argb: "FF334155" } };
+    subtitleCell.alignment = { horizontal: "center", vertical: "middle" };
+    worksheet.getRow(2).height = 18;
+
+    const headerRowIndex = 4;
+    const headerValues = [
+      "S No",
+      "Customer Name",
+      "Shift",
+      ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`),
+      "Total",
+    ];
+    const headerRow = worksheet.getRow(headerRowIndex);
+    headerRow.values = headerValues;
+    headerRow.height = 20;
+    headerRow.eachCell((cell) => {
+      cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF475569" } };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = thinBorder;
+    });
+
+    entry.rows.forEach((row, index) => {
+      const rowTotal = row.days.reduce((sum, v) => sum + v, 0);
+      const nameSpan = nameCellSpans[index];
+      const displayTotal = nameSpan > 1 ? combinedTotals[index] : rowTotal;
+      const rowIndex = headerRowIndex + 1 + index;
+
+      const values = [
+        nameSpan > 0 ? displaySerialNumbers[index] ?? String(row.serialNumber) : "",
+        nameSpan > 0 ? row.customerName : "",
+        row.shift || "-",
+        ...row.days,
+        nameSpan > 0 ? displayTotal : "",
+      ];
+
+      const excelRow = worksheet.getRow(rowIndex);
+      excelRow.values = values;
+      excelRow.eachCell((cell, colNumber) => {
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: colNumber === 2 ? "left" : "center", vertical: "middle" };
+        cell.font = { name: "Calibri", size: 10 };
+        if (index % 2 === 1) {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+        }
+        if (colNumber === 1 || colNumber === columnCount) {
+          cell.font = { name: "Calibri", size: 10, bold: true };
+        }
+      });
+    });
+
+    entry.rows.forEach((_, index) => {
+      const nameSpan = nameCellSpans[index];
+      if (nameSpan > 1) {
+        const startRow = headerRowIndex + 1 + index;
+        const endRow = headerRowIndex + index + nameSpan;
+        worksheet.mergeCells(startRow, 1, endRow, 1);
+        worksheet.mergeCells(startRow, 2, endRow, 2);
+        worksheet.mergeCells(startRow, columnCount, endRow, columnCount);
+        worksheet.getCell(startRow, 1).alignment = { horizontal: "center", vertical: "middle" };
+        worksheet.getCell(startRow, 2).alignment = { horizontal: "left", vertical: "middle" };
+        worksheet.getCell(startRow, columnCount).alignment = { horizontal: "center", vertical: "middle" };
+      }
+    });
+
+    worksheet.columns = [
+      { width: 8 },
+      { width: 22 },
+      { width: 8 },
+      ...Array.from({ length: entry.dayCount }, () => ({ width: 8 })),
+      { width: 10 },
+    ];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${(entry.name || `dairy-farm-${ownerLabel}-sheet-${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}-${entry.savedAt.replace(/[:.]/g, "-")}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  })();
 }
 
 type UserProfile = {
@@ -240,6 +366,7 @@ export default function OwnerDashboard() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<SheetHistoryEntry[]>([]);
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
+  const [openSaveMenuId, setOpenSaveMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOwnerLoggedIn()) {
@@ -729,13 +856,42 @@ export default function OwnerDashboard() {
                                 </div>
 
                                 <div className="mb-3 flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => downloadSheetAsPdf(entry, sheetNumber, selectedUser.name || selectedUser.email)}
-                                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
-                                  >
-                                    Save to Local Device
-                                  </button>
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      onClick={() => setOpenSaveMenuId(openSaveMenuId === entry.id ? null : entry.id)}
+                                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                                    >
+                                      Save Sheet
+                                    </button>
+                                    {openSaveMenuId === entry.id && (
+                                      <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setOpenSaveMenuId(null)} />
+                                        <div className="absolute left-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              downloadSheetAsPdf(entry, sheetNumber, selectedUser.name || selectedUser.email);
+                                              setOpenSaveMenuId(null);
+                                            }}
+                                            className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100"
+                                          >
+                                            Download as PDF
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              downloadSheetAsExcel(entry, sheetNumber, selectedUser.name || selectedUser.email);
+                                              setOpenSaveMenuId(null);
+                                            }}
+                                            className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100"
+                                          >
+                                            Download as Excel (.xlsx)
+                                          </button>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteHistoryEntry(selectedUser.email, entry.id)}
@@ -745,8 +901,8 @@ export default function OwnerDashboard() {
                                   </button>
                                 </div>
 
-                                <div className="overflow-x-auto rounded-lg border border-slate-200">
-                                  <table className="min-w-[900px] border-collapse text-center text-xs">
+                                <div className="overflow-x-auto rounded-b-lg border border-slate-200 md:rounded-b-xl md:-mx-4 md:-mb-4">
+                                  <table className="w-full min-w-[900px] border-collapse text-center text-xs">
                                     <thead className="bg-slate-100 font-semibold text-slate-800">
                                       <tr>
                                         <th className="border border-slate-300 px-1 py-2">S No</th>

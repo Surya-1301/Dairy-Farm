@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { getCustomers, subscribeCustomersChanged } from "../utils/customerData";
 import { notifyMilkDataChanged } from "../utils/milkData";
 
@@ -68,48 +68,6 @@ function buildCombinedTotals(rows: SheetRow[], groupStartIndices: number[]): num
   return groupStartIndices.map((start, index) => (start === index ? groupSums[start] : 0));
 }
 
-function getShiftPriority(shift: string): number {
-  const normalizedShift = shift.trim().toUpperCase();
-  if (normalizedShift === "M" || normalizedShift.includes("MORNING")) return 1;
-  if (normalizedShift === "E" || normalizedShift.includes("EVENING")) return 2;
-  return 3;
-}
-
-function sortRowsForDisplay(rows: SheetRow[]): SheetRow[] {
-  const groups: SheetRow[][] = [];
-  const used = new Set<number>();
-
-  rows.forEach((row, index) => {
-    if (used.has(index)) return;
-
-    const customerKey = row.customerName.trim().toLowerCase();
-    const group = customerKey
-      ? rows
-          .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
-          .filter(({ candidate, candidateIndex }) => {
-            return !used.has(candidateIndex) && candidate.customerName.trim().toLowerCase() === customerKey;
-          })
-      : [{ candidate: row, candidateIndex: index }];
-
-    group.forEach(({ candidateIndex }) => used.add(candidateIndex));
-    groups.push(group.map(({ candidate }) => candidate));
-  });
-
-  return groups
-    .sort((a, b) => {
-      const aHasMorning = a.some((row) => getShiftPriority(row.shift) === 1);
-      const aHasEvening = a.some((row) => getShiftPriority(row.shift) === 2);
-      const bHasMorning = b.some((row) => getShiftPriority(row.shift) === 1);
-      const bHasEvening = b.some((row) => getShiftPriority(row.shift) === 2);
-      const aPriority = aHasMorning && aHasEvening ? 0 : aHasMorning ? 1 : aHasEvening ? 2 : 3;
-      const bPriority = bHasMorning && bHasEvening ? 0 : bHasMorning ? 1 : bHasEvening ? 2 : 3;
-
-      if (aPriority !== bPriority) return aPriority - bPriority;
-      return a[0].serialNumber - b[0].serialNumber;
-    })
-    .flatMap((group) => [...group].sort((a, b) => getShiftPriority(a.shift) - getShiftPriority(b.shift)));
-}
-
 function createEmptyRow(serialNumber: number, dayCount: number): SheetRow {
   return {
     serialNumber,
@@ -132,41 +90,10 @@ function normalizeRows(rows: SheetRow[], dayCount: number): SheetRow[] {
   }));
 }
 
-function createFilledHistorySheet(rows: SheetRow[], dayCount: number): SheetState {
-  const displayRows = sortRowsForDisplay(rows);
-  const enteredRows = displayRows.filter((row) => row.customerName.trim() || row.shift.trim());
-
-  const lastFilledDayIndex = enteredRows.reduce((lastIndex, row) => {
-    const rowLastFilledDayIndex = row.days.reduce(
-      (rowLastIndex, value, dayIndex) => (Number(value) > 0 ? dayIndex : rowLastIndex),
-      -1
-    );
-    return Math.max(lastIndex, rowLastFilledDayIndex);
-  }, -1);
-
-  if (enteredRows.length === 0) {
-    return { dayCount: 0, rows: [] };
-  }
-
-  const daysToSave = lastFilledDayIndex >= 0 ? lastFilledDayIndex + 1 : 1;
-
-  return {
-    dayCount: daysToSave,
-    rows: enteredRows.map((row, index) => ({
-      ...row,
-      serialNumber: index + 1,
-      days: Array.from({ length: daysToSave }, (_, dayIndex) => row.days[dayIndex] ?? 0)
-    }))
-  };
-}
-
 function CustomerTable() {
   const [sheetState, setSheetState] = useState<SheetState>(createInitialState());
-  const [showActionBar, setShowActionBar] = useState(true);
-  const lastScrollTopRef = useRef(0);
 
   const { rows, dayCount } = sheetState;
-  const displayRows = sortRowsForDisplay(rows);
 
   useEffect(() => {
     const activeUser = getActiveUser();
@@ -258,20 +185,7 @@ function CustomerTable() {
       return;
     }
 
-    const filledHistorySheet = createFilledHistorySheet(rows, dayCount);
-
-    if (filledHistorySheet.rows.length === 0) {
-      alert("No entered rows found to save in history.");
-      return;
-    }
-
-    const sheetName = window.prompt("Enter history sheet name:", `Sheet ${new Date().toLocaleDateString()}`);
-
-    if (sheetName === null) {
-      return;
-    }
-
-    void archiveSheetByEmail(activeUser.email, filledHistorySheet, sheetName).then((nextSheet) => {
+    void archiveSheetByEmail(activeUser.email, { dayCount, rows }).then((nextSheet) => {
       setSheetState(nextSheet);
       notifyMilkDataChanged();
     });
@@ -360,32 +274,13 @@ function CustomerTable() {
     saveState({ dayCount: dayCount - 1, rows: nextRows });
   };
 
-  const handleSheetScroll = (event: React.UIEvent<HTMLDivElement>) => {
-    const nextScrollTop = event.currentTarget.scrollTop;
-    const previousScrollTop = lastScrollTopRef.current;
-
-    if (nextScrollTop < previousScrollTop || nextScrollTop <= 8) {
-      setShowActionBar(true);
-    } else if (nextScrollTop > previousScrollTop + 8) {
-      setShowActionBar(false);
-    }
-
-    lastScrollTopRef.current = nextScrollTop;
-  };
-
   return (
-    <div className="relative flex h-full min-h-0 flex-col rounded-xl border border-slate-300 bg-white p-3 shadow-sm md:p-4">
-      <div
-        className={`absolute left-3 right-3 top-3 z-20 grid grid-cols-2 gap-2 rounded-lg bg-white/95 transition-all duration-200 sm:flex sm:flex-wrap sm:items-center ${
-          showActionBar
-            ? "translate-y-0 opacity-100 shadow-sm"
-            : "pointer-events-none -translate-y-full opacity-0"
-        }`}
-      >
+    <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3 shadow-sm md:p-4">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
         <button
           type="button"
-          onClick={addRow} 
-         className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
+          onClick={addRow}
+          className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
         >
           Add Row
         </button>
@@ -415,15 +310,15 @@ function CustomerTable() {
         <button
           type="button"
           onClick={archiveToHistory}
-          className="col-span-2 ml-auto min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:col-auto sm:text-sm"
+          className="col-span-2 min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:col-auto sm:text-sm"
         >
           Save to History
         </button>
       </div>
 
-      
+      <p className="text-xs text-slate-500 sm:hidden">Swipe left/right to view all day columns.</p>
 
-     <div className={`min-h-0 flex-1 overflow-auto pb-6 ${showActionBar ? "pt-16 sm:pt-14" : "pt-0"}`} onScroll={handleSheetScroll}>
+      <div className="overflow-auto">
         <table className="min-w-[1080px] border-collapse text-center text-xs md:text-sm">
           <thead className="bg-slate-100 font-semibold text-slate-800">
             <tr>
@@ -440,22 +335,18 @@ function CustomerTable() {
           </thead>
           <tbody>
             {(() => {
-              const displaySerialNumbers = buildDisplaySerialMap(displayRows);
-              const groupStartIndices = buildGroupStartIndices(displayRows);
+              const displaySerialNumbers = buildDisplaySerialMap(rows);
+              const groupStartIndices = buildGroupStartIndices(rows);
               const nameCellSpans = buildNameCellSpans(groupStartIndices);
-              const combinedTotals = buildCombinedTotals(displayRows, groupStartIndices);
-              return displayRows.map((row, rowIndex) => {
+              const combinedTotals = buildCombinedTotals(rows, groupStartIndices);
+              return rows.map((row, rowIndex) => {
               const total = row.days.reduce((sum, value) => sum + value, 0);
               const nameSpan = nameCellSpans[rowIndex];
               const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : total;
 
               return (
-                <tr key={row.serialNumber} className="bg-white even:bg-slate-50">
-                  {nameSpan > 0 && (
-                    <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 align-middle md:px-2 font-semibold">
-                      {displaySerialNumbers[rowIndex]}
-                    </td>
-                  )}
+                <tr key={row.serialNumber} className="bg-white">
+                  <td className="border border-slate-300 px-1 py-1 md:px-2 font-semibold">{displaySerialNumbers[rowIndex]}</td>
                   {nameSpan > 0 && (
                     <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 md:px-2">
                       <input
@@ -469,7 +360,7 @@ function CustomerTable() {
                     <input
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
-                      className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-center"
+                      className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-left"
                       placeholder="M/E"
                     />
                   </td>
@@ -479,20 +370,18 @@ function CustomerTable() {
                       className="border border-slate-300 px-1 py-1"
                     >
                       <input
-                        type="text"
-                        inputMode="decimal"
-                        pattern="[0-9]*[.]?[0-9]*"
+                        type="number"
+                        min="0"
+                        step="1"
                         value={value === 0 ? "" : value}
                         onKeyDown={(event) => {
                           if (event.key === "ArrowUp" || event.key === "ArrowDown") {
                             event.preventDefault();
                           }
                         }}
-                        onWheel={(event) => event.currentTarget.blur()}
-                        onChange={(event) => {
-                          const nextValue = event.target.value.replace(/[^0-9.]/g, "");
-                          updateDayValue(row.serialNumber, dayIndex, nextValue);
-                        }}
+                        onChange={(event) =>
+                          updateDayValue(row.serialNumber, dayIndex, event.target.value)
+                        }
                         className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-center"
                       />
                     </td>

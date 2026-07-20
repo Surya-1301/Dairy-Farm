@@ -25,21 +25,6 @@ function buildDisplaySerialMap(rows: { customerName: string; serialNumber: numbe
   });
 }
 
-function getCustomerCount(rows: { customerName: string; serialNumber: number }[]): number {
-  const customerNames = new Set<string>();
-  let unnamedCount = 0;
-
-  rows.forEach((row) => {
-    const key = row.customerName.trim().toLowerCase();
-    if (key) {
-      customerNames.add(key);
-    } else {
-      unnamedCount += 1;
-    }
-  });
-
-  return customerNames.size + unnamedCount;
-}
 
 function buildGroupStartIndices(rows: { customerName: string }[]): number[] {
   const groupStart = rows.map((_, index) => index);
@@ -72,22 +57,16 @@ function formatDate(value: string) {
 function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
   const doc = new jsPDF({ orientation: "landscape" });
   const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
-  const groupStartIndices = buildGroupStartIndices(entry.rows);
-  const nameCellSpans = buildNameCellSpans(groupStartIndices);
-  const combinedTotals = buildCombinedTotals(entry.rows, groupStartIndices);
 
   const total = entry.rows.reduce(
     (entryTotal, row) => entryTotal + row.days.reduce((rowTotal, value) => rowTotal + value, 0),
     0
   );
 
-  const pageWidth = doc.internal.pageSize.getWidth();
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  doc.text("RAIPUR DUGDH UTPADAN ASSOCIATION", pageWidth / 2, 8, { align: "center" });
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(12);
-  doc.text(`${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${entry.dayCount} days · Total ${total}`, pageWidth / 2, 15, { align: "center" });
+  doc.setFontSize(14);
+  doc.text(`Dairy Farm — Sheet ${sheetNumber}`, 14, 15);
+  doc.setFontSize(9);
+  doc.text(`Saved: ${formatDate(entry.savedAt)}   |   Rows: ${entry.rows.length}   |   Days: ${entry.dayCount}   |   Total: ${total}`, 14, 22);
 
   const head = [
     ["S No", "Customer Name", "Shift", ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`), "Total"],
@@ -95,76 +74,20 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
 
   const body = entry.rows.map((row, index) => {
     const rowTotal = row.days.reduce((sum, v) => sum + v, 0);
-    const nameSpan = nameCellSpans[index];
-    const displayTotal = nameSpan > 1 ? combinedTotals[index] : rowTotal;
-
-    if (nameSpan > 0) {
-      return [
-        nameSpan > 1
-          ? { content: String(displaySerialNumbers[index] ?? String(row.serialNumber)), rowSpan: nameSpan }
-          : displaySerialNumbers[index] ?? String(row.serialNumber),
-        nameSpan > 1
-          ? { content: row.customerName, rowSpan: nameSpan }
-          : row.customerName,
-        row.shift || "-",
-        ...row.days,
-        nameSpan > 1
-          ? { content: String(displayTotal), rowSpan: nameSpan }
-          : displayTotal
-      ];
-    }
-
-    return [row.shift || "-", ...row.days];
+    return [displaySerialNumbers[index] ?? String(row.serialNumber), row.customerName, row.shift || "—", ...row.days, rowTotal];
   });
 
   autoTable(doc, {
     head,
     body,
-    startY: 22,
+    startY: 27,
     styles: { fontSize: 7, cellPadding: 1.5, halign: "center" },
     headStyles: { fillColor: [71, 85, 105], textColor: 255, fontStyle: "bold" },
     columnStyles: { 1: { halign: "left" } },
     alternateRowStyles: { fillColor: [248, 250, 252] },
-    didParseCell: (data) => {
-      const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
-      if (
-        data.section === "body" &&
-        raw &&
-        typeof raw === "object" &&
-        "rowSpan" in raw &&
-        typeof raw.rowSpan === "number" &&
-        raw.rowSpan > 1
-      ) {
-        data.cell.text = [""];
-        data.cell.styles.valign = "middle";
-      }
-    },
-    didDrawCell: (data) => {
-      const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
-      if (
-        data.section === "body" &&
-        raw &&
-        typeof raw === "object" &&
-        "rowSpan" in raw &&
-        typeof raw.rowSpan === "number" &&
-        raw.rowSpan > 1
-      ) {
-        const content = String(raw.content ?? "");
-        const centerY = data.cell.y + data.cell.height / 2;
-
-        if (data.column.index === 1) {
-          data.doc.text(content, data.cell.x + 2, centerY, { baseline: "middle" });
-        } else {
-          data.doc.text(content, data.cell.x + data.cell.width / 2, centerY, {
-            align: "center",
-            baseline: "middle"
-          });
-        }
-      }
-    },
   });
 
-  doc.save(`${(entry.name || `dairy-farm-sheet-${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
+  doc.save(`dairy-farm-sheet-${sheetNumber}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
 }
 
 
@@ -198,7 +121,7 @@ function History() {
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-slate-900">History</h1>
         <p className="mt-1 text-xs md:text-sm text-slate-600">
-          Saved sheet snapshots appear here after you archive them.
+          Saved 16-day sheet snapshots appear here after you archive them.
         </p>
       </div>
 
@@ -219,12 +142,12 @@ function History() {
               <div key={entry.id} className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-3 md:p-4 shadow-sm">
                 <div className="mb-3 md:mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 md:gap-3">
                   <div>
-                    <h2 className="text-base md:text-lg font-semibold text-slate-800">{entry.name || `Sheet ${history.length - index}`}</h2>
+                    <h2 className="text-base md:text-lg font-semibold text-slate-800">Sheet {history.length - index}</h2>
                     <p className="text-xs md:text-sm text-slate-500">Saved on {formatDate(entry.savedAt)}</p>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 md:gap-2 text-xs md:text-sm text-slate-600">
                     <span className="font-medium">
-                      {getCustomerCount(entry.rows)} Customer · {entry.dayCount} days · Total {total}
+                      {entry.rows.length} rows · {entry.dayCount} days · Total {total}
                     </span>
                   </div>
                 </div>
@@ -276,10 +199,8 @@ function History() {
                         const displayTotal = nameSpan > 1 ? combinedTotals[index] : rowTotal;
 
                         return (
-                          <tr key={row.serialNumber} className="even:bg-slate-50">
-                            {nameSpan > 0 && (
-                              <td rowSpan={nameSpan} className="border border-slate-200 px-1 md:px-2 py-1 md:py-1 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerialNumbers[index]}</td>
-                            )}
+                          <tr key={row.serialNumber} className="bg-white">
+                            <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">{displaySerialNumbers[index]}</td>
                             {nameSpan > 0 && (
                               <td rowSpan={nameSpan} className="border border-slate-200 px-1 md:px-2 py-1 md:py-1 text-left align-middle">{row.customerName}</td>
                             )}

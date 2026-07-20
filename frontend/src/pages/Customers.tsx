@@ -35,22 +35,6 @@ function formatShiftLabel(group: Customer[]): string {
   return group[0].shift || "—";
 }
 
-function getGroupShiftPriority(group: Customer[]): number {
-  if (group.length > 1) return 0; // Both shift first
-  if (group[0].shift === "M") return 1; // Morning second
-  if (group[0].shift === "E") return 2; // Evening third
-  return 3;
-}
-
-function sortCustomerGroups(groups: Customer[][]): Customer[][] {
-  return [...groups].sort((a, b) => {
-    const priorityDifference =
-      getGroupShiftPriority(a) - getGroupShiftPriority(b);
-    if (priorityDifference !== 0) return priorityDifference;
-    return a[0].serialNumber - b[0].serialNumber;
-  });
-}
-
 function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [draggedSerial, setDraggedSerial] = useState<number | null>(null);
@@ -67,7 +51,7 @@ function Customers() {
     address: "",
     shift: "",
   });
-  const groupedCustomers = sortCustomerGroups(groupCustomersByName(customers));
+  const groupedCustomers = groupCustomersByName(customers);
 
   useEffect(() => {
     const loadCustomers = async () => {
@@ -243,67 +227,10 @@ function Customers() {
     }
   };
 
-  const getCustomerKey = (customer: Customer) =>
-    `${customer.name.trim().toLowerCase()}::${customer.shift}`;
-
-  const moveCustomerGroupToPosition = async (
-    sourceGroup: Customer[],
-    targetGroup: Customer[],
-    position: "before" | "after",
-  ) => {
-    if (sourceGroup.length === 0 || targetGroup.length === 0) return;
-
-    const sourceKeys = new Set(sourceGroup.map(getCustomerKey));
-    const targetKeys = new Set(targetGroup.map(getCustomerKey));
-
-    if ([...sourceKeys].some((key) => targetKeys.has(key))) return;
-
-    const sourceOrder =
-      position === "after" ? [...sourceGroup].reverse() : sourceGroup;
-
-    for (const sourceCustomer of sourceOrder) {
-      const latestCustomers = await getCustomers();
-      const latestSource = latestCustomers.find(
-        (customer) =>
-          getCustomerKey(customer) === getCustomerKey(sourceCustomer),
-      );
-      const latestTargetGroup = latestCustomers.filter((customer) =>
-        targetKeys.has(getCustomerKey(customer)),
-      );
-      const latestTarget =
-        position === "after"
-          ? latestTargetGroup[latestTargetGroup.length - 1]
-          : latestTargetGroup[0];
-
-      if (!latestSource || !latestTarget) continue;
-
-      await moveCustomerToPosition(
-        latestSource.serialNumber,
-        latestTarget.serialNumber,
-        position,
-      );
-    }
-
-    setCustomers(await getCustomers());
-  };
-
-  const handleMove = async (group: Customer[], direction: "up" | "down") => {
-    if (group.length === 0) return;
-
-    const currentGroupIndex = groupedCustomers.findIndex((item) =>
-      item.some((customer) => customer.serialNumber === group[0].serialNumber),
-    );
-
-    if (currentGroupIndex === -1) return;
-
-    const targetGroupIndex =
-      direction === "up" ? currentGroupIndex - 1 : currentGroupIndex + 1;
-    if (targetGroupIndex < 0 || targetGroupIndex >= groupedCustomers.length)
-      return;
-
-    await moveCustomerGroupToPosition(
-      groupedCustomers[currentGroupIndex],
-      groupedCustomers[targetGroupIndex],
+  const handleMove = async (serialNumber: number, direction: "up" | "down") => {
+    await moveCustomerToPosition(
+      serialNumber,
+      direction === "up" ? serialNumber - 1 : serialNumber + 1,
       direction === "up" ? "before" : "after",
     );
   };
@@ -342,28 +269,11 @@ function Customers() {
         return;
       }
 
-      const sourceGroup = groupedCustomers.find((group) =>
-        group.some((customer) => customer.serialNumber === sourceSerial),
-      );
-      const targetGroup = groupedCustomers.find((group) =>
-        group.some((customer) => customer.serialNumber === serialNumber),
-      );
-
-      if (
-        !sourceGroup ||
-        !targetGroup ||
-        sourceGroup[0].serialNumber === targetGroup[0].serialNumber
-      ) {
-        setDraggedSerial(null);
-        setDropSerial(null);
-        return;
-      }
-
       const rect = targetRow.getBoundingClientRect();
       const insertAfter = event.clientY > rect.top + rect.height / 2;
-      await moveCustomerGroupToPosition(
-        sourceGroup,
-        targetGroup,
+      await moveCustomerToPosition(
+        sourceSerial,
+        serialNumber,
         insertAfter ? "after" : "before",
       );
       setDraggedSerial(null);
@@ -465,9 +375,9 @@ function Customers() {
                 className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
               >
                 <option value="">Select shift</option>
-                <option value="M/E">Both Shift</option>
-                <option value="M">Morning Shift</option>
-                <option value="E">Evening Shift</option>
+                <option value="M">Morning (M)</option>
+                <option value="E">Evening (E)</option>
+                <option value="M/E">Both (M/E)</option>
               </select>
             </div>
 
@@ -490,98 +400,102 @@ function Customers() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200">
-        {loading ? (
-          <div className="p-6 md:p-8 text-center text-slate-500 text-xs md:text-sm">
-            <p>Loading customers...</p>
-          </div>
-        ) : customers.length === 0 ? (
-          <div className="p-6 md:p-8 text-center text-slate-500 text-xs md:text-sm">
-            <p>No customers added yet. Click "Add Customer" to get started.</p>
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
-                  S.No
-                </th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
-                  Name
-                </th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden md:table-cell">
-                  Mobile
-                </th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden sm:table-cell">
-                  Shift
-                </th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden lg:table-cell">
-                  Address
-                </th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {groupedCustomers.map((group, groupIndex) => {
-                const primary = group[0];
-                const isDragging = draggedSerial === primary.serialNumber;
-                const isDropTarget = dropSerial === primary.serialNumber;
+      <div className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="p-6 md:p-8 text-center text-slate-500 text-xs md:text-sm">
+              <p>Loading customers...</p>
+            </div>
+          ) : customers.length === 0 ? (
+            <div className="p-6 md:p-8 text-center text-slate-500 text-xs md:text-sm">
+              <p>
+                No customers added yet. Click "Add Customer" to get started.
+              </p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-200 bg-white">
+                  <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
+                    S.No
+                  </th>
+                  <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
+                    Name
+                  </th>
+                  <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden md:table-cell">
+                    Mobile
+                  </th>
+                  <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden sm:table-cell">
+                    Shift
+                  </th>
+                  <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900 hidden lg:table-cell">
+                    Address
+                  </th>
+                  <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {groupedCustomers.map((group, groupIndex) => {
+                  const primary = group[0];
+                  const isDragging = draggedSerial === primary.serialNumber;
+                  const isDropTarget = dropSerial === primary.serialNumber;
 
-                return (
-                  <tr
-                    key={primary.serialNumber}
-                    ref={(node) => {
-                      rowRefs.current[primary.serialNumber] = node;
-                    }}
+                  return (
+                    <tr
+                      key={primary.serialNumber}
+                      ref={(node) => {
+                        rowRefs.current[primary.serialNumber] = node;
+                      }}
 
-                    draggable
-                    onDragStart={handleDragStart(primary.serialNumber)}
-                    onDragOver={handleDragOver(primary.serialNumber)}
-                    onDrop={handleDrop(primary.serialNumber)}
-                    onDragEnd={handleDragEnd}
-                    className={`hover:bg-slate-50 ${isDragging ? "opacity-50" : ""} ${isDropTarget ? "ring-2 ring-brand-500 ring-inset" : ""} cursor-grab active:cursor-grabbing`}
-                  >
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">
-                      {groupIndex + 1}
-                    </td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 font-medium">
-                      {primary.name}
-                    </td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden md:table-cell">
-                      {primary.mobile}
-                    </td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden sm:table-cell">
-                      {formatShiftLabel(group)}
-                    </td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden lg:table-cell truncate">
-                      {primary.address}
-                    </td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm flex gap-2 md:gap-3 flex-col sm:flex-row">
-                      <button
-                        onClick={() => handleEditClick(group)}
-                        className="text-brand-600 hover:text-brand-700 active:text-brand-800 font-medium px-3 py-2 rounded hover:bg-brand-50 active:bg-brand-100 transition min-h-[40px] flex items-center justify-center"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleDelete(
-                            group.map((customer) => customer.serialNumber),
-                          )
-                        }
-                        className="text-red-600 hover:text-red-700 active:text-red-800 font-medium px-3 py-2 rounded hover:bg-red-50 active:bg-red-100 transition min-h-[40px] flex items-center justify-center"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+                      draggable
+                      onDragStart={handleDragStart(primary.serialNumber)}
+                      onDragOver={handleDragOver(primary.serialNumber)}
+                      onDrop={handleDrop(primary.serialNumber)}
+                      onDragEnd={handleDragEnd}
+                      className={`bg-white hover:bg-slate-50 ${isDragging ? "opacity-50" : ""} ${isDropTarget ? "ring-2 ring-brand-500 ring-inset" : ""} cursor-grab active:cursor-grabbing`}
+                    >
+                      <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">
+                        {groupIndex + 1}
+                      </td>
+                      <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 font-medium">
+                        {primary.name}
+                      </td>
+                      <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden md:table-cell">
+                        {primary.mobile}
+                      </td>
+                      <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden sm:table-cell">
+                        {formatShiftLabel(group)}
+                      </td>
+                      <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 hidden lg:table-cell truncate">
+                        {primary.address}
+                      </td>
+                      <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm flex gap-2 md:gap-3 flex-col sm:flex-row">
+                        <button
+                          onClick={() => handleEditClick(group)}
+                          className="text-brand-600 hover:text-brand-700 active:text-brand-800 font-medium px-3 py-2 rounded hover:bg-brand-50 active:bg-brand-100 transition min-h-[40px] flex items-center justify-center"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleDelete(
+                              group.map((customer) => customer.serialNumber),
+                            )
+                          }
+                          className="text-red-600 hover:text-red-700 active:text-red-800 font-medium px-3 py-2 rounded hover:bg-red-50 active:bg-red-100 transition min-h-[40px] flex items-center justify-center"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );

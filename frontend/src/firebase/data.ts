@@ -201,14 +201,18 @@ export async function saveHistoryByEmail(email: string, entries: SheetHistoryEnt
   return entries;
 }
 
-export async function archiveSheetByEmail(email: string, sheet: SheetState, name = ""): Promise<SheetState> {
+export async function archiveSheetByEmail(email: string, sheet: SheetState): Promise<SheetState> {
   const history = await getHistoryByEmail(email);
-  const archivedSheet = cloneSheetState(sheet);
+
+  const filledRows = sheet.rows
+    .filter((row) => row.customerName.trim() !== "" || row.days.some((value) => value > 0))
+    .map((row, index) => ({ ...row, serialNumber: index + 1 }));
+
+  const archivedSheet = cloneSheetState({ dayCount: sheet.dayCount, rows: filledRows });
   const entry: SheetHistoryEntry = {
     ...archivedSheet,
     id: `history-${Date.now()}`,
-    savedAt: new Date().toISOString(),
-    name: name.trim() || `Sheet ${history.length + 1}`
+    savedAt: new Date().toISOString()
   };
 
   await saveHistoryByEmail(email, [entry, ...history]);
