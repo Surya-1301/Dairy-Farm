@@ -98,13 +98,23 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
     const nameSpan = nameCellSpans[index];
     const displayTotal = nameSpan > 1 ? combinedTotals[index] : rowTotal;
 
-    return [
-      displaySerialNumbers[index] ?? String(row.serialNumber),
-      nameSpan > 0 ? { content: row.customerName, rowSpan: nameSpan } : "",
-      row.shift || "—",
-      ...row.days,
-      nameSpan > 0 ? { content: displayTotal, rowSpan: nameSpan } : ""
-    ];
+    if (nameSpan > 0) {
+      return [
+        nameSpan > 1
+          ? { content: String(displaySerialNumbers[index] ?? String(row.serialNumber)), rowSpan: nameSpan }
+          : displaySerialNumbers[index] ?? String(row.serialNumber),
+        nameSpan > 1
+          ? { content: row.customerName, rowSpan: nameSpan }
+          : row.customerName,
+        row.shift || "-",
+        ...row.days,
+        nameSpan > 1
+          ? { content: String(displayTotal), rowSpan: nameSpan }
+          : displayTotal
+      ];
+    }
+
+    return [row.shift || "-", ...row.days];
   });
 
   autoTable(doc, {
@@ -115,6 +125,43 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
     headStyles: { fillColor: [71, 85, 105], textColor: 255, fontStyle: "bold" },
     columnStyles: { 1: { halign: "left" } },
     alternateRowStyles: { fillColor: [248, 250, 252] },
+    didParseCell: (data) => {
+      const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
+      if (
+        data.section === "body" &&
+        raw &&
+        typeof raw === "object" &&
+        "rowSpan" in raw &&
+        typeof raw.rowSpan === "number" &&
+        raw.rowSpan > 1
+      ) {
+        data.cell.text = [""];
+        data.cell.styles.valign = "middle";
+      }
+    },
+    didDrawCell: (data) => {
+      const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
+      if (
+        data.section === "body" &&
+        raw &&
+        typeof raw === "object" &&
+        "rowSpan" in raw &&
+        typeof raw.rowSpan === "number" &&
+        raw.rowSpan > 1
+      ) {
+        const content = String(raw.content ?? "");
+        const centerY = data.cell.y + data.cell.height / 2;
+
+        if (data.column.index === 1) {
+          data.doc.text(content, data.cell.x + 2, centerY, { baseline: "middle" });
+        } else {
+          data.doc.text(content, data.cell.x + data.cell.width / 2, centerY, {
+            align: "center",
+            baseline: "middle"
+          });
+        }
+      }
+    },
   });
 
   doc.save(`${(entry.name || `dairy-farm-sheet-${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
@@ -188,7 +235,7 @@ function History() {
                     onClick={() => downloadSheetAsPdf(entry, history.length - index)}
                     className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition flex-1 sm:flex-none"
                   >
-                    Save Pdf
+                    Save to Local Device
                   </button>
                   <button
                     type="button"
@@ -230,7 +277,9 @@ function History() {
 
                         return (
                           <tr key={row.serialNumber} className="even:bg-slate-50">
-                            <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">{displaySerialNumbers[index]}</td>
+                            {nameSpan > 0 && (
+                              <td rowSpan={nameSpan} className="border border-slate-200 px-1 md:px-2 py-1 md:py-1 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerialNumbers[index]}</td>
+                            )}
                             {nameSpan > 0 && (
                               <td rowSpan={nameSpan} className="border border-slate-200 px-1 md:px-2 py-1 md:py-1 text-left align-middle">{row.customerName}</td>
                             )}

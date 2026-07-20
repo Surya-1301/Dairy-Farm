@@ -48,13 +48,23 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, owner
     const nameSpan = nameCellSpans[index];
     const displayTotal = nameSpan > 1 ? combinedTotals[index] : rowTotal;
 
-    return [
-      displaySerialNumbers[index] ?? String(row.serialNumber),
-      nameSpan > 0 ? { content: row.customerName, rowSpan: nameSpan } : "",
-      row.shift || "—",
-      ...row.days,
-      nameSpan > 0 ? { content: displayTotal, rowSpan: nameSpan } : ""
-    ];
+    if (nameSpan > 0) {
+      return [
+        nameSpan > 1
+          ? { content: String(displaySerialNumbers[index] ?? String(row.serialNumber)), rowSpan: nameSpan }
+          : displaySerialNumbers[index] ?? String(row.serialNumber),
+        nameSpan > 1
+          ? { content: row.customerName, rowSpan: nameSpan }
+          : row.customerName,
+        row.shift || "-",
+        ...row.days,
+        nameSpan > 1
+          ? { content: String(displayTotal), rowSpan: nameSpan }
+          : displayTotal
+      ];
+    }
+
+    return [row.shift || "-", ...row.days];
   });
 
   autoTable(doc, {
@@ -65,6 +75,43 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, owner
     headStyles: { fillColor: [71, 85, 105], textColor: 255, fontStyle: "bold" },
     columnStyles: { 1: { halign: "left" } },
     alternateRowStyles: { fillColor: [248, 250, 252] },
+    didParseCell: (data) => {
+      const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
+      if (
+        data.section === "body" &&
+        raw &&
+        typeof raw === "object" &&
+        "rowSpan" in raw &&
+        typeof raw.rowSpan === "number" &&
+        raw.rowSpan > 1
+      ) {
+        data.cell.text = [""];
+        data.cell.styles.valign = "middle";
+      }
+    },
+    didDrawCell: (data) => {
+      const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
+      if (
+        data.section === "body" &&
+        raw &&
+        typeof raw === "object" &&
+        "rowSpan" in raw &&
+        typeof raw.rowSpan === "number" &&
+        raw.rowSpan > 1
+      ) {
+        const content = String(raw.content ?? "");
+        const centerY = data.cell.y + data.cell.height / 2;
+
+        if (data.column.index === 1) {
+          data.doc.text(content, data.cell.x + 2, centerY, { baseline: "middle" });
+        } else {
+          data.doc.text(content, data.cell.x + data.cell.width / 2, centerY, {
+            align: "center",
+            baseline: "middle"
+          });
+        }
+      }
+    },
   });
 
   doc.save(`${(entry.name || `dairy-farm-${ownerLabel}-sheet-${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
@@ -552,8 +599,8 @@ export default function OwnerDashboard() {
         )}
 
         {selectedUser && (
-  <div className="fixed inset-0 z-50 bg-white">
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-white">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 md:bg-white md:p-0">
+            <div className="max-h-[88vh] w-[94vw] max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl md:flex md:h-screen md:max-h-none md:w-screen md:max-w-none md:flex-col md:rounded-none md:shadow-none">
               <div className="relative flex items-start justify-between gap-3 border-b border-slate-200 p-4 pr-10 md:p-5 md:pr-16">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">User Data</h3>
@@ -581,7 +628,7 @@ export default function OwnerDashboard() {
                 </div>
               </div>
 
-                <div className="flex-1 overflow-auto p-3 md:p-5">
+                <div className="max-h-[calc(88vh-96px)] overflow-auto p-3 md:max-h-none md:flex-1 md:p-5">
                 <div className="grid min-w-[900px] grid-cols-[260px_minmax(0,1fr)] gap-4 lg:min-w-0 lg:grid-cols-3">
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-1">
                     <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Customer Records</h4>
@@ -687,7 +734,7 @@ export default function OwnerDashboard() {
                                     onClick={() => downloadSheetAsPdf(entry, sheetNumber, selectedUser.name || selectedUser.email)}
                                     className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
                                   >
-                                    Save Pdf
+                                    Save to Local Device
                                   </button>
                                   <button
                                     type="button"
@@ -725,7 +772,9 @@ export default function OwnerDashboard() {
                                           const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : rowTotal;
                                           return (
                                             <tr key={`${entry.id}-${row.serialNumber}`} className="even:bg-slate-50">
-                                              <td className="border border-slate-200 px-1 py-1 font-semibold">{displaySerials[rowIndex]}</td>
+                                              {nameSpan > 0 && (
+                                                <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerials[rowIndex]}</td>
+                                              )}
                                               {nameSpan > 0 && (
                                                 <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left align-middle">{row.customerName}</td>
                                               )}

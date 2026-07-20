@@ -198,47 +198,22 @@ function CustomerTable() {
 
         setSheetState((prev) => {
           const { dayCount: prevDayCount, rows: prevRows } = prev;
-          const requiredRowCount = Math.max(prevRows.length, customers.length);
+          const updatedRows = prevRows.map((row, index) => {
+            const customer = customers.find((c) => c.serialNumber === row.serialNumber);
+            if (customer && customer.name) {
+              return {
+                ...row,
+                serialNumber: index + 1,
+                customerName: customer.name,
+                shift: customer.shift || row.shift
+              };
+            }
+            return { ...row, serialNumber: index + 1 };
+          });
 
-const updatedRows = Array.from({ length: requiredRowCount }, (_, index) => {
-  const serialNumber = index + 1;
-  const existingRow = prevRows[index] ?? createEmptyRow(serialNumber, prevDayCount);
-  const customer = customers.find((c) => c.serialNumber === serialNumber);
-
-  if (customer && customer.name) {
-    return {
-      ...existingRow,
-      serialNumber,
-      customerName: customer.name,
-      shift: customer.shift || existingRow.shift,
-      days: Array.from(
-        { length: prevDayCount },
-        (_, dayIndex) => existingRow.days?.[dayIndex] ?? 0
-      )
-    };
-  }
-
-  return {
-    ...existingRow,
-    serialNumber,
-    days: Array.from(
-      { length: prevDayCount },
-      (_, dayIndex) => existingRow.days?.[dayIndex] ?? 0
-    )
-  };
-});
-
-          const changed =
-  updatedRows.length !== prevRows.length ||
-  updatedRows.some((row, index) => {
-    const previousRow = prevRows[index];
-    return (
-      !previousRow ||
-      row.customerName !== previousRow.customerName ||
-      row.shift !== previousRow.shift ||
-      row.days.length !== previousRow.days.length
-    );
-  });
+          const changed = updatedRows.some(
+            (r, i) => r.customerName !== prevRows[i].customerName || r.shift !== prevRows[i].shift
+          );
 
           if (changed) {
             const activeUser = getActiveUser();
@@ -448,7 +423,7 @@ const updatedRows = Array.from({ length: requiredRowCount }, (_, index) => {
 
       
 
-     <div className={`min-h-0 flex-1 overflow-auto pb-2 ${showActionBar ? "pt-16 sm:pt-14" : "pt-0"}`} onScroll={handleSheetScroll}>
+     <div className={`min-h-0 flex-1 overflow-auto pb-6 ${showActionBar ? "pt-16 sm:pt-14" : "pt-0"}`} onScroll={handleSheetScroll}>
         <table className="min-w-[1080px] border-collapse text-center text-xs md:text-sm">
           <thead className="bg-slate-100 font-semibold text-slate-800">
             <tr>
@@ -476,7 +451,11 @@ const updatedRows = Array.from({ length: requiredRowCount }, (_, index) => {
 
               return (
                 <tr key={row.serialNumber} className="bg-white even:bg-slate-50">
-                  <td className="border border-slate-300 px-1 py-1 md:px-2 font-semibold">{displaySerialNumbers[rowIndex]}</td>
+                  {nameSpan > 0 && (
+                    <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 align-middle md:px-2 font-semibold">
+                      {displaySerialNumbers[rowIndex]}
+                    </td>
+                  )}
                   {nameSpan > 0 && (
                     <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 md:px-2">
                       <input
