@@ -288,7 +288,7 @@ function CustomerTable() {
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3 shadow-sm md:p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           <button
             type="button"
@@ -324,7 +324,7 @@ function CustomerTable() {
         <button
           type="button"
           onClick={openSaveNameModal}
-          className="ml-auto min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:text-sm"
+          className="w-full min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:ml-auto sm:w-auto sm:text-sm"
         >
           Save to History
         </button>
@@ -368,7 +368,6 @@ function CustomerTable() {
         </div>
       )}
 
-      <p className="text-xs text-slate-500 sm:hidden">Swipe left/right to view all day columns.</p>
 
       <div className="overflow-auto">
         <table className="min-w-[1080px] border-collapse text-center text-xs md:text-sm">
