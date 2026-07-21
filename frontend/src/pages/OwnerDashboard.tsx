@@ -855,21 +855,30 @@ export default function OwnerDashboard() {
                             );
                             const sheetNumber = historyEntries.length - index;
 
+                            const isExpanded = expandedEntryId === entry.id;
+
                             return (
                               <div key={entry.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
+                                  className="flex w-full flex-col gap-2 text-left sm:flex-row sm:items-start sm:justify-between"
+                                >
                                   <div>
                                     <h5 className="text-base font-semibold text-slate-900">
                                       {entry.name || `Sheet ${sheetNumber}`}
                                     </h5>
                                     <p className="text-xs text-slate-500">Saved on {formatDate(entry.savedAt)}</p>
                                   </div>
-                                  <div className="text-xs font-medium text-slate-600">
-                                    {getCustomerCount(entry.rows)} Customer · {effectiveDayCount} days · Total {entryTotal}
+                                  <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                                    <span>{getCustomerCount(entry.rows)} Customer · {effectiveDayCount} days · Total {entryTotal}</span>
+                                    <span className="text-slate-400">{isExpanded ? "▲" : "▼"}</span>
                                   </div>
-                                </div>
+                                </button>
 
-                                <div className="mb-3 flex flex-col sm:flex-row gap-2">
+                                {isExpanded && (
+                                <>
+                                <div className="mt-3 mb-3 flex flex-col sm:flex-row gap-2">
                                   <div className="relative flex-1 sm:flex-none">
                                     <button
                                       type="button"
@@ -964,6 +973,8 @@ export default function OwnerDashboard() {
                                     </tbody>
                                   </table>
                                 </div>
+                                </>
+                                )}
                               </div>
                             );
                           })

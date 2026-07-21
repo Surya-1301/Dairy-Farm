@@ -312,6 +312,7 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number) {
 function History() {
   const [history, setHistory] = useState<SheetHistoryEntry[]>([]);
   const [openSaveMenu, setOpenSaveMenu] = useState<string | null>(null);
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
 
   useEffect(() => {
     const activeUser = getActiveUser();
@@ -338,7 +339,7 @@ function History() {
   return (
     <section className="space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-xl md:text-2xl font-bold text-slate-900">History</h1>
+        <h1 className="text-xl md:text-3xl font-bold text-slate-900">History</h1>
         <p className="mt-1 text-xs md:text-sm text-slate-600">
           Saved sheet snapshots appear here after you archive them.
         </p>
@@ -358,9 +359,15 @@ function History() {
               0
             );
 
+            const isExpanded = expandedEntryId === entry.id;
+
             return (
               <div key={entry.id} className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-3 md:p-4 shadow-sm">
-                <div className="mb-3 md:mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 md:gap-3">
+                <button
+                  type="button"
+                  onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
+                  className="flex w-full flex-col gap-2 text-left sm:flex-row sm:items-center sm:justify-between md:gap-3"
+                >
                   <div>
                     <h2 className="text-base md:text-lg font-semibold text-slate-800">{entry.name || `Sheet ${history.length - index}`}</h2>
                     <p className="text-xs md:text-sm text-slate-500">Saved on {formatDate(entry.savedAt)}</p>
@@ -369,10 +376,13 @@ function History() {
                     <span className="font-medium">
                       {getCustomerCount(entry.rows)} Customer · {effectiveDayCount} days · Total {total}
                     </span>
+                    <span className="text-slate-400">{isExpanded ? "▲" : "▼"}</span>
                   </div>
-                </div>
+                </button>
 
-                <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                {isExpanded && (
+                <>
+                <div className="mt-3 flex flex-col sm:flex-row gap-2 mb-3">
                   <div className="relative flex-1 sm:flex-none">
                     <button
                       type="button"
@@ -471,6 +481,8 @@ function History() {
                     </tbody>
                   </table>
                 </div>
+                </>
+                )}
               </div>
             );
           })
