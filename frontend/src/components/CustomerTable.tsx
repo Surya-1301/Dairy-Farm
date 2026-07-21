@@ -92,6 +92,8 @@ function normalizeRows(rows: SheetRow[], dayCount: number): SheetRow[] {
 
 function CustomerTable() {
   const [sheetState, setSheetState] = useState<SheetState>(createInitialState());
+  const [showSaveNameModal, setShowSaveNameModal] = useState(false);
+  const [sheetNameInput, setSheetNameInput] = useState("");
 
   const { rows, dayCount } = sheetState;
 
@@ -179,16 +181,26 @@ function CustomerTable() {
     notifyMilkDataChanged();
   };
 
-  const archiveToHistory = () => {
+  const archiveToHistory = (name: string) => {
     const activeUser = getActiveUser();
     if (!activeUser?.email) {
       return;
     }
 
-    void archiveSheetByEmail(activeUser.email, { dayCount, rows }).then((nextSheet) => {
+    void archiveSheetByEmail(activeUser.email, { dayCount, rows }, name).then((nextSheet) => {
       setSheetState(nextSheet);
       notifyMilkDataChanged();
     });
+  };
+
+  const openSaveNameModal = () => {
+    setSheetNameInput("");
+    setShowSaveNameModal(true);
+  };
+
+  const confirmSaveToHistory = () => {
+    archiveToHistory(sheetNameInput);
+    setShowSaveNameModal(false);
   };
 
   const updateCustomerName = (serialNumber: number, customerName: string) => {
@@ -276,45 +288,85 @@ function CustomerTable() {
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3 shadow-sm md:p-4">
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <button
+            type="button"
+            onClick={addRow}
+            className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
+          >
+            Add Row
+          </button>
+          <button
+            type="button"
+            onClick={removeRow}
+            disabled={rows.length <= 1}
+            className="min-h-[44px] rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+          >
+            Remove Row
+          </button>
+          <button
+            type="button"
+            onClick={addColumn}
+            className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
+          >
+            Add Column
+          </button>
+          <button
+            type="button"
+            onClick={removeColumn}
+            disabled={dayCount <= 1}
+            className="min-h-[44px] rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+          >
+            Remove Column
+          </button>
+        </div>
         <button
           type="button"
-          onClick={addRow}
-          className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
-        >
-          Add Row
-        </button>
-        <button
-          type="button"
-          onClick={removeRow}
-          disabled={rows.length <= 1}
-          className="min-h-[44px] rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
-        >
-          Remove Row
-        </button>
-        <button
-          type="button"
-          onClick={addColumn}
-          className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
-        >
-          Add Column
-        </button>
-        <button
-          type="button"
-          onClick={removeColumn}
-          disabled={dayCount <= 1}
-          className="min-h-[44px] rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
-        >
-          Remove Column
-        </button>
-        <button
-          type="button"
-          onClick={archiveToHistory}
-          className="col-span-2 min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:col-auto sm:text-sm"
+          onClick={openSaveNameModal}
+          className="ml-auto min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:text-sm"
         >
           Save to History
         </button>
       </div>
+
+      {showSaveNameModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-lg">
+            <h3 className="text-sm font-semibold text-slate-800">Name this sheet</h3>
+            <p className="mt-1 text-xs text-slate-500">Give this saved sheet a name so it's easy to find in History.</p>
+            <input
+              type="text"
+              autoFocus
+              value={sheetNameInput}
+              onChange={(event) => setSheetNameInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  confirmSaveToHistory();
+                }
+              }}
+              placeholder="e.g. Sheet 1"
+              className="mt-3 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSaveNameModal(false)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmSaveToHistory}
+                className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <p className="text-xs text-slate-500 sm:hidden">Swipe left/right to view all day columns.</p>
 
@@ -346,9 +398,11 @@ function CustomerTable() {
 
               return (
                 <tr key={row.serialNumber} className="bg-white">
-                  <td className="border border-slate-300 px-1 py-1 md:px-2 font-semibold">{displaySerialNumbers[rowIndex]}</td>
                   {nameSpan > 0 && (
-                    <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 md:px-2">
+                    <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 md:px-2 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerialNumbers[rowIndex]}</td>
+                  )}
+                  {nameSpan > 0 && (
+                    <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 md:px-2 align-middle" style={{ verticalAlign: "middle" }}>
                       <input
                         value={row.customerName}
                         onChange={(event) => updateCustomerName(row.serialNumber, event.target.value)}

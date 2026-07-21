@@ -201,7 +201,7 @@ export async function saveHistoryByEmail(email: string, entries: SheetHistoryEnt
   return entries;
 }
 
-export async function archiveSheetByEmail(email: string, sheet: SheetState): Promise<SheetState> {
+export async function archiveSheetByEmail(email: string, sheet: SheetState, name?: string): Promise<SheetState> {
   const history = await getHistoryByEmail(email);
 
   const filledRows = sheet.rows
@@ -209,10 +209,12 @@ export async function archiveSheetByEmail(email: string, sheet: SheetState): Pro
     .map((row, index) => ({ ...row, serialNumber: index + 1 }));
 
   const archivedSheet = cloneSheetState({ dayCount: sheet.dayCount, rows: filledRows });
+  const trimmedName = name?.trim();
   const entry: SheetHistoryEntry = {
     ...archivedSheet,
     id: `history-${Date.now()}`,
-    savedAt: new Date().toISOString()
+    savedAt: new Date().toISOString(),
+    ...(trimmedName ? { name: trimmedName } : {})
   };
 
   await saveHistoryByEmail(email, [entry, ...history]);

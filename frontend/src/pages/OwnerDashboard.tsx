@@ -22,6 +22,7 @@ function formatDate(value: string) {
 
 function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
   const doc = new jsPDF({ orientation: "landscape" });
+  const effectiveDayCount = getEffectiveDayCount(entry);
   const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
   const groupStartIndices = buildGroupStartIndices(entry.rows);
   const nameCellSpans = buildNameCellSpans(groupStartIndices);
@@ -38,10 +39,10 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, owner
   doc.text("RAIPUR DUGDH UTPADAN ASSOCIATION", pageWidth / 2, 8, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(12);
-  doc.text(`${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${entry.dayCount} days · Total ${total}`, pageWidth / 2, 15, { align: "center" });
+  doc.text(`${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${effectiveDayCount} days · Total ${total}`, pageWidth / 2, 15, { align: "center" });
 
   const head = [
-    ["S No", "Customer Name", "Shift", ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`), "Total"],
+    ["S No", "Customer Name", "Shift", ...Array.from({ length: effectiveDayCount }, (_, i) => `Day ${i + 1}`), "Total"],
   ];
 
   const body = entry.rows.map((row, index) => {
@@ -58,24 +59,25 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, owner
           ? { content: row.customerName, rowSpan: nameSpan }
           : row.customerName,
         row.shift || "-",
-        ...row.days,
+        ...row.days.slice(0, effectiveDayCount),
         nameSpan > 1
           ? { content: String(displayTotal), rowSpan: nameSpan }
           : displayTotal
       ];
     }
 
-    return [row.shift || "-", ...row.days];
+    return [row.shift || "-", ...row.days.slice(0, effectiveDayCount)];
   });
 
   autoTable(doc, {
     head,
     body,
     startY: 22,
-    styles: { fontSize: 7, cellPadding: 1.5, halign: "center" },
-    headStyles: { fillColor: [71, 85, 105], textColor: 255, fontStyle: "bold" },
+    styles: { fontSize: 7, cellPadding: 1.5, halign: "center", lineColor: [203, 213, 225], lineWidth: 0.1 },
+    headStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: "bold", lineColor: [203, 213, 225], lineWidth: 0.1 },
+    bodyStyles: { fillColor: [255, 255, 255], lineColor: [203, 213, 225], lineWidth: 0.1 },
     columnStyles: { 1: { halign: "left" } },
-    alternateRowStyles: { fillColor: [248, 250, 252] },
+    alternateRowStyles: { fillColor: [255, 255, 255] },
     didParseCell: (data) => {
       const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
       if (
@@ -119,6 +121,7 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, owner
 }
 
 function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
+  const effectiveDayCount = getEffectiveDayCount(entry);
   void (async () => {
     const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
     const groupStartIndices = buildGroupStartIndices(entry.rows);
@@ -130,8 +133,8 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, own
       0
     );
 
-    const columnCount = 4 + entry.dayCount;
-    const title = `${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${entry.dayCount} days · Total ${total}`;
+    const columnCount = 4 + effectiveDayCount;
+    const title = `${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${effectiveDayCount} days · Total ${total}`;
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Sheet1", {
@@ -164,7 +167,7 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, own
       "S No",
       "Customer Name",
       "Shift",
-      ...Array.from({ length: entry.dayCount }, (_, i) => `Day ${i + 1}`),
+      ...Array.from({ length: effectiveDayCount }, (_, i) => `Day ${i + 1}`),
       "Total",
     ];
     const headerRow = worksheet.getRow(headerRowIndex);
@@ -187,7 +190,7 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, own
         nameSpan > 0 ? displaySerialNumbers[index] ?? String(row.serialNumber) : "",
         nameSpan > 0 ? row.customerName : "",
         row.shift || "-",
-        ...row.days,
+        ...row.days.slice(0, effectiveDayCount),
         nameSpan > 0 ? displayTotal : "",
       ];
 
@@ -197,9 +200,7 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, own
         cell.border = thinBorder;
         cell.alignment = { horizontal: colNumber === 2 ? "left" : "center", vertical: "middle" };
         cell.font = { name: "Calibri", size: 10 };
-        if (index % 2 === 1) {
-          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
-        }
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFFFF" } };
         if (colNumber === 1 || colNumber === columnCount) {
           cell.font = { name: "Calibri", size: 10, bold: true };
         }
@@ -224,7 +225,7 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, own
       { width: 8 },
       { width: 22 },
       { width: 8 },
-      ...Array.from({ length: entry.dayCount }, () => ({ width: 8 })),
+      ...Array.from({ length: effectiveDayCount }, () => ({ width: 8 })),
       { width: 10 },
     ];
 
@@ -281,6 +282,18 @@ function StatCard({ title, value, tone, description }: { title: string; value: s
       <p className="mt-2 text-sm text-slate-500">{description}</p>
     </div>
   );
+}
+
+function getEffectiveDayCount(entry: { dayCount: number; rows: { days: number[] }[] }): number {
+  let max = 0;
+  entry.rows.forEach((row) => {
+    row.days.forEach((value, idx) => {
+      if (value !== 0 && idx + 1 > max) {
+        max = idx + 1;
+      }
+    });
+  });
+  return max > 0 ? max : entry.dayCount;
 }
 
 function buildDisplaySerialMap(rows: { customerName: string; serialNumber: number }[]): string[] {
@@ -550,7 +563,7 @@ export default function OwnerDashboard() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-4 md:p-6">
+      <div className="min-h-screen p-4 md:p-6">
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur sm:p-5 md:mb-8 md:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-2">
@@ -806,7 +819,7 @@ export default function OwnerDashboard() {
                       <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Sheet Data</h4>
                       <div className="flex flex-wrap items-center gap-3">
                         <div className="text-xs font-medium text-slate-500">
-                          {selectedUser.sheet.rows.length} rows · {selectedUser.sheet.dayCount} days · Total {selectedUser.sheetTotal}
+                          {selectedUser.sheet.rows.length} rows · {getEffectiveDayCount(selectedUser.sheet)} days · Total {selectedUser.sheetTotal}
                         </div>
                         <button
                           type="button"
@@ -835,6 +848,7 @@ export default function OwnerDashboard() {
                           </div>
                         ) : (
                           historyEntries.map((entry, index) => {
+                            const effectiveDayCount = getEffectiveDayCount(entry);
                             const entryTotal = entry.rows.reduce(
                               (sum, row) => sum + row.days.reduce((rowSum, value) => rowSum + value, 0),
                               0
@@ -851,16 +865,16 @@ export default function OwnerDashboard() {
                                     <p className="text-xs text-slate-500">Saved on {formatDate(entry.savedAt)}</p>
                                   </div>
                                   <div className="text-xs font-medium text-slate-600">
-                                    {getCustomerCount(entry.rows)} Customer · {entry.dayCount} days · Total {entryTotal}
+                                    {getCustomerCount(entry.rows)} Customer · {effectiveDayCount} days · Total {entryTotal}
                                   </div>
                                 </div>
 
-                                <div className="mb-3 flex flex-wrap gap-2">
-                                  <div className="relative">
+                                <div className="mb-3 flex flex-col sm:flex-row gap-2">
+                                  <div className="relative flex-1 sm:flex-none">
                                     <button
                                       type="button"
                                       onClick={() => setOpenSaveMenuId(openSaveMenuId === entry.id ? null : entry.id)}
-                                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
                                     >
                                       Save Sheet
                                     </button>
@@ -895,7 +909,7 @@ export default function OwnerDashboard() {
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteHistoryEntry(selectedUser.email, entry.id)}
-                                    className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition"
+                                    className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition flex-1 sm:flex-none sm:ml-auto"
                                   >
                                     Delete Sheet
                                   </button>
@@ -908,7 +922,7 @@ export default function OwnerDashboard() {
                                         <th className="border border-slate-300 px-1 py-2">S No</th>
                                         <th className="border border-slate-300 px-1 py-2">Customer Name</th>
                                         <th className="border border-slate-300 px-1 py-2">Shift</th>
-                                        {Array.from({ length: entry.dayCount }, (_, dayIndex) => (
+                                        {Array.from({ length: effectiveDayCount }, (_, dayIndex) => (
                                           <th key={`owner-history-${entry.id}-day-${dayIndex + 1}`} className="border border-slate-300 px-1 py-2">
                                             Day {dayIndex + 1}
                                           </th>
@@ -927,7 +941,7 @@ export default function OwnerDashboard() {
                                           const nameSpan = nameCellSpans[rowIndex];
                                           const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : rowTotal;
                                           return (
-                                            <tr key={`${entry.id}-${row.serialNumber}`} className="even:bg-slate-50">
+                                            <tr key={`${entry.id}-${row.serialNumber}`} className="bg-white">
                                               {nameSpan > 0 && (
                                                 <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerials[rowIndex]}</td>
                                               )}
@@ -935,7 +949,7 @@ export default function OwnerDashboard() {
                                                 <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left align-middle">{row.customerName}</td>
                                               )}
                                               <td className="border border-slate-200 px-1 py-1">{row.shift || "—"}</td>
-                                              {row.days.map((value, dayIndex) => (
+                                              {row.days.slice(0, effectiveDayCount).map((value, dayIndex) => (
                                                 <td key={`${entry.id}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-1 py-1">
                                                   {value}
                                                 </td>
@@ -965,7 +979,7 @@ export default function OwnerDashboard() {
                             <th className="border border-slate-300 px-1 py-2">S No</th>
                             <th className="border border-slate-300 px-1 py-2">Customer Name</th>
                             <th className="border border-slate-300 px-1 py-2">Shift</th>
-                            {Array.from({ length: selectedUser.sheet.dayCount }, (_, index) => (
+                            {Array.from({ length: getEffectiveDayCount(selectedUser.sheet) }, (_, index) => (
                               <th key={`selected-day-${index + 1}`} className="border border-slate-300 px-1 py-2">
                                 Day {index + 1}
                               </th>
@@ -975,6 +989,7 @@ export default function OwnerDashboard() {
                         </thead>
                         <tbody>
                           {(() => {
+                            const effectiveDayCount = getEffectiveDayCount(selectedUser.sheet);
                             const displaySerials = buildDisplaySerialMap(selectedUser.sheet.rows);
                             const groupStartIndices = buildGroupStartIndices(selectedUser.sheet.rows);
                             const nameCellSpans = buildNameCellSpans(groupStartIndices);
@@ -985,13 +1000,13 @@ export default function OwnerDashboard() {
                             const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : rowTotal;
 
                             return (
-                              <tr key={`${selectedUser.email}-sheet-${row.serialNumber}`} className="even:bg-slate-50">
+                              <tr key={`${selectedUser.email}-sheet-${row.serialNumber}`} className="bg-white">
                                 <td className="border border-slate-200 px-1 py-1 font-semibold">{displaySerials[rowIndex]}</td>
                                 {nameSpan > 0 && (
                                   <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left">{row.customerName}</td>
                                 )}
                                 <td className="border border-slate-200 px-1 py-1">{row.shift}</td>
-                                {row.days.map((value, dayIndex) => (
+                                {row.days.slice(0, effectiveDayCount).map((value, dayIndex) => (
                                   <td key={`${selectedUser.email}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-1 py-1">
                                     {value}
                                   </td>
