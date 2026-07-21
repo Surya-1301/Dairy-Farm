@@ -10,10 +10,55 @@ import {
   saveSheetByEmail,
   subscribeSheetByEmail,
   type SheetState,
-  type SheetRow
+  type SheetRow,
+  type Customer
 } from "../firebase/data";
 
 const INITIAL_DAYS = 16;
+
+// Group a customer's shift records together by name, regardless of their position
+// in the underlying list (a customer's Morning/Evening records are not always adjacent).
+function groupCustomersByName(customers: Customer[]): Customer[][] {
+  const groups: Customer[][] = [];
+  const groupIndexByKey = new Map<string, number>();
+
+  for (const customer of customers) {
+    const key = customer.name.trim().toLowerCase();
+    const existingIndex = key ? groupIndexByKey.get(key) : undefined;
+
+    if (existingIndex !== undefined) {
+      groups[existingIndex].push(customer);
+    } else {
+      if (key) {
+        groupIndexByKey.set(key, groups.length);
+      }
+      groups.push([customer]);
+    }
+  }
+
+  return groups;
+}
+
+// Both-shift customers first, then Morning-only, then Evening-only — matches the
+// ordering shown on the Customers page.
+function getGroupShiftPriority(group: Customer[]): number {
+  if (group.length > 1) return 0;
+  if (group[0].shift === "M") return 1;
+  if (group[0].shift === "E") return 2;
+  return 3;
+}
+
+function sortCustomerGroups(groups: Customer[][]): Customer[][] {
+  return [...groups].sort((a, b) => {
+    const priorityDifference = getGroupShiftPriority(a) - getGroupShiftPriority(b);
+    if (priorityDifference !== 0) return priorityDifference;
+    return a[0].serialNumber - b[0].serialNumber;
+  });
+}
+
+function getOrderedCustomers(customers: Customer[]): Customer[] {
+  return sortCustomerGroups(groupCustomersByName(customers)).flat();
+}
 
 function buildDisplaySerialMap(rows: SheetRow[]): string[] {
   const serialByCustomer = new Map<string, number>();
@@ -135,8 +180,21 @@ function CustomerTable() {
             return prev;
           }
 
-          const nextRows = customers.map((customer, index) => {
-            const existingRow = prevRows[index];
+          // Order rows the same way the Customers page does: both-shift customers
+          // first, then Morning-only, then Evening-only.
+          const orderedCustomers = getOrderedCustomers(customers);
+
+          // Match existing day data by name+shift (not array position) so that
+          // reordering a customer into a new priority group doesn't scramble data.
+          const existingRowByKey = new Map<string, SheetRow>();
+          prevRows.forEach((row) => {
+            const key = `${row.customerName.trim().toLowerCase()}|${row.shift}`;
+            existingRowByKey.set(key, row);
+          });
+
+          const nextRows = orderedCustomers.map((customer, index) => {
+            const key = `${(customer.name || "").trim().toLowerCase()}|${customer.shift || ""}`;
+            const existingRow = existingRowByKey.get(key);
             return {
               serialNumber: index + 1,
               customerName: customer.name || "",

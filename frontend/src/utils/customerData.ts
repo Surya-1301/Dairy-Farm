@@ -153,9 +153,18 @@ export async function moveCustomerToPosition(
 }
 
 export async function deleteCustomer(serialNumber: number): Promise<boolean> {
+  return deleteCustomers([serialNumber]);
+}
+
+// Deletes one or more customer records (e.g. both the Morning and Evening records
+// for a "both shift" customer) in a single atomic read-modify-write pass, so a
+// mid-loop failure or storage race can never delete only one of the linked records.
+export async function deleteCustomers(serialNumbers: number[]): Promise<boolean> {
   const email = getRequiredUserEmail();
+  const targetSerialNumbers = new Set(serialNumbers);
+
   const customers = await getCustomersByEmail(email);
-  const filteredCustomers = customers.filter((customer) => customer.serialNumber !== serialNumber);
+  const filteredCustomers = customers.filter((customer) => !targetSerialNumbers.has(customer.serialNumber));
 
   if (filteredCustomers.length === customers.length) {
     return false;
@@ -163,7 +172,7 @@ export async function deleteCustomer(serialNumber: number): Promise<boolean> {
 
   const sheet = await getSheetByEmail(email);
   const nextRows = sheet.rows
-    .filter((row) => row.serialNumber !== serialNumber)
+    .filter((row) => !targetSerialNumbers.has(row.serialNumber))
     .map((row, index) => ({ ...row, serialNumber: index + 1 }));
 
   await Promise.all([

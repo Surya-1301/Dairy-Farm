@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   addCustomer,
   deleteCustomer,
+  deleteCustomers,
   getCustomers,
   moveCustomerToPosition,
   subscribeCustomersChanged,
@@ -241,9 +242,9 @@ function Customers() {
         : "Are you sure you want to delete this customer?";
 
     if (window.confirm(message)) {
-      for (const serialNumber of serialNumbers) {
-        await deleteCustomer(serialNumber);
-      }
+      // Delete all linked shift records (e.g. Morning + Evening) in a single
+      // atomic operation so one record can never be dropped without the other.
+      await deleteCustomers(serialNumbers);
     }
   };
 
