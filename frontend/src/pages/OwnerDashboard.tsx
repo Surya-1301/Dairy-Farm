@@ -858,11 +858,12 @@ export default function OwnerDashboard() {
                             const isExpanded = expandedEntryId === entry.id;
 
                             return (
-                              <div key={entry.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                              <div key={entry.id} className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                                <span className="absolute right-4 top-4 text-slate-400 sm:hidden">{isExpanded ? "▲" : "▼"}</span>
                                 <button
                                   type="button"
                                   onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
-                                  className="flex w-full flex-col gap-2 text-left sm:flex-row sm:items-start sm:justify-between"
+                                  className="flex w-full flex-col gap-2 pr-6 text-left sm:flex-row sm:items-start sm:justify-between sm:pr-0"
                                 >
                                   <div>
                                     <h5 className="text-base font-semibold text-slate-900">
@@ -872,7 +873,7 @@ export default function OwnerDashboard() {
                                   </div>
                                   <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
                                     <span>{getCustomerCount(entry.rows)} Customer · {effectiveDayCount} days · Total {entryTotal}</span>
-                                    <span className="text-slate-400">{isExpanded ? "▲" : "▼"}</span>
+                                    <span className="hidden text-slate-400 sm:inline">{isExpanded ? "▲" : "▼"}</span>
                                   </div>
                                 </button>
 

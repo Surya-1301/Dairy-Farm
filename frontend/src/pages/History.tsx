@@ -362,11 +362,12 @@ function History() {
             const isExpanded = expandedEntryId === entry.id;
 
             return (
-              <div key={entry.id} className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-3 md:p-4 shadow-sm">
+              <div key={entry.id} className="relative rounded-lg md:rounded-xl border border-slate-200 bg-white p-3 md:p-4 shadow-sm">
+                <span className="absolute right-3 top-3 text-slate-400 sm:hidden">{isExpanded ? "▲" : "▼"}</span>
                 <button
                   type="button"
                   onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
-                  className="flex w-full flex-col gap-2 text-left sm:flex-row sm:items-center sm:justify-between md:gap-3"
+                  className="flex w-full flex-col gap-2 pr-6 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:pr-0 md:gap-3"
                 >
                   <div>
                     <h2 className="text-base md:text-lg font-semibold text-slate-800">{entry.name || `Sheet ${history.length - index}`}</h2>
@@ -376,7 +377,7 @@ function History() {
                     <span className="font-medium">
                       {getCustomerCount(entry.rows)} Customer · {effectiveDayCount} days · Total {total}
                     </span>
-                    <span className="text-slate-400">{isExpanded ? "▲" : "▼"}</span>
+                    <span className="hidden text-slate-400 sm:inline">{isExpanded ? "▲" : "▼"}</span>
                   </div>
                 </button>
 
