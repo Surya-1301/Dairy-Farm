@@ -11,15 +11,19 @@ import type { Customer } from "../firebase/data";
 
 function groupCustomersByName(customers: Customer[]): Customer[][] {
   const groups: Customer[][] = [];
-  let currentKey: string | null = null;
+  const groupIndexByKey = new Map<string, number>();
 
   for (const customer of customers) {
     const key = customer.name.trim().toLowerCase();
-    if (key && key === currentKey) {
-      groups[groups.length - 1].push(customer);
+    const existingIndex = key ? groupIndexByKey.get(key) : undefined;
+
+    if (existingIndex !== undefined) {
+      groups[existingIndex].push(customer);
     } else {
+      if (key) {
+        groupIndexByKey.set(key, groups.length);
+      }
       groups.push([customer]);
-      currentKey = key || null;
     }
   }
 

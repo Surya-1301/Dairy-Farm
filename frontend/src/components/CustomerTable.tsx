@@ -119,7 +119,10 @@ function CustomerTable() {
     });
   }, []);
 
-  // Sync customer names from master customer data — run on mount and when customers change
+  // Sync customer names from master customer data — run on mount and when customers change.
+  // Rows always mirror the customer list 1:1: adding a customer automatically adds a matching
+  // row, and removing a customer automatically drops its row, so there are never extra unused
+  // rows sitting in the sheet.
   useEffect(() => {
     const syncCustomersToSheet = () => {
       void (async () => {
@@ -127,30 +130,34 @@ function CustomerTable() {
 
         setSheetState((prev) => {
           const { dayCount: prevDayCount, rows: prevRows } = prev;
-          const updatedRows = prevRows.map((row, index) => {
-            const customer = customers.find((c) => c.serialNumber === row.serialNumber);
-            if (customer && customer.name) {
-              return {
-                ...row,
-                serialNumber: index + 1,
-                customerName: customer.name,
-                shift: customer.shift || row.shift
-              };
-            }
-            return { ...row, serialNumber: index + 1 };
+
+          if (customers.length === 0) {
+            return prev;
+          }
+
+          const nextRows = customers.map((customer, index) => {
+            const existingRow = prevRows[index];
+            return {
+              serialNumber: index + 1,
+              customerName: customer.name || "",
+              shift: customer.shift || existingRow?.shift || "",
+              days: Array.from({ length: prevDayCount }, (_, dayIndex) => existingRow?.days?.[dayIndex] ?? 0)
+            };
           });
 
-          const changed = updatedRows.some(
-            (r, i) => r.customerName !== prevRows[i].customerName || r.shift !== prevRows[i].shift
-          );
+          const changed =
+            nextRows.length !== prevRows.length ||
+            nextRows.some(
+              (r, i) => r.customerName !== prevRows[i]?.customerName || r.shift !== prevRows[i]?.shift
+            );
 
           if (changed) {
             const activeUser = getActiveUser();
             if (activeUser?.email) {
-              void saveSheetByEmail(activeUser.email, { dayCount: prevDayCount, rows: updatedRows });
+              void saveSheetByEmail(activeUser.email, { dayCount: prevDayCount, rows: nextRows });
             }
             notifyMilkDataChanged();
-            return { dayCount: prevDayCount, rows: updatedRows };
+            return { dayCount: prevDayCount, rows: nextRows };
           }
 
           return prev;
