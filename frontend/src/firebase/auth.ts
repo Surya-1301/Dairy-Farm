@@ -2,9 +2,15 @@ import {
   createUserWithEmailAndPassword,
   confirmPasswordReset,
   deleteUser,
+  EmailAuthProvider,
+  GoogleAuthProvider,
+  linkWithCredential,
   onAuthStateChanged,
+  signInWithCredential,
   signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword,
+  signInWithPopup,
   signOut as firebaseSignOut,
+  type AuthCredential,
   type User
 } from "firebase/auth";
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
@@ -35,6 +41,12 @@ export type UserProfile = {
 let activeFirebaseUser: User | null = auth?.currentUser ?? null;
 let authInitialized = !auth;
 let profileCache = new Map<string, UserProfile>();
+// While true, the global onAuthStateChanged listener below ignores auth
+// changes. Used during Google sign-in so a brand-new Google account is never
+// briefly treated as logged in (which would redirect to the dashboard)
+// before we've checked whether the account needs to finish signup (password
+// + phone number).
+let suppressAuthStateSync = false;
 
 function normalizeEmail(rawValue: string) {
   return rawValue.trim().toLowerCase();
@@ -279,6 +291,9 @@ function syncFirebaseUser(user: User | null) {
 
 if (auth) {
   onAuthStateChanged(auth, (user) => {
+    if (suppressAuthStateSync) {
+      return;
+    }
     syncFirebaseUser(user);
   });
 }
@@ -496,6 +511,134 @@ export async function signUpWithEmailPassword(email: string, password: string, n
     );
     await saveUserProfileToCloud(profile);
     syncFirebaseUser(credential.user);
+  } catch (error) {
+    throw toFriendlyAuthError(error);
+  }
+}
+
+export type GoogleSignInResult =
+  | { isNewUser: false }
+  | { isNewUser: true; email: string; name: string; avatarUrl: string; credential: AuthCredential };
+
+// Works for both sign-in and sign-up. If a profile already exists for this
+// Google account, sign the user straight in. If it is a brand-new account,
+// capture their email & name from Google, then sign back out immediately --
+// the caller (Login page) should collect a password and phone number and
+// call completeGoogleSignup(...) to finish creating the account. This is
+// entirely client-side (Firebase Authentication's built-in Google provider)
+// — no backend, Cloud Function, or Blaze billing plan is required. It only
+// needs the Google provider turned on once in Firebase Console ->
+// Authentication -> Sign-in method.
+export async function signInWithGoogle(): Promise<GoogleSignInResult> {
+  const firebaseAuth = requireFirebaseAuth();
+
+  // Suppress the global onAuthStateChanged listener for the duration of this
+  // call. Without this, Firebase fires that listener as soon as the Google
+  // popup succeeds -- before we have had a chance to check whether this is a
+  // brand-new account -- which would make the app think the user is fully
+  // logged in and redirect straight to the dashboard.
+  suppressAuthStateSync = true;
+
+  try {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(firebaseAuth, provider);
+    const user = result.user;
+    const normalizedEmail = normalizeEmail(user.email ?? "");
+
+    if (!normalizedEmail) {
+      await firebaseSignOut(firebaseAuth);
+      throw new Error("This Google account does not have an email address.");
+    }
+
+    const existingProfile = await getUserProfileFromCloud(normalizedEmail);
+
+    if (existingProfile) {
+      const profile = upsertUserProfile(existingProfile);
+      await saveUserProfileToCloud(profile);
+      suppressAuthStateSync = false;
+      syncFirebaseUser(user);
+      return { isNewUser: false };
+    }
+
+    const name = user.displayName ?? "";
+    const avatarUrl = user.photoURL ?? "";
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+
+    // Sign back out so the app doesn't treat this brand-new account as fully
+    // logged in until they finish setting a password and phone number.
+    await firebaseSignOut(firebaseAuth);
+
+    if (!credential) {
+      throw new Error("Could not complete Google sign-in. Please try again.");
+    }
+
+    return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential };
+  } catch (error) {
+    if (isConfigurationError(error)) throw toFriendlyAuthError(error);
+    const code = (error as { code?: string })?.code;
+    if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+      throw new Error("Google sign-in was cancelled.");
+    }
+    if (code === "auth/account-exists-with-different-credential") {
+      throw new Error("An account already exists with this email using a different sign-in method. Sign in with your password instead.");
+    }
+    if (code === "auth/operation-not-allowed") {
+      throw new Error("Google sign-in is not enabled for this app yet.");
+    }
+    console.error("Google sign-in error:", error);
+    throw new Error(error instanceof Error ? error.message : "Google sign-in failed.");
+  } finally {
+    // Always re-enable the listener, whether we succeeded, signed back out, or
+    // threw an error, so normal auth changes are tracked again afterward.
+    suppressAuthStateSync = false;
+  }
+}
+
+// Finishes setting up a brand-new Google account: re-establishes the
+// Firebase session from the retained Google credential, links a password to
+// it (so the user can also sign in with email + password later), then saves
+// the full profile (with phone number) and treats the user as logged in.
+export async function completeGoogleSignup(args: {
+  credential: AuthCredential;
+  email: string;
+  name: string;
+  phone: string;
+  password: string;
+  avatarUrl?: string;
+}): Promise<void> {
+  const firebaseAuth = requireFirebaseAuth();
+  const normalizedEmail = normalizeEmail(args.email);
+  const trimmedPassword = args.password.trim();
+  const trimmedName = args.name.trim();
+  const trimmedPhone = args.phone.trim();
+
+  if (!trimmedPassword || trimmedPassword.length < 6) {
+    throw new Error("Choose a password with at least 6 characters.");
+  }
+  if (!trimmedPhone) {
+    throw new Error("Enter your phone number.");
+  }
+
+  try {
+    const credentialResult = await signInWithCredential(firebaseAuth, args.credential);
+    const user = credentialResult.user;
+
+    try {
+      await linkWithCredential(user, EmailAuthProvider.credential(normalizedEmail, trimmedPassword));
+    } catch (linkError) {
+      console.error("Could not link a password to this Google account:", linkError);
+    }
+
+    const role = getRoleForEmail(normalizedEmail);
+    const profile = upsertUserProfile(
+      buildProfileForEmail(normalizedEmail, role, {
+        name: trimmedName || undefined,
+        phone: trimmedPhone,
+        avatarUrl: args.avatarUrl
+      })
+    );
+    await saveUserProfileToCloud(profile);
+    syncFirebaseUser(user);
   } catch (error) {
     throw toFriendlyAuthError(error);
   }
