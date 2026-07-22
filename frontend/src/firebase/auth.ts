@@ -501,12 +501,46 @@ export async function signUpWithEmailPassword(email: string, password: string, n
   }
 }
 
+const RESET_SERVER_URL = (import.meta.env.VITE_RESET_SERVER_URL as string) || "";
+
+async function fetchPasswordResetOobCode(email: string): Promise<string> {
+  if (!RESET_SERVER_URL) {
+    throw new Error(
+      "Reset link server is not configured. Add VITE_RESET_SERVER_URL to your .env file."
+    );
+  }
+
+  const response = await fetch(`${RESET_SERVER_URL.replace(/\/$/, "")}/generatePasswordResetLink`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email })
+  });
+
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(errorBody?.error || "We could not generate a reset link for this account.");
+  }
+
+  const data = (await response.json()) as { oobCode?: string };
+  if (!data.oobCode) {
+    throw new Error("We could not generate a reset link for this account.");
+  }
+
+  return data.oobCode;
+}
+
 export async function requestPasswordReset(email: string): Promise<"firebase"> {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) throw new Error("Enter an email address.");
 
   try {
-    const resetUrl = `${window.location.origin}/reset-password?email=${encodeURIComponent(normalizedEmail)}`;
+    // Get a real Firebase-issued reset code from our own small Node server
+    // (reset-server/, deployed as a free Render Web Service — NOT a Firebase
+    // Cloud Function, so no Blaze plan is needed). Without a real oobCode the
+    // emailed link can never work, which is why it previously landed on an
+    // error page. The actual email is still sent by EmailJS, unchanged.
+    const oobCode = await fetchPasswordResetOobCode(normalizedEmail);
+    const resetUrl = `${window.location.origin}/reset-password?oobCode=${encodeURIComponent(oobCode)}`;
     const { sendPasswordResetLinkEmail } = await import("../utils/emailOtp");
     await sendPasswordResetLinkEmail(normalizedEmail, normalizedEmail, resetUrl);
     return "firebase";

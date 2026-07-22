@@ -36,3 +36,21 @@ services:
         scope: build
       - key: VITE_FIREBASE_MEASUREMENT_ID
         scope: build
+      - key: VITE_RESET_SERVER_URL
+        scope: build
+
+  # Standalone Node service (NOT a Firebase Cloud Function) that mints real
+  # password-reset codes via the Firebase Admin SDK. Runs on Render's free
+  # Web Service plan, so no Firebase Blaze billing upgrade is required.
+  - type: web_service
+    name: dairy-farm-reset-server
+    plan: free
+    runtime: node
+    rootDir: reset-server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: FIREBASE_SERVICE_ACCOUNT_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: http://localhost:5173,http://localhost:5174,https://dairy-farm.tech,https://www.dairy-farm.tech,https://dairy-farm-qlw1.onrender.com

@@ -1,0 +1,19 @@
+{
+  "name": "dairy-farm-reset-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tiny standalone Node/Express service that generates real Firebase password-reset codes using the Admin SDK. Deploy this as a free Render Web Service (NOT a Firebase Cloud Function), so no Blaze billing plan is required. The email itself continues to be sent from the frontend via EmailJS.",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "firebase-admin": "^12.5.0"
+  }
+}
