@@ -625,23 +625,17 @@ export default function OwnerDashboard() {
                   </div>
                 ) : null}
 
-                <div className="hidden">
-                  {userSnapshots.map((user) => (
+                <div className="grid gap-3 md:hidden">
+                  {userSnapshots.map((user, userIndex) => (
                     <div key={user.email} className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
+                          <div className="text-xs font-medium text-slate-500">S No {userIndex + 1}</div>
                           <div className="truncate text-base font-semibold text-slate-900">{user.name}</div>
-                                <div className="truncate text-sm text-slate-600">{user.email}</div>
                         </div>
-                        <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-800">
-                          {user.role}
-                        </span>
                       </div>
-                      <div className="mt-3 space-y-1 text-sm text-slate-600">
-                        <p>Farm: {user.farmName || "-"}</p>
-                        <p>{user.phone || "-"}</p>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-600">
                         <p>Customers: {user.customerCount}</p>
-                        <p>Sheet rows: {user.customerCount}</p>
                         <p>Sheet total: {user.sheetTotal}</p>
                       </div>
                       <div className="mt-4 grid grid-cols-2 gap-3">
@@ -663,7 +657,7 @@ export default function OwnerDashboard() {
                   ))}
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full table-fixed text-sm">
                     <thead className="bg-slate-100 border-b border-slate-200">
                       <tr>
