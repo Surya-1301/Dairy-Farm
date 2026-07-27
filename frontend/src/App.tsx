@@ -24,8 +24,8 @@ function App() {
 
   if (!authReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-500" />
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-[#161616]">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-500 dark:border-[#333333]" />
       </div>
     );
   }
@@ -33,7 +33,8 @@ function App() {
   const isOwner = getActiveUser()?.role === "owner";
 
   return (
-    <Routes>
+    <>
+      <Routes>
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route
         path="/login"
@@ -117,7 +118,8 @@ function App() {
         path="*"
         element={<Navigate to={authenticated ? (isOwner ? "/owner-dashboard" : "/dashboard") : "/login"} replace />}
       />
-    </Routes>
+      </Routes>
+    </>
   );
 }
 

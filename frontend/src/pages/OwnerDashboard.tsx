@@ -471,6 +471,11 @@ export default function OwnerDashboard() {
       return;
     }
 
+    const sheetName = window.prompt("Enter a name for this sheet before saving to history:", "");
+    if (sheetName === null) {
+      return;
+    }
+
     if (!window.confirm(`Save ${email}'s current sheet to history and reset it for a new period?`)) {
       return;
     }
@@ -478,7 +483,7 @@ export default function OwnerDashboard() {
     setArchiving(true);
     setArchiveMsg(null);
     try {
-      await archiveSheetByEmail(email, sheet);
+      await archiveSheetByEmail(email, sheet, sheetName);
       await loadDashboardData();
       if (showHistory) {
         setHistoryEntries(await getHistoryByEmail(email));
@@ -819,7 +824,7 @@ export default function OwnerDashboard() {
                       <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Sheet Data</h4>
                       <div className="flex flex-wrap items-center gap-3">
                         <div className="text-xs font-medium text-slate-500">
-                          {selectedUser.sheet.rows.length} rows · {getEffectiveDayCount(selectedUser.sheet)} days · Total {selectedUser.sheetTotal}
+                          {getCustomerCount(selectedUser.sheet.rows)} Customers · {getEffectiveDayCount(selectedUser.sheet)} Days ·  {selectedUser.sheetTotal} Total
                         </div>
                         <button
                           type="button"
@@ -1013,9 +1018,11 @@ export default function OwnerDashboard() {
 
                             return (
                               <tr key={`${selectedUser.email}-sheet-${row.serialNumber}`} className="bg-white">
-                                <td className="border border-slate-200 px-1 py-1 font-semibold">{displaySerials[rowIndex]}</td>
                                 {nameSpan > 0 && (
-                                  <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left">{row.customerName}</td>
+                                  <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerials[rowIndex]}</td>
+                                )}
+                                {nameSpan > 0 && (
+                                  <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left align-middle" style={{ verticalAlign: "middle" }}>{row.customerName}</td>
                                 )}
                                 <td className="border border-slate-200 px-1 py-1">{row.shift}</td>
                                 {row.days.slice(0, effectiveDayCount).map((value, dayIndex) => (

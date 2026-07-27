@@ -142,92 +142,107 @@ function CustomerTable() {
 
   const { rows, dayCount } = sheetState;
 
-  useEffect(() => {
-    const activeUser = getActiveUser();
-    if (!activeUser?.email) {
-      setSheetState(createInitialState());
-      return;
-    }
+  // Sync customer names from master customer data. Rows always mirror the customer list
+  // 1:1: adding a customer automatically adds a matching row, and removing a customer
+  // automatically drops its row, so there are never extra unused rows sitting in the sheet.
+  const syncCustomersToSheet = () => {
+    void (async () => {
+      const customers = await getCustomers();
 
-    void getSheetByEmail(activeUser.email).then((sheet) => {
-      setSheetState({
-        dayCount: sheet.dayCount,
-        rows: normalizeRows(sheet.rows, sheet.dayCount)
-      });
-    });
+      setSheetState((prev) => {
+        const { dayCount: prevDayCount, rows: prevRows } = prev;
 
-    return subscribeSheetByEmail(activeUser.email, (sheet) => {
-      setSheetState({
-        dayCount: sheet.dayCount,
-        rows: normalizeRows(sheet.rows, sheet.dayCount)
-      });
-    });
-  }, []);
-
-  // Sync customer names from master customer data — run on mount and when customers change.
-  // Rows always mirror the customer list 1:1: adding a customer automatically adds a matching
-  // row, and removing a customer automatically drops its row, so there are never extra unused
-  // rows sitting in the sheet.
-  useEffect(() => {
-    const syncCustomersToSheet = () => {
-      void (async () => {
-        const customers = await getCustomers();
-
-        setSheetState((prev) => {
-          const { dayCount: prevDayCount, rows: prevRows } = prev;
-
-          if (customers.length === 0) {
-            return prev;
-          }
-
-          // Order rows the same way the Customers page does: both-shift customers
-          // first, then Morning-only, then Evening-only.
-          const orderedCustomers = getOrderedCustomers(customers);
-
-          // Match existing day data by name+shift (not array position) so that
-          // reordering a customer into a new priority group doesn't scramble data.
-          const existingRowByKey = new Map<string, SheetRow>();
-          prevRows.forEach((row) => {
-            const key = `${row.customerName.trim().toLowerCase()}|${row.shift}`;
-            existingRowByKey.set(key, row);
-          });
-
-          const nextRows = orderedCustomers.map((customer, index) => {
-            const key = `${(customer.name || "").trim().toLowerCase()}|${customer.shift || ""}`;
-            const existingRow = existingRowByKey.get(key);
-            return {
-              serialNumber: index + 1,
-              customerName: customer.name || "",
-              shift: customer.shift || existingRow?.shift || "",
-              days: Array.from({ length: prevDayCount }, (_, dayIndex) => existingRow?.days?.[dayIndex] ?? 0)
-            };
-          });
-
-          const changed =
-            nextRows.length !== prevRows.length ||
-            nextRows.some(
-              (r, i) => r.customerName !== prevRows[i]?.customerName || r.shift !== prevRows[i]?.shift
-            );
-
-          if (changed) {
-            const activeUser = getActiveUser();
-            if (activeUser?.email) {
-              void saveSheetByEmail(activeUser.email, { dayCount: prevDayCount, rows: nextRows });
-            }
-            notifyMilkDataChanged();
-            return { dayCount: prevDayCount, rows: nextRows };
-          }
-
+        if (customers.length === 0) {
           return prev;
+        }
+
+        // Order rows the same way the Customers page does: both-shift customers
+        // first, then Morning-only, then Evening-only.
+        const orderedCustomers = getOrderedCustomers(customers);
+
+        // Match existing day data by name+shift (not array position) so that
+        // reordering a customer into a new priority group doesn't scramble data.
+        const existingRowByKey = new Map<string, SheetRow>();
+        prevRows.forEach((row) => {
+          const key = `${row.customerName.trim().toLowerCase()}|${row.shift}`;
+          existingRowByKey.set(key, row);
         });
-      })();
+
+        const nextRows = orderedCustomers.map((customer, index) => {
+          const key = `${(customer.name || "").trim().toLowerCase()}|${customer.shift || ""}`;
+          const existingRow = existingRowByKey.get(key);
+          return {
+            serialNumber: index + 1,
+            customerName: customer.name || "",
+            shift: customer.shift || existingRow?.shift || "",
+            days: Array.from({ length: prevDayCount }, (_, dayIndex) => existingRow?.days?.[dayIndex] ?? 0)
+          };
+        });
+
+        const changed =
+          nextRows.length !== prevRows.length ||
+          nextRows.some(
+            (r, i) => r.customerName !== prevRows[i]?.customerName || r.shift !== prevRows[i]?.shift
+          );
+
+        if (changed) {
+          const activeUser = getActiveUser();
+          if (activeUser?.email) {
+            void saveSheetByEmail(activeUser.email, { dayCount: prevDayCount, rows: nextRows });
+          }
+          notifyMilkDataChanged();
+          return { dayCount: prevDayCount, rows: nextRows };
+        }
+
+        return prev;
+      });
+    })();
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    let unsubscribeCustomers: (() => void) | undefined;
+    let unsubscribeSheet: (() => void) | undefined;
+
+    const init = async () => {
+      const activeUser = getActiveUser();
+      if (!activeUser?.email) {
+        if (isMounted) setSheetState(createInitialState());
+        return;
+      }
+
+      // Load the real saved sheet FIRST and wait for it to land in state before doing
+      // anything else. Previously the customer-sync effect ran in parallel with this
+      // fetch and could win the race, computing its "next rows" from the still-empty
+      // initial state and saving that empty sheet back over the real saved data —
+      // which is what caused all entries to disappear after a refresh.
+      const sheet = await getSheetByEmail(activeUser.email);
+      if (!isMounted) return;
+      setSheetState({
+        dayCount: sheet.dayCount,
+        rows: normalizeRows(sheet.rows, sheet.dayCount)
+      });
+
+      // Only now, with real data in state, is it safe to sync customer names in and
+      // start listening for customer/sheet changes.
+      syncCustomersToSheet();
+      unsubscribeCustomers = subscribeCustomersChanged(syncCustomersToSheet);
+
+      unsubscribeSheet = subscribeSheetByEmail(activeUser.email, (nextSheet) => {
+        setSheetState({
+          dayCount: nextSheet.dayCount,
+          rows: normalizeRows(nextSheet.rows, nextSheet.dayCount)
+        });
+      });
     };
 
-    // initial sync
-    syncCustomersToSheet();
+    void init();
 
-    const unsubscribe = subscribeCustomersChanged(syncCustomersToSheet);
-    return unsubscribe;
+    return () => {
+      isMounted = false;
+      unsubscribeCustomers?.();
+      unsubscribeSheet?.();
+    };
   }, []);
 
   const saveState = (nextState: SheetState) => {
@@ -478,7 +493,7 @@ function CustomerTable() {
                     <input
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
-                      className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-left"
+                      className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-center"
                       placeholder="M/E"
                     />
                   </td>
@@ -496,6 +511,12 @@ function CustomerTable() {
                           if (event.key === "ArrowUp" || event.key === "ArrowDown") {
                             event.preventDefault();
                           }
+                        }}
+                        onWheel={(event) => {
+                          // Prevent the mouse/trackpad scroll wheel from incrementing or
+                          // decrementing the value while the input is focused — scrolling
+                          // the page over a focused number input should just scroll.
+                          event.currentTarget.blur();
                         }}
                         onChange={(event) =>
                           updateDayValue(row.serialNumber, dayIndex, event.target.value)

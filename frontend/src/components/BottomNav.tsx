@@ -71,7 +71,7 @@ const ownerLinks = [
 ] as const satisfies readonly NavItem[];
 
 function BottomNav() {
-  const [isOwner, setIsOwner] = useState(false);
+  const [isOwner, setIsOwner] = useState(() => getActiveUser()?.role === "owner");
 
   useEffect(() => {
     const syncUserRole = () => {

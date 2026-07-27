@@ -12,11 +12,17 @@ import {
 } from "../firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { uploadImageToCloudinary } from "../utils/cloudinary";
+import { getTheme, setTheme, subscribeTheme, type Theme } from "../utils/theme";
 
 function Profile() {
   const navigate = useNavigate();
   const [activeUser, setActiveUser] = useState(getActiveUser());
   const [profile, setProfile] = useState(getCurrentUserProfile());
+  const [theme, setThemeState] = useState<Theme>(getTheme());
+
+  useEffect(() => {
+    return subscribeTheme(() => setThemeState(getTheme()));
+  }, []);
 
   const [name, setName] = useState(
     profile?.name?.trim() || activeUser?.email?.split("@")[0] || ""
@@ -273,7 +279,27 @@ function Profile() {
         <p className="mt-1 text-xs md:text-sm text-slate-600">View and update your account details.</p>
       </div>
 
-      <div className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
+      <div className="relative rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={theme === "dark"}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95 md:right-4 md:top-4"
+        >
+          {theme === "dark" ? (
+            <svg viewBox="0 0 24 24" fill="none" className="h-4.5 w-4.5">
+              <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M12 2.5v2.2M12 19.3v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" className="h-4.5 w-4.5">
+              <path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a7 7 0 0 0 10.7 10.7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <div className="flex h-14 w-14 md:h-16 md:w-16 items-center justify-center flex-shrink-0 overflow-hidden rounded-full bg-brand-500 text-lg md:text-xl font-bold text-white">
             {displayAvatarUrl ? (

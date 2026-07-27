@@ -68,3 +68,120 @@ body {
   margin: 0;
   min-height: 100vh;
 }
+
+/* Dark mode: applied when <html> has the "dark" class (see src/utils/theme.ts).
+   These overrides retarget the same utility classes already used throughout
+   the app, so existing pages get dark styling without needing every
+   component rewritten individually. */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark,
+html.dark body {
+  background: #161616;
+  color: #f0f0f0;
+}
+
+* {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* Page-level containers (Layout, BottomNav, full-screen auth pages) share this
+   neutral near-black so the whole app reads as one consistent surface. */
+html.dark .bg-slate-50,
+html.dark .bg-gray-50 {
+  background-color: #161616 !important;
+}
+
+/* Cards sit one step lighter than the page background, with a visible edge
+   so they read as distinct surfaces instead of blending into the page. */
+html.dark .bg-white,
+html.dark .bg-white\/90,
+html.dark .bg-white\/95 {
+  background-color: #212121 !important;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0));
+}
+
+html.dark .bg-slate-100 {
+  background-color: #262626 !important;
+}
+
+html.dark .border-slate-100,
+html.dark .border-slate-200 {
+  border-color: #333333 !important;
+}
+
+html.dark .border-slate-300 {
+  border-color: #444444 !important;
+}
+
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: #f5f5f5 !important;
+}
+
+html.dark .text-slate-700 {
+  color: #e0e0e0 !important;
+}
+
+html.dark .text-slate-600,
+html.dark .text-slate-500,
+html.dark .text-gray-500,
+html.dark .text-gray-600 {
+  color: #a3a3a3 !important;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #1c1c1c;
+  color: #f0f0f0;
+  border-color: #444444;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #737373;
+}
+
+html.dark table {
+  color: #f0f0f0;
+}
+
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-slate-100:hover {
+  background-color: #262626 !important;
+}
+
+/* Plain black shadows are invisible on a dark background, so give cards a
+   soft glow + faint outline instead so they visibly lift off the page. */
+html.dark .shadow,
+html.dark .shadow-sm,
+html.dark .shadow-md,
+html.dark .shadow-lg,
+html.dark .shadow-xl,
+html.dark .shadow-2xl {
+  box-shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(148, 163, 184, 0.07) !important;
+}
+
+/* Keep primary brand/action buttons popping with a subtle colored ring. */
+html.dark .bg-blue-600 {
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35);
+}
+
+html.dark .bg-brand-500 {
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35);
+}
+
+html.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+
+html.dark .bg-red-50 {
+  background-color: rgba(248, 113, 113, 0.12) !important;
+}
+
+html.dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+}
