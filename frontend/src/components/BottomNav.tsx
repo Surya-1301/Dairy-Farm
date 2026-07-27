@@ -100,7 +100,7 @@ function BottomNav() {
             key={link.to}
             to={link.to}
             className={({ isActive }) =>
-              `flex min-w-0 flex-col items-center justify-center text-center text-xs font-medium transition ${
+              `flex min-w-0 flex-col items-center justify-center rounded-lg px-1 py-1 text-center text-xs font-medium outline-none transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
                 isActive
                   ? "text-blue-600"
                   : "text-gray-500 hover:text-blue-500"

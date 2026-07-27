@@ -113,6 +113,18 @@ function buildCombinedTotals(rows: SheetRow[], groupStartIndices: number[]): num
   return groupStartIndices.map((start, index) => (start === index ? groupSums[start] : 0));
 }
 
+// Lets a user type an expression like "2+3+5" into a day cell and have it
+// resolve to the summed total instead of needing a calculator.
+function evaluateDayInput(rawValue: string): number {
+  const parts = rawValue.split("+");
+  const sum = parts.reduce((total, part) => {
+    const parsed = Number(part.trim());
+    return total + (Number.isFinite(parsed) ? parsed : 0);
+  }, 0);
+
+  return sum >= 0 ? sum : 0;
+}
+
 function createEmptyRow(serialNumber: number, dayCount: number): SheetRow {
   return {
     serialNumber,
@@ -139,6 +151,13 @@ function CustomerTable() {
   const [sheetState, setSheetState] = useState<SheetState>(createInitialState());
   const [showSaveNameModal, setShowSaveNameModal] = useState(false);
   const [sheetNameInput, setSheetNameInput] = useState("");
+  // Holds the raw text (e.g. "2+3+5") while a day cell is being typed into, so
+  // the "+" characters aren't stripped before the user finishes the expression.
+  const [editingDayCell, setEditingDayCell] = useState<{
+    serialNumber: number;
+    dayIndex: number;
+    text: string;
+  } | null>(null);
 
   const { rows, dayCount } = sheetState;
 
@@ -309,8 +328,8 @@ function CustomerTable() {
   };
 
   const updateDayValue = (serialNumber: number, dayIndex: number, value: string) => {
-    const parsedValue = Number(value);
-    const safeValue = Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : 0;
+    // Supports typing an expression like "2+3+5" and committing the summed total.
+    const safeValue = evaluateDayInput(value);
 
     const nextRows = rows.map((row) => {
       if (row.serialNumber !== serialNumber) {
@@ -367,7 +386,7 @@ function CustomerTable() {
   };
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3 shadow-sm md:p-4">
+    <div className="space-y-3 bg-white p-2 md:p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           <button
@@ -449,19 +468,19 @@ function CustomerTable() {
       )}
 
 
-      <div className="overflow-auto">
-        <table className="min-w-[1080px] border-collapse text-center text-xs md:text-sm">
+      <div>
+        <table className="min-w-[1080px] table-fixed border-collapse text-center text-xs md:text-sm">
           <thead className="bg-slate-100 font-semibold text-slate-800">
             <tr>
-              <th className="min-w-14 border border-slate-400 px-1 py-2 md:px-2">S No</th>
-              <th className="min-w-28 border border-slate-400 px-1 py-2 md:min-w-36 md:px-2">Customer Name</th>
-              <th className="min-w-20 border border-slate-400 px-1 py-2 md:min-w-24 md:px-2">Shift</th>
+              <th className="sticky top-0 z-20 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">S No</th>
+              <th className="sticky top-0 left-0 z-30 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">Customer Name</th>
+              <th className="sticky top-0 z-20 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">Shift</th>
               {Array.from({ length: dayCount }, (_, index) => (
-                <th key={`day-${index + 1}`} className="min-w-16 border border-slate-400 px-1 py-2 md:min-w-20 md:px-2">
+                <th key={`day-${index + 1}`} className="sticky top-0 z-20 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">
                   Day {index + 1}
                 </th>
               ))}
-              <th className="min-w-16 border border-slate-400 px-1 py-2 md:min-w-20 md:px-2">Total</th>
+              <th className="sticky top-0 z-20 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -481,7 +500,7 @@ function CustomerTable() {
                     <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 md:px-2 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerialNumbers[rowIndex]}</td>
                   )}
                   {nameSpan > 0 && (
-                    <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 md:px-2 align-middle" style={{ verticalAlign: "middle" }}>
+                    <td rowSpan={nameSpan} className="sticky left-0 z-10 border border-slate-300 bg-white px-1 py-1 md:px-2 align-middle" style={{ verticalAlign: "middle" }}>
                       <input
                         value={row.customerName}
                         onChange={(event) => updateCustomerName(row.serialNumber, event.target.value)}
@@ -494,7 +513,6 @@ function CustomerTable() {
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
                       className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-center"
-                      placeholder="M/E"
                     />
                   </td>
                   {row.days.map((value, dayIndex) => (
@@ -503,24 +521,42 @@ function CustomerTable() {
                       className="border border-slate-300 px-1 py-1"
                     >
                       <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={value === 0 ? "" : value}
+                        type="text"
+                        inputMode="text"
+                        value={
+                          editingDayCell &&
+                          editingDayCell.serialNumber === row.serialNumber &&
+                          editingDayCell.dayIndex === dayIndex
+                            ? editingDayCell.text
+                            : value === 0
+                            ? ""
+                            : String(value)
+                        }
+                        onFocus={() =>
+                          setEditingDayCell({
+                            serialNumber: row.serialNumber,
+                            dayIndex,
+                            text: value === 0 ? "" : String(value)
+                          })
+                        }
+                        onChange={(event) =>
+                          setEditingDayCell({
+                            serialNumber: row.serialNumber,
+                            dayIndex,
+                            text: event.target.value
+                          })
+                        }
                         onKeyDown={(event) => {
-                          if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-                            event.preventDefault();
+                          // Pressing Enter commits the typed expression (e.g. "2+3+5")
+                          // as its summed total, same as clicking away from the cell.
+                          if (event.key === "Enter") {
+                            event.currentTarget.blur();
                           }
                         }}
-                        onWheel={(event) => {
-                          // Prevent the mouse/trackpad scroll wheel from incrementing or
-                          // decrementing the value while the input is focused — scrolling
-                          // the page over a focused number input should just scroll.
-                          event.currentTarget.blur();
+                        onBlur={(event) => {
+                          updateDayValue(row.serialNumber, dayIndex, event.target.value);
+                          setEditingDayCell(null);
                         }}
-                        onChange={(event) =>
-                          updateDayValue(row.serialNumber, dayIndex, event.target.value)
-                        }
                         className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-center"
                       />
                     </td>
