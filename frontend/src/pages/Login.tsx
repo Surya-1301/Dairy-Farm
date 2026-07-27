@@ -14,6 +14,25 @@ import raipurBanner from "../assets/raipur-banner.png";
 
 type AuthMode = "signin" | "signup" | "reset" | "google-signup";
 
+// Prompts the browser's own password manager (Chrome/Edge Credential
+// Management API) to save the sign-in, instead of storing anything ourselves.
+async function saveCredentialToBrowserPasswordManager(emailValue: string, passwordValue: string) {
+  try {
+    const PasswordCredentialCtor = (window as unknown as { PasswordCredential?: new (data: unknown) => Credential }).PasswordCredential;
+    if (!PasswordCredentialCtor || !navigator.credentials) return;
+
+    const credential = new PasswordCredentialCtor({
+      id: emailValue,
+      password: passwordValue,
+      name: emailValue
+    });
+    await navigator.credentials.store(credential);
+  } catch {
+    // Browser password manager isn't available/supported, or the user
+    // dismissed the save prompt — fail silently either way.
+  }
+}
+
 function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -25,6 +44,7 @@ function Login() {
   const [email, setEmail] = useState(initialEmail);
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otpInput, setOtpInput] = useState("");
@@ -87,6 +107,9 @@ function Login() {
         goToDashboard();
       } else {
         await signInWithEmailPassword(email, password);
+        if (rememberMe) {
+          await saveCredentialToBrowserPasswordManager(email.trim(), password);
+        }
         goToDashboard();
       }
     } catch (error) {
@@ -175,60 +198,15 @@ function Login() {
           alt="Raipur Duggdh Utapadan Association"
           className="w-full rounded-lg"
         />
-        {mode !== "google-signup" ? (
-          <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
-            <button
-              type="button"
-              onClick={() => resetForMode("signin")}
-              className={`rounded-md px-4 py-3 text-sm font-semibold transition min-h-[44px] flex items-center justify-center active:opacity-75 ${
-                mode === "signin" ? "bg-white text-slate-900" : "text-slate-600"
-              }`}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={() => resetForMode("signup")}
-              className={`rounded-md px-4 py-3 text-sm font-semibold transition min-h-[44px] flex items-center justify-center active:opacity-75 ${
-                mode === "signup" ? "bg-white text-slate-900" : "text-slate-600"
-              }`}
-            >
-              Sign up
-            </button>
-          </div>
-        ) : null}
-        <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">
+        <h1 className="text-center text-xl font-bold text-slate-900 sm:text-2xl">
           {mode === "signin"
-            ? "Welcome back"
+            ? "Welcome Back"
             : mode === "signup"
-            ? "Create account"
+            ? "Create Account"
             : mode === "google-signup"
             ? "Finish creating your account"
             : "Reset password"}
         </h1>
-        {mode !== "reset" && mode !== "google-signup" ? (
-          <>
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={loading}
-              className="flex w-full items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60 min-h-[48px]"
-            >
-              <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden="true">
-                <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
-                <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" />
-                <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z" />
-                <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C41.202 35.245 44 30.028 44 24c0-1.341-.138-2.65-.389-3.917z" />
-              </svg>
-              Continue with Google
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-slate-200" />
-              <span className="text-xs font-medium uppercase text-slate-400">or</span>
-              <div className="h-px flex-1 bg-slate-200" />
-            </div>
-          </>
-        ) : null}
         {errorMessage ? (
           <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage}</p>
         ) : null}
@@ -266,11 +244,6 @@ function Login() {
             />
           </label>
         ) : null}
-        {mode === "reset" ? (
-          <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Enter your email address and we'll send you a password reset link.
-          </p>
-        ) : null}
         {mode === "google-signup" ? (
           <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
             Signing up as <strong>{name || email}</strong> ({email}). Just set a password and add your phone number to finish.
@@ -303,6 +276,26 @@ function Login() {
               autoComplete={mode === "signup" || mode === "google-signup" ? "new-password" : "current-password"}
             />
           </label>
+        ) : null}
+        {mode === "signin" && !otpSent ? (
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-2 focus:ring-brand-500"
+              />
+              Remember me
+            </label>
+            <button
+              type="button"
+              onClick={() => resetForMode("reset")}
+              className="text-sm font-semibold text-brand-600 hover:text-brand-700 active:opacity-75"
+            >
+              Forgot password?
+            </button>
+          </div>
         ) : null}
         {(mode === "signup" || mode === "google-signup") && !otpSent ? (
           <label className="block text-sm font-medium text-slate-700">
@@ -363,13 +356,20 @@ function Login() {
             Resend code
           </button>
         ) : null}
-        {mode === "signin" ? (
+        {mode !== "reset" && mode !== "google-signup" ? (
           <button
             type="button"
-            onClick={() => resetForMode("reset")}
-            className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 min-h-[48px] flex items-center justify-center transition"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60 min-h-[48px]"
           >
-            Forgot password?
+            <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden="true">
+              <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
+              <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" />
+              <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z" />
+              <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C41.202 35.245 44 30.028 44 24c0-1.341-.138-2.65-.389-3.917z" />
+            </svg>
+            Continue with Google
           </button>
         ) : null}
         {mode === "google-signup" ? (
@@ -380,6 +380,30 @@ function Login() {
           >
             Cancel
           </button>
+        ) : null}
+        {mode === "signin" ? (
+          <p className="text-center text-sm text-slate-600">
+            Don&apos;t have an account?{" "}
+            <button
+              type="button"
+              onClick={() => resetForMode("signup")}
+              className="font-semibold text-brand-600 hover:text-brand-700 active:opacity-75"
+            >
+              Sign up for free
+            </button>
+          </p>
+        ) : null}
+        {mode === "signup" ? (
+          <p className="text-center text-sm text-slate-600">
+            Already have an account?{" "}
+            <button
+              type="button"
+              onClick={() => resetForMode("signin")}
+              className="font-semibold text-brand-600 hover:text-brand-700 active:opacity-75"
+            >
+              Sign in
+            </button>
+          </p>
         ) : null}
       </form>
     </div>
