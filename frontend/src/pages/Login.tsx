@@ -183,15 +183,15 @@ function Login() {
 
   return (
     <div 
-      className="flex min-h-screen items-start justify-center bg-slate-50 px-3 py-6 sm:items-center sm:px-4"
+      className="flex min-h-screen items-start justify-center bg-white px-0 py-0 sm:items-center sm:bg-slate-50 sm:px-4 sm:py-6"
       style={{
-        paddingTop: 'max(1.5rem, calc(1.5rem + var(--safe-area-inset-top)))',
-        paddingBottom: 'max(1.5rem, calc(1.5rem + var(--safe-area-inset-bottom)))',
+        paddingTop: 'max(0px, var(--safe-area-inset-top))',
+        paddingBottom: 'max(0px, var(--safe-area-inset-bottom))',
       }}
     >
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-md space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8"
+        className="w-full max-w-md space-y-5 bg-white p-4 sm:rounded-xl sm:p-8 sm:shadow-sm"
       >
         <img
           src={raipurBanner}
