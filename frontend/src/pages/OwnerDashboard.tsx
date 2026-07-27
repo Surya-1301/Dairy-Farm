@@ -664,32 +664,24 @@ export default function OwnerDashboard() {
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full table-fixed text-sm">
                     <thead className="bg-slate-100 border-b border-slate-200">
                       <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Name</th>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Email</th>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Phone</th>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Customers</th>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Sheet Total</th>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Role</th>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Action</th>
+                        <th className="w-[10%] px-4 py-3 text-left font-semibold text-slate-700">S No</th>
+                        <th className="w-[25%] px-4 py-3 text-left font-semibold text-slate-700">Name</th>
+                        <th className="w-[20%] px-4 py-3 text-left font-semibold text-slate-700">Customers</th>
+                        <th className="w-[20%] px-4 py-3 text-left font-semibold text-slate-700">Sheet Total</th>
+                        <th className="w-[25%] px-4 py-3 text-left font-semibold text-slate-700">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {userSnapshots.map((user) => (
+                      {userSnapshots.map((user, userIndex) => (
                         <tr key={user.email} className="border-b border-slate-100 hover:bg-slate-50">
-                          <td className="px-4 py-4 font-medium text-slate-900">{user.name}</td>
-                          <td className="px-4 py-4 text-slate-600">{user.email}</td>
-                          <td className="px-4 py-4 text-slate-600">{user.phone || "-"}</td>
-                          <td className="px-4 py-4 text-slate-600">{user.customerCount}</td>
-                          <td className="px-4 py-4 text-slate-600">{user.sheetTotal}</td>
-                          <td className="px-4 py-4">
-                            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-blue-800">
-                              {user.role}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4">
+                          <td className="w-[10%] px-4 py-4 font-medium text-slate-900">{userIndex + 1}</td>
+                          <td className="w-[25%] px-4 py-4 font-medium text-slate-900">{user.name}</td>
+                          <td className="w-[20%] px-4 py-4 text-slate-600">{user.customerCount}</td>
+                          <td className="w-[20%] px-4 py-4 text-slate-600">{user.sheetTotal}</td>
+                          <td className="w-[25%] px-4 py-4">
                             <div className="flex flex-wrap gap-2">
                               <button
                                 onClick={() => { setSelectedUserEmail(user.email); setShowHistory(false); setHistoryEntries([]); }}
@@ -824,7 +816,7 @@ export default function OwnerDashboard() {
                       <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Sheet Data</h4>
                       <div className="flex flex-wrap items-center gap-3">
                         <div className="text-xs font-medium text-slate-500">
-                          {getCustomerCount(selectedUser.sheet.rows)} Customers · {getEffectiveDayCount(selectedUser.sheet)} Days ·  {selectedUser.sheetTotal} Total
+                          {getCustomerCount(selectedUser.sheet.rows)} Customers · {selectedUser.sheet.dayCount} Days ·  {selectedUser.sheetTotal} Total
                         </div>
                         <button
                           type="button"
@@ -996,7 +988,7 @@ export default function OwnerDashboard() {
                             <th className="border border-slate-300 px-1 py-2">S No</th>
                             <th className="border border-slate-300 px-1 py-2">Customer Name</th>
                             <th className="border border-slate-300 px-1 py-2">Shift</th>
-                            {Array.from({ length: getEffectiveDayCount(selectedUser.sheet) }, (_, index) => (
+                            {Array.from({ length: selectedUser.sheet.dayCount }, (_, index) => (
                               <th key={`selected-day-${index + 1}`} className="border border-slate-300 px-1 py-2">
                                 Day {index + 1}
                               </th>
@@ -1006,7 +998,7 @@ export default function OwnerDashboard() {
                         </thead>
                         <tbody>
                           {(() => {
-                            const effectiveDayCount = getEffectiveDayCount(selectedUser.sheet);
+                            const effectiveDayCount = selectedUser.sheet.dayCount;
                             const displaySerials = buildDisplaySerialMap(selectedUser.sheet.rows);
                             const groupStartIndices = buildGroupStartIndices(selectedUser.sheet.rows);
                             const nameCellSpans = buildNameCellSpans(groupStartIndices);
