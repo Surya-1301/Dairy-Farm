@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
 import SummaryTable from "../components/SummaryTable";
+import Chart from "../components/Chart";
 import { fetchAllUserProfiles, getActiveUser, getAllUserProfiles, subscribeAuthState } from "../firebase/auth";
 import { subscribeCustomersChanged } from "../utils/customerData";
-import { getMilkDashboardSummary, subscribeMilkData, type MilkDashboardSummary } from "../utils/milkData";
+import {
+  getMilkChartData,
+  getMilkDashboardSummary,
+  subscribeMilkData,
+  type MilkChartPoint,
+  type MilkDashboardSummary
+} from "../utils/milkData";
 
 const EMPTY_SUMMARY: MilkDashboardSummary = {
   totalCustomers: 0,
@@ -15,8 +22,10 @@ function Dashboard() {
   const [activeUser, setActiveUser] = useState(getActiveUser());
   const [userProfiles, setUserProfiles] = useState(getAllUserProfiles());
   const [summary, setSummary] = useState<MilkDashboardSummary>(EMPTY_SUMMARY);
+  const [chartData, setChartData] = useState<MilkChartPoint[]>([]);
   const refreshSummary = () => {
     void getMilkDashboardSummary().then(setSummary);
+    void getMilkChartData().then(setChartData);
   };
 
   useEffect(() => {
@@ -64,6 +73,8 @@ function Dashboard() {
         morningMilk={summary.morningMilk}
         eveningMilk={summary.eveningMilk}
       />
+
+      <Chart data={chartData} />
 
       {activeUser?.role === "owner" ? (
         <div className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">

@@ -172,7 +172,28 @@ function CustomerTable() {
         const { dayCount: prevDayCount, rows: prevRows } = prev;
 
         if (customers.length === 0) {
-          return prev;
+          // Guard against a previously-corrupted or shrunken sheet: never leave
+          // the table with fewer than the default row count just because there
+          // are no customers yet (this also self-heals sheets that were saved
+          // with too few rows by an earlier version of this logic).
+          const defaultRowCount = createInitialSheet().rows.length;
+          const isBlank = prevRows.every(
+            (row) =>
+              row.customerName.trim() === "" &&
+              row.shift.trim() === "" &&
+              row.days.every((value) => !value)
+          );
+
+          if (prevRows.length >= defaultRowCount || !isBlank) {
+            return prev;
+          }
+
+          const fallbackRows = normalizeRows(createInitialSheet().rows, prevDayCount);
+          const activeUser = getActiveUser();
+          if (activeUser?.email) {
+            void saveSheetByEmail(activeUser.email, { dayCount: prevDayCount, rows: fallbackRows });
+          }
+          return { dayCount: prevDayCount, rows: fallbackRows };
         }
 
         // Order rows the same way the Customers page does: both-shift customers
@@ -187,7 +208,7 @@ function CustomerTable() {
           existingRowByKey.set(key, row);
         });
 
-        const nextRows = orderedCustomers.map((customer, index) => {
+        const namedRows = orderedCustomers.map((customer, index) => {
           const key = `${(customer.name || "").trim().toLowerCase()}|${customer.shift || ""}`;
           const existingRow = existingRowByKey.get(key);
           return {
@@ -197,6 +218,16 @@ function CustomerTable() {
             days: Array.from({ length: prevDayCount }, (_, dayIndex) => existingRow?.days?.[dayIndex] ?? 0)
           };
         });
+
+        // Never shrink the sheet's row count when syncing customers in. If the
+        // user manually sized the sheet to, say, 50 rows, adding a customer
+        // should not collapse it down to just the number of named customers —
+        // pad the remainder with empty rows so the manually-set row count sticks.
+        const targetRowCount = Math.max(namedRows.length, prevRows.length, 1);
+        const nextRows = [...namedRows];
+        for (let i = namedRows.length; i < targetRowCount; i++) {
+          nextRows.push(createEmptyRow(i + 1, prevDayCount));
+        }
 
         const changed =
           nextRows.length !== prevRows.length ||

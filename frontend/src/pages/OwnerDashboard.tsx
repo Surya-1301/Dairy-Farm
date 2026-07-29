@@ -117,7 +117,7 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, owner
     },
   });
 
-  doc.save(`${(entry.name || `dairy-farm-${ownerLabel}-sheet-${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}-${entry.savedAt.replace(/[:.]/g, "-")}.pdf`);
+  doc.save(`${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.pdf`);
 }
 
 function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
@@ -236,7 +236,7 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, own
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${(entry.name || `dairy-farm-${ownerLabel}-sheet-${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}-${entry.savedAt.replace(/[:.]/g, "-")}.xlsx`;
+    link.download = `${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.xlsx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -380,6 +380,8 @@ export default function OwnerDashboard() {
   const [historyEntries, setHistoryEntries] = useState<SheetHistoryEntry[]>([]);
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
   const [openSaveMenuId, setOpenSaveMenuId] = useState<string | null>(null);
+  const [editingHistoryNameId, setEditingHistoryNameId] = useState<string | null>(null);
+  const [historyNameDraft, setHistoryNameDraft] = useState("");
 
   useEffect(() => {
     if (!isOwnerLoggedIn()) {
@@ -523,6 +525,15 @@ export default function OwnerDashboard() {
       setExpandedEntryId(null);
     }
     await saveHistoryByEmail(email, nextEntries);
+  };
+
+  const handleRenameHistoryEntry = async (email: string, entryId: string, newName: string) => {
+    const nextEntries = historyEntries.map((entry) =>
+      entry.id === entryId ? { ...entry, name: newName.trim() } : entry
+    );
+    setHistoryEntries(nextEntries);
+    await saveHistoryByEmail(email, nextEntries);
+    setEditingHistoryNameId(null);
   };
 
   const selectedUser = userSnapshots.find((snapshot) => snapshot.email === selectedUserEmail) ?? null;
@@ -908,12 +919,53 @@ export default function OwnerDashboard() {
                                   </div>
                                   <button
                                     type="button"
+                                    onClick={() => {
+                                      setEditingHistoryNameId(entry.id);
+                                      setHistoryNameDraft(entry.name || `Sheet ${sheetNumber}`);
+                                    }}
+                                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition flex-1 sm:flex-none"
+                                  >
+                                    Edit Sheet Name
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => handleDeleteHistoryEntry(selectedUser.email, entry.id)}
                                     className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition flex-1 sm:flex-none sm:ml-auto"
                                   >
                                     Delete Sheet
                                   </button>
                                 </div>
+
+                                {editingHistoryNameId === entry.id && (
+                                  <div className="mb-3 flex flex-col sm:flex-row gap-2">
+                                    <input
+                                      type="text"
+                                      value={historyNameDraft}
+                                      onChange={(event) => setHistoryNameDraft(event.target.value)}
+                                      placeholder="Sheet name"
+                                      autoFocus
+                                      className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                                    />
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          void handleRenameHistoryEntry(selectedUser.email, entry.id, historyNameDraft);
+                                        }}
+                                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition"
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingHistoryNameId(null)}
+                                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
 
                                 <div className="overflow-x-auto rounded-b-lg border border-slate-200 md:rounded-b-xl md:-mx-4 md:-mb-4">
                                   <table className="w-full min-w-[900px] border-collapse text-center text-xs">

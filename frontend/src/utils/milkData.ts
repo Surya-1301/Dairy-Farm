@@ -28,9 +28,24 @@ export type MilkDashboardSummary = {
   eveningMilk: number;
 };
 
-function formatDayLabel(dayOffsetFromToday: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + dayOffsetFromToday);
+function getCurrentPeriodStart(): { year: number; month: number; startDay: number } {
+  const now = new Date();
+
+  // Dairy sheets track a fixed half-month period: the 1st–15th, then the
+  // 16th through the last day of the month. Once you save the 1–15 sheet and
+  // start filling data past the 15th, today's date naturally falls in the
+  // second half, so the graph advances to 16–30/31 on its own — and it rolls
+  // over to the 1st of the next month once you're past the second half.
+  if (now.getDate() <= 15) {
+    return { year: now.getFullYear(), month: now.getMonth(), startDay: 1 };
+  }
+
+  return { year: now.getFullYear(), month: now.getMonth(), startDay: 16 };
+}
+
+function formatDayLabel(dayIndex: number) {
+  const { year, month, startDay } = getCurrentPeriodStart();
+  const date = new Date(year, month, startDay + dayIndex);
 
   return date.toLocaleDateString("en-IN", {
     day: "2-digit",
@@ -54,8 +69,6 @@ export async function getMilkChartData(): Promise<MilkChartPoint[]> {
     return [];
   }
 
-  const startOffset = -(sheet.dayCount - 1);
-
   return Array.from({ length: sheet.dayCount }, (_, dayIndex) => {
     const morning = sheet.rows
       .filter((row) => row.shift === "M")
@@ -66,7 +79,7 @@ export async function getMilkChartData(): Promise<MilkChartPoint[]> {
       .reduce((total, row) => total + (row.days?.[dayIndex] ?? 0), 0);
 
     return {
-      date: formatDayLabel(startOffset + dayIndex),
+      date: formatDayLabel(dayIndex),
       morning: Number(morning.toFixed(2)),
       evening: Number(evening.toFixed(2))
     };

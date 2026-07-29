@@ -137,7 +137,7 @@ export async function getSheetByEmail(email: string, forceServer = false): Promi
   const data = snapshot.data() as Partial<SheetState> & { updatedAt?: string };
   const rawDayCount = typeof data.dayCount === "number" && data.dayCount > 0 ? data.dayCount : INITIAL_DAYS;
   const dayCount = Math.max(INITIAL_DAYS, rawDayCount);
-  const rows = Array.isArray(data.rows) ? normalizeRows(data.rows, dayCount) : createInitialSheet().rows;
+  const rows = Array.isArray(data.rows) && data.rows.length > 0 ? normalizeRows(data.rows, dayCount) : createInitialSheet().rows;
 
   return { dayCount, rows, updatedAt: data.updatedAt };
 }
@@ -152,7 +152,7 @@ export function subscribeSheetByEmail(email: string, callback: (sheet: SheetStat
     const data = snapshot.data() as Partial<SheetState>;
     const rawDayCount = typeof data.dayCount === "number" && data.dayCount > 0 ? data.dayCount : INITIAL_DAYS;
     const dayCount = Math.max(INITIAL_DAYS, rawDayCount);
-    const rows = Array.isArray(data.rows) ? normalizeRows(data.rows, dayCount) : createInitialSheet().rows;
+    const rows = Array.isArray(data.rows) && data.rows.length > 0 ? normalizeRows(data.rows, dayCount) : createInitialSheet().rows;
     callback({ dayCount, rows });
   });
 }
@@ -244,7 +244,7 @@ export async function getAllSheets(): Promise<Array<{ email: string; sheet: Shee
   return snapshot.docs.map((item) => {
     const data = item.data() as Partial<SheetState>;
     const dayCount = typeof data.dayCount === "number" && data.dayCount > 0 ? data.dayCount : INITIAL_DAYS;
-    const rows = Array.isArray(data.rows) ? normalizeRows(data.rows, dayCount) : [];
+    const rows = Array.isArray(data.rows) && data.rows.length > 0 ? normalizeRows(data.rows, dayCount) : createInitialSheet().rows;
 
     return {
       email: item.id,
