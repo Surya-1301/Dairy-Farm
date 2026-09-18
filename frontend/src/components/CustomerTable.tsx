@@ -161,6 +161,8 @@ function CustomerTable() {
   const activeHistoryIdRef = useRef<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [changingSheet, setChangingSheet] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
+  const [saveVersion, setSaveVersion] = useState(0);
   const [sheetNameInput, setSheetNameInput] = useState("");
   // Holds the raw text (e.g. "2+3+5") while a day cell is being typed into, so
   // the "+" characters aren't stripped before the user finishes the expression.
@@ -171,6 +173,52 @@ function CustomerTable() {
   } | null>(null);
 
   const { rows, dayCount } = sheetState;
+
+  useEffect(() => {
+    if (saveVersion === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const activeUser = getActiveUser();
+      if (!activeUser?.email) {
+        return;
+      }
+
+      setSaveStatus("saving");
+      const normalizedState: SheetState = {
+        dayCount: sheetState.dayCount,
+        rows: sheetState.rows.map((row, index) => ({
+          ...row,
+          serialNumber: index + 1,
+          days: Array.from({ length: sheetState.dayCount }, (_, dayIndex) => row.days[dayIndex] ?? 0)
+        }))
+      };
+
+      if (activeHistoryIdRef.current) {
+        const nextHistory = historyEntriesRef.current.map((entry) =>
+          entry.id === activeHistoryIdRef.current
+            ? { ...entry, ...normalizedState, savedAt: new Date().toISOString() }
+            : entry
+        );
+        historyEntriesRef.current = nextHistory;
+        setHistoryEntries(nextHistory);
+        await saveHistoryByEmail(activeUser.email, nextHistory);
+      } else {
+        await saveSheetByEmail(activeUser.email, normalizedState);
+      }
+
+      if (!cancelled) {
+        setSaveStatus("saved");
+      }
+    }, 700);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [saveVersion, sheetState]);
 
   // Sync customer names from master customer data. Rows always mirror the customer list
   // 1:1: adding a customer automatically adds a matching row, and removing a customer
@@ -340,10 +388,8 @@ function CustomerTable() {
     const normalizedState = { ...nextState, rows: normalizedRows };
 
     setSheetState(normalizedState);
-    const activeUser = getActiveUser();
-    if (activeUser?.email && !activeHistoryIdRef.current) {
-      void saveSheetByEmail(activeUser.email, normalizedState);
-    }
+    setSaveStatus("saving");
+    setSaveVersion((version) => version + 1);
 
     notifyMilkDataChanged();
   };
@@ -618,6 +664,9 @@ function CustomerTable() {
         >
             Save to History
         </button>
+          <span className="self-center text-xs font-medium text-slate-500" aria-live="polite">
+            {saveStatus === "saving" ? "Saving..." : "Saved"}
+          </span>
       </div>
 
       {showSaveNameModal && (

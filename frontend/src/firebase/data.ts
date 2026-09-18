@@ -249,7 +249,8 @@ export async function saveSheetSnapshotByEmail(email: string, sheet: SheetState,
 
 export async function archiveSheetByEmail(email: string, sheet: SheetState, name?: string): Promise<SheetState> {
   const history = await getHistoryByEmail(email);
-  const archivedSheet = trimSheetToUsedRange(normalizeSheetState(sheet));
+  const normalizedSheet = normalizeSheetState(sheet);
+  const archivedSheet = trimSheetToUsedRange(normalizedSheet);
   const trimmedName = name?.trim();
   const entry: SheetHistoryEntry = {
     ...archivedSheet,
@@ -260,11 +261,11 @@ export async function archiveSheetByEmail(email: string, sheet: SheetState, name
 
   await saveHistoryByEmail(email, [entry, ...history]);
   const nextSheet: SheetState = {
-    dayCount: archivedSheet.dayCount,
-    rows: archivedSheet.rows.map((row, index) => ({
+    dayCount: INITIAL_DAYS,
+    rows: normalizedSheet.rows.map((row, index) => ({
       ...row,
       serialNumber: index + 1,
-      days: Array.from({ length: archivedSheet.dayCount }, () => 0)
+      days: Array.from({ length: INITIAL_DAYS }, () => 0)
     }))
   };
 
