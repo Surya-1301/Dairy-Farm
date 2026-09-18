@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import ExcelJS from "exceljs";
@@ -310,6 +311,7 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number) {
 }
 
 function History() {
+  const navigate = useNavigate();
   const [history, setHistory] = useState<SheetHistoryEntry[]>([]);
   const [openSaveMenu, setOpenSaveMenu] = useState<string | null>(null);
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
@@ -404,7 +406,7 @@ function History() {
                     <button
                       type="button"
                       onClick={() => setOpenSaveMenu(openSaveMenu === entry.id ? null : entry.id)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                      className="w-full rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 transition"
                     >
                       Save Sheet
                     </button>
@@ -442,16 +444,23 @@ function History() {
                       setEditingNameEntryId(entry.id);
                       setNameDraft(entry.name || "");
                     }}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition flex-1 sm:flex-none"
+                    className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50 transition flex-1 sm:flex-none"
                   >
                     Edit Sheet Name
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/customer-details?edit=${encodeURIComponent(entry.id)}`)}
+                    className="rounded-lg border border-blue-300 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 transition flex-1 sm:flex-none sm:ml-auto"
+                  >
+                    Edit Sheet
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       void deleteSheet(entry.id);
                     }}
-                    className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition flex-1 sm:flex-none sm:ml-auto"
+                    className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition flex-1 sm:flex-none"
                   >
                     Delete Sheet
                   </button>

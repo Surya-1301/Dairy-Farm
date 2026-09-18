@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCustomers, subscribeCustomersChanged } from "../utils/customerData";
 import { notifyMilkDataChanged } from "../utils/milkData";
 
@@ -6,9 +6,13 @@ import { getActiveUser } from "../firebase/auth";
 import {
   archiveSheetByEmail,
   createInitialSheet,
+  getHistoryByEmail,
   getSheetByEmail,
+  saveHistoryByEmail,
   saveSheetByEmail,
+  saveSheetToHistoryByEmail,
   subscribeSheetByEmail,
+  type SheetHistoryEntry,
   type SheetState,
   type SheetRow,
   type Customer
@@ -150,6 +154,13 @@ function normalizeRows(rows: SheetRow[], dayCount: number): SheetRow[] {
 function CustomerTable() {
   const [sheetState, setSheetState] = useState<SheetState>(createInitialState());
   const [showSaveNameModal, setShowSaveNameModal] = useState(false);
+  const [showChangeSheetModal, setShowChangeSheetModal] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<SheetHistoryEntry[]>([]);
+  const historyEntriesRef = useRef<SheetHistoryEntry[]>([]);
+  const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+  const activeHistoryIdRef = useRef<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [changingSheet, setChangingSheet] = useState(false);
   const [sheetNameInput, setSheetNameInput] = useState("");
   // Holds the raw text (e.g. "2+3+5") while a day cell is being typed into, so
   // the "+" characters aren't stripped before the user finishes the expression.
@@ -165,6 +176,10 @@ function CustomerTable() {
   // 1:1: adding a customer automatically adds a matching row, and removing a customer
   // automatically drops its row, so there are never extra unused rows sitting in the sheet.
   const syncCustomersToSheet = () => {
+    if (activeHistoryIdRef.current) {
+      return;
+    }
+
     void (async () => {
       const customers = await getCustomers();
 
@@ -268,10 +283,28 @@ function CustomerTable() {
       // which is what caused all entries to disappear after a refresh.
       const sheet = await getSheetByEmail(activeUser.email);
       if (!isMounted) return;
-      setSheetState({
+      let initialSheet: SheetState = {
         dayCount: sheet.dayCount,
         rows: normalizeRows(sheet.rows, sheet.dayCount)
-      });
+      };
+
+      const editId = new URLSearchParams(window.location.search).get("edit");
+      if (editId) {
+        const history = await getHistoryByEmail(activeUser.email);
+        const historyEntry = history.find((entry) => entry.id === editId);
+        if (historyEntry) {
+          initialSheet = {
+            dayCount: historyEntry.dayCount,
+            rows: normalizeRows(historyEntry.rows, historyEntry.dayCount)
+          };
+          activeHistoryIdRef.current = historyEntry.id;
+          setActiveHistoryId(historyEntry.id);
+          historyEntriesRef.current = history;
+          setHistoryEntries(history);
+        }
+      }
+
+      setSheetState(initialSheet);
 
       // Only now, with real data in state, is it safe to sync customer names in and
       // start listening for customer/sheet changes.
@@ -279,6 +312,10 @@ function CustomerTable() {
       unsubscribeCustomers = subscribeCustomersChanged(syncCustomersToSheet);
 
       unsubscribeSheet = subscribeSheetByEmail(activeUser.email, (nextSheet) => {
+        if (activeHistoryIdRef.current) {
+          return;
+        }
+
         setSheetState({
           dayCount: nextSheet.dayCount,
           rows: normalizeRows(nextSheet.rows, nextSheet.dayCount)
@@ -304,23 +341,24 @@ function CustomerTable() {
 
     setSheetState(normalizedState);
     const activeUser = getActiveUser();
-    if (activeUser?.email) {
+    if (activeUser?.email && !activeHistoryIdRef.current) {
       void saveSheetByEmail(activeUser.email, normalizedState);
     }
 
     notifyMilkDataChanged();
   };
 
-  const archiveToHistory = (name: string) => {
+  const archiveToHistory = async (name: string) => {
     const activeUser = getActiveUser();
     if (!activeUser?.email) {
       return;
     }
 
-    void archiveSheetByEmail(activeUser.email, { dayCount, rows }, name).then((nextSheet) => {
-      setSheetState(nextSheet);
-      notifyMilkDataChanged();
-    });
+    const nextSheet = await archiveSheetByEmail(activeUser.email, { dayCount, rows }, name);
+    activeHistoryIdRef.current = null;
+    setActiveHistoryId(null);
+    setSheetState(nextSheet);
+    notifyMilkDataChanged();
   };
 
   const openSaveNameModal = () => {
@@ -328,9 +366,117 @@ function CustomerTable() {
     setShowSaveNameModal(true);
   };
 
-  const confirmSaveToHistory = () => {
-    archiveToHistory(sheetNameInput);
+  const confirmSaveToHistory = async () => {
+    const activeUser = getActiveUser();
+    if (!activeUser?.email) {
+      return;
+    }
+
+    if (!activeHistoryId) {
+      const savedEntry = await saveSheetToHistoryByEmail(activeUser.email, sheetState, sheetNameInput);
+      const nextHistory = [savedEntry, ...historyEntriesRef.current];
+      historyEntriesRef.current = nextHistory;
+      setHistoryEntries(nextHistory);
+      setShowSaveNameModal(false);
+      return;
+    }
+
+    const normalizedState: SheetState = {
+      dayCount: sheetState.dayCount,
+      rows: sheetState.rows.map((row, index) => ({
+        ...row,
+        serialNumber: index + 1,
+        days: Array.from({ length: sheetState.dayCount }, (_, dayIndex) => row.days[dayIndex] ?? 0)
+      }))
+    };
+
+    const nextHistory = historyEntriesRef.current.map((entry) =>
+      entry.id === activeHistoryId
+        ? {
+            ...entry,
+            ...normalizedState,
+            savedAt: new Date().toISOString(),
+            archived: false,
+            ...(sheetNameInput.trim() ? { name: sheetNameInput.trim() } : {})
+          }
+        : entry
+    );
+
+    historyEntriesRef.current = nextHistory;
+    await saveHistoryByEmail(activeUser.email, nextHistory);
+    const currentSheet = await getSheetByEmail(activeUser.email, true);
+    setActiveHistoryId(null);
+    activeHistoryIdRef.current = null;
+    setSheetState(currentSheet);
+    setHistoryEntries(nextHistory.filter((entry) => entry.archived !== false));
     setShowSaveNameModal(false);
+  };
+
+  const openChangeSheetModal = () => {
+    setShowChangeSheetModal(true);
+    setHistoryLoading(true);
+    const activeUser = getActiveUser();
+    if (!activeUser?.email) {
+      setHistoryEntries([]);
+      setHistoryLoading(false);
+      return;
+    }
+
+    void getHistoryByEmail(activeUser.email)
+      .then((entries) => {
+        historyEntriesRef.current = entries;
+        setHistoryEntries(entries);
+      })
+      .catch(() => {
+        historyEntriesRef.current = [];
+        setHistoryEntries([]);
+      })
+      .finally(() => setHistoryLoading(false));
+  };
+
+  const archivedEntries = historyEntries.filter((entry) => entry.archived !== false);
+
+  const changeSheet = async (entry: SheetHistoryEntry) => {
+    const activeUser = getActiveUser();
+    if (!activeUser?.email || changingSheet) {
+      return;
+    }
+
+    setChangingSheet(true);
+    try {
+      const nextSheet = {
+        dayCount: entry.dayCount,
+        rows: entry.rows
+      };
+      activeHistoryIdRef.current = entry.id;
+      setActiveHistoryId(entry.id);
+      setSheetState(nextSheet);
+      notifyMilkDataChanged();
+      setShowChangeSheetModal(false);
+    } finally {
+      setChangingSheet(false);
+    }
+  };
+
+  const deleteArchivedSheet = async (entry: SheetHistoryEntry) => {
+    const activeUser = getActiveUser();
+    if (!activeUser?.email || changingSheet) {
+      return;
+    }
+
+    const sheetLabel = entry.name || "this sheet";
+    if (!window.confirm(`Delete ${sheetLabel}? This cannot be undone.`)) {
+      return;
+    }
+
+    const nextHistory = historyEntriesRef.current.filter((item) => item.id !== entry.id);
+    historyEntriesRef.current = nextHistory;
+    setHistoryEntries(nextHistory);
+    if (activeHistoryId === entry.id) {
+      activeHistoryIdRef.current = null;
+      setActiveHistoryId(null);
+    }
+    await saveHistoryByEmail(activeUser.email, nextHistory);
   };
 
   const updateCustomerName = (serialNumber: number, customerName: string) => {
@@ -450,13 +596,27 @@ function CustomerTable() {
           >
             Remove Column
           </button>
+          <button
+            type="button"
+            onClick={() => void archiveToHistory("")}
+            className="min-h-[44px] rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50 sm:text-sm"
+          >
+            Archive
+          </button>
+          <button
+            type="button"
+            onClick={openChangeSheetModal}
+            className="min-h-[44px] rounded-lg border border-blue-300 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 sm:text-sm"
+          >
+            Archived Sheets
+          </button>
         </div>
         <button
           type="button"
           onClick={openSaveNameModal}
           className="w-full min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:ml-auto sm:w-auto sm:text-sm"
         >
-          Save to History
+            Save to History
         </button>
       </div>
 
@@ -492,6 +652,73 @@ function CustomerTable() {
                 className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showChangeSheetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-lg">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Archived sheets</h3>
+                <p className="mt-1 text-xs text-slate-500">Open a saved sheet to edit it.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangeSheetModal(false)}
+                className="rounded-lg px-2 py-1 text-lg leading-none text-slate-500 hover:bg-slate-100"
+                aria-label="Close change sheet dialog"
+              >
+                ×
+              </button>
+            </div>
+            {historyLoading ? (
+              <p className="mt-4 text-sm text-slate-500">Loading saved sheets...</p>
+            ) : archivedEntries.length === 0 ? (
+              <p className="mt-4 text-sm text-slate-500">No saved sheets found. Save a sheet to History first.</p>
+            ) : (
+              <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+                {archivedEntries.map((entry, index) => (
+                  <div
+                    key={entry.id}
+                    className="flex min-h-[52px] w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left"
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-800">{entry.name || `Sheet ${archivedEntries.length - index}`}</span>
+                      <span className="mt-1 block text-xs text-slate-500">Saved {new Date(entry.savedAt).toLocaleString()}</span>
+                    </span>
+                    <span className="ml-3 flex shrink-0 items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => void changeSheet(entry)}
+                        disabled={changingSheet}
+                        className="text-xs font-semibold text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Open
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void deleteArchivedSheet(entry)}
+                        disabled={changingSheet}
+                        className="text-xs font-semibold text-red-700 hover:text-red-900 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowChangeSheetModal(false)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Cancel
               </button>
             </div>
           </div>

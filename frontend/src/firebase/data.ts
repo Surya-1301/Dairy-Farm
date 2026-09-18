@@ -27,6 +27,7 @@ export type SheetHistoryEntry = SheetState & {
   id: string;
   savedAt: string;
   name?: string;
+  archived?: boolean;
 };
 
 const INITIAL_ROWS = 50;
@@ -80,6 +81,35 @@ function cloneSheetState(sheet: SheetState): SheetState {
       days: [...row.days]
     }))
   };
+}
+
+function trimSheetToUsedRange(sheet: SheetState): SheetState {
+  let lastUsedRow = -1;
+  let lastUsedDay = -1;
+
+  sheet.rows.forEach((row, rowIndex) => {
+    const rowHasData = row.customerName.trim() !== "" || row.shift.trim() !== "" || row.days.some((value) => value !== 0);
+    if (rowHasData) {
+      lastUsedRow = rowIndex;
+    }
+
+    row.days.forEach((value, dayIndex) => {
+      if (value !== 0) {
+        lastUsedDay = Math.max(lastUsedDay, dayIndex);
+      }
+    });
+  });
+
+  const dayCount = Math.max(1, lastUsedDay + 1);
+  const rows = sheet.rows
+    .slice(0, Math.max(1, lastUsedRow + 1))
+    .map((row, index) => ({
+      ...row,
+      serialNumber: index + 1,
+      days: row.days.slice(0, dayCount)
+    }));
+
+  return { dayCount, rows };
 }
 
 function normalizeCustomers(customers: Customer[]): Customer[] {
@@ -201,14 +231,25 @@ export async function saveHistoryByEmail(email: string, entries: SheetHistoryEnt
   return entries;
 }
 
+export async function saveSheetSnapshotByEmail(email: string, sheet: SheetState, name?: string): Promise<SheetHistoryEntry> {
+  const history = await getHistoryByEmail(email);
+  const archivedSheet = cloneSheetState(normalizeSheetState(sheet));
+  const trimmedName = name?.trim();
+  const entry: SheetHistoryEntry = {
+    ...archivedSheet,
+    id: `history-${Date.now()}`,
+    savedAt: new Date().toISOString(),
+    archived: true,
+    ...(trimmedName ? { name: trimmedName } : {})
+  };
+
+  await saveHistoryByEmail(email, [entry, ...history]);
+  return entry;
+}
+
 export async function archiveSheetByEmail(email: string, sheet: SheetState, name?: string): Promise<SheetState> {
   const history = await getHistoryByEmail(email);
-
-  const filledRows = sheet.rows
-    .filter((row) => row.customerName.trim() !== "" || row.days.some((value) => value > 0))
-    .map((row, index) => ({ ...row, serialNumber: index + 1 }));
-
-  const archivedSheet = cloneSheetState({ dayCount: sheet.dayCount, rows: filledRows });
+  const archivedSheet = trimSheetToUsedRange(normalizeSheetState(sheet));
   const trimmedName = name?.trim();
   const entry: SheetHistoryEntry = {
     ...archivedSheet,
@@ -218,7 +259,32 @@ export async function archiveSheetByEmail(email: string, sheet: SheetState, name
   };
 
   await saveHistoryByEmail(email, [entry, ...history]);
-  return saveSheetByEmail(email, createInitialSheet());
+  const nextSheet: SheetState = {
+    dayCount: archivedSheet.dayCount,
+    rows: archivedSheet.rows.map((row, index) => ({
+      ...row,
+      serialNumber: index + 1,
+      days: Array.from({ length: archivedSheet.dayCount }, () => 0)
+    }))
+  };
+
+  return saveSheetByEmail(email, nextSheet);
+}
+
+export async function saveSheetToHistoryByEmail(email: string, sheet: SheetState, name?: string): Promise<SheetHistoryEntry> {
+  const history = await getHistoryByEmail(email);
+  const savedSheet = cloneSheetState(normalizeSheetState(sheet));
+  const trimmedName = name?.trim();
+  const entry: SheetHistoryEntry = {
+    ...savedSheet,
+    id: `history-${Date.now()}`,
+    savedAt: new Date().toISOString(),
+    archived: false,
+    ...(trimmedName ? { name: trimmedName } : {})
+  };
+
+  await saveHistoryByEmail(email, [entry, ...history]);
+  return entry;
 }
 
 export async function deleteUserDataByEmail(email: string): Promise<void> {

@@ -17,9 +17,9 @@ A web + mobile dairy management system for tracking customers, daily milk entrie
 
 - Email/password sign in, sign up, and custom password reset via EmailJS
 - Customer management — add, edit, delete; a customer with both Morning and Evening shifts is shown and edited as a single grouped entry (shift displayed as "M & E")
-- Editable milk data sheet (50 rows × 15 days default) with add/remove row and column; both-shift customers share one Customer Name field and a combined Morning + Evening total
+- Editable milk data sheet (50 rows × 16 days default) with add/remove row and column; both-shift customers share one Customer Name field and a combined Morning + Evening total
 - Dashboard summary showing customer count and total milk amount
-- Sheet history archive — save snapshots, export any saved sheet as PDF, and delete old entries
+- Sheet lifecycle — **Save to History** stores a snapshot without changing the current sheet; **Archive** stores the current sheet as an archived entry and starts a new sheet with the same customer structure; **Archived Sheets** opens archived entries for editing, and **History** provides export, rename, and delete actions
 - User profile management with avatar upload and in-profile password reset
 - Owner dashboard — view all registered users, milk totals, and earnings; edit any user's profile (name, phone, email); save/view/export/delete any user's sheet history; reset any user's password; delete accounts
 
@@ -90,6 +90,14 @@ npm run build     # production build → dist/
 npm run preview   # preview production build
 ```
 
+### Sheet workflow
+
+- **Save to History** saves the current data as a History snapshot and keeps the current sheet open.
+- **Archive** saves the complete current sheet to Archived Sheets, then starts a new sheet with the same customer names, shifts, rows, and day columns with daily values cleared.
+- **Archived Sheets** opens an archived entry for editing without replacing the live current sheet.
+- **Save to History** while editing an archived entry saves the edits to History and returns to the live current sheet.
+- **History** contains saved snapshots and supports editing the sheet name, PDF/Excel export, and deletion.
+
 ### Routes
 
 | Path | Description |
@@ -98,7 +106,7 @@ npm run preview   # preview production build
 | `/dashboard` | User summary — customers and total amount |
 | `/customers` | Customer list — add, edit, delete |
 | `/customer-details` | Editable milk data sheet |
-| `/history` | Archived sheet snapshots |
+| `/history` | Saved sheet snapshots with export, rename, edit, and delete actions |
 | `/profile` | User profile, avatar, and password reset |
 | `/reset-password` | Password reset confirmation (via emailed link) |
 | `/owner-dashboard` | Owner-only — users, milk totals, earnings; view/edit any user's data, profile, and sheet history; reset passwords |
