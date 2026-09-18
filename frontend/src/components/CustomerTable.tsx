@@ -326,19 +326,12 @@ function CustomerTable() {
         return;
       }
 
-      // Load the real saved sheet FIRST and wait for it to land in state before doing
-      // anything else. Previously the customer-sync effect ran in parallel with this
-      // fetch and could win the race, computing its "next rows" from the still-empty
-      // initial state and saving that empty sheet back over the real saved data —
-      // which is what caused all entries to disappear after a refresh.
-      const sheet = await getSheetByEmail(activeUser.email);
-      if (!isMounted) return;
-      let initialSheet: SheetState = {
-        dayCount: sheet.dayCount,
-        rows: normalizeRows(sheet.rows, sheet.dayCount)
-      };
-
       const editId = new URLSearchParams(window.location.search).get("edit");
+      let initialSheet: SheetState | null = null;
+
+      // When an archived sheet is open, load ONLY that archived entry. Do not load
+      // the live/current sheet on refresh, because the archived sheet is the one
+      // the user explicitly asked to reopen.
       if (editId) {
         const history = await getHistoryByEmail(activeUser.email);
         const historyEntry = history.find((entry) => entry.id === editId);
@@ -351,26 +344,44 @@ function CustomerTable() {
           setActiveHistoryId(historyEntry.id);
           historyEntriesRef.current = history;
           setHistoryEntries(history);
+        } else {
+          // The URL can become stale if an archived sheet was deleted elsewhere.
+          // Fall back to the live sheet and clear the stale edit target.
+          const currentSheet = await getSheetByEmail(activeUser.email);
+          initialSheet = {
+            dayCount: currentSheet.dayCount,
+            rows: normalizeRows(currentSheet.rows, currentSheet.dayCount)
+          };
+          navigate("/customer-details", { replace: true });
         }
+      } else {
+        const currentSheet = await getSheetByEmail(activeUser.email);
+        initialSheet = {
+          dayCount: currentSheet.dayCount,
+          rows: normalizeRows(currentSheet.rows, currentSheet.dayCount)
+        };
       }
 
+      if (!isMounted || !initialSheet) return;
       setSheetState(initialSheet);
 
-      // Only now, with real data in state, is it safe to sync customer names in and
-      // start listening for customer/sheet changes.
-      syncCustomersToSheet();
-      unsubscribeCustomers = subscribeCustomersChanged(syncCustomersToSheet);
+      // Only the live sheet needs customer/sheet synchronization. An archived sheet
+      // must remain isolated from the current live sheet while it is open.
+      if (!activeHistoryIdRef.current) {
+        syncCustomersToSheet();
+        unsubscribeCustomers = subscribeCustomersChanged(syncCustomersToSheet);
 
-      unsubscribeSheet = subscribeSheetByEmail(activeUser.email, (nextSheet) => {
-        if (activeHistoryIdRef.current) {
-          return;
-        }
+        unsubscribeSheet = subscribeSheetByEmail(activeUser.email, (nextSheet) => {
+          if (activeHistoryIdRef.current) {
+            return;
+          }
 
-        setSheetState({
-          dayCount: nextSheet.dayCount,
-          rows: normalizeRows(nextSheet.rows, nextSheet.dayCount)
+          setSheetState({
+            dayCount: nextSheet.dayCount,
+            rows: normalizeRows(nextSheet.rows, nextSheet.dayCount)
+          });
         });
-      });
+      }
     };
 
     void init();
@@ -407,6 +418,7 @@ function CustomerTable() {
     setActiveHistoryId(null);
     setSheetState(nextSheet);
     notifyMilkDataChanged();
+    navigate("/customer-details", { replace: true });
   };
 
   const openSaveNameModal = () => {
@@ -458,6 +470,7 @@ function CustomerTable() {
     setSheetState(currentSheet);
     setHistoryEntries(nextHistory.filter((entry) => entry.archived !== false));
     setShowSaveNameModal(false);
+    navigate("/customer-details", { replace: true });
   };
 
   const openChangeSheetModal = () => {
@@ -501,6 +514,10 @@ function CustomerTable() {
       setSheetState(nextSheet);
       notifyMilkDataChanged();
       setShowChangeSheetModal(false);
+
+      // Persist the currently opened archived sheet in the URL so a browser
+      // refresh reopens this exact archived sheet instead of the live sheet.
+      navigate(`/customer-details?edit=${encodeURIComponent(entry.id)}`, { replace: true });
     } finally {
       setChangingSheet(false);
     }
@@ -523,6 +540,12 @@ function CustomerTable() {
     if (activeHistoryId === entry.id) {
       activeHistoryIdRef.current = null;
       setActiveHistoryId(null);
+      const currentSheet = await getSheetByEmail(activeUser.email, true);
+      setSheetState({
+        dayCount: currentSheet.dayCount,
+        rows: normalizeRows(currentSheet.rows, currentSheet.dayCount)
+      });
+      navigate("/customer-details", { replace: true });
     }
     await saveHistoryByEmail(activeUser.email, nextHistory);
   };

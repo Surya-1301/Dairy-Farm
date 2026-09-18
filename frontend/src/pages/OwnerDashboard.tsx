@@ -3,7 +3,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import ExcelJS from "exceljs";
 import Layout from "../components/Layout";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { deleteUserByEmail, fetchAllUserProfiles, isOwnerLoggedIn, requestPasswordReset, subscribeAuthState, updateUserProfileByEmail } from "../firebase/auth";
 import {
   archiveSheetByEmail,
@@ -360,10 +360,11 @@ function buildCombinedTotals(rows: { days: number[] }[], groupStartIndices: numb
 
 export default function OwnerDashboard() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [userSnapshots, setUserSnapshots] = useState<UserSnapshot[]>([]);
   const [totalEarnings, setTotalEarnings] = useState(0);
-  const [selectedUserEmail, setSelectedUserEmail] = useState<string | null>(null);
+  const [selectedUserEmail, setSelectedUserEmail] = useState<string | null>(() => searchParams.get("user"));
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editEmail, setEditEmail] = useState("");
@@ -375,13 +376,27 @@ export default function OwnerDashboard() {
   const [deleteInfo, setDeleteInfo] = useState("");
   const [archiving, setArchiving] = useState(false);
   const [archiveMsg, setArchiveMsg] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(() => searchParams.get("history") === "1");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<SheetHistoryEntry[]>([]);
-  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(() => searchParams.get("sheet"));
   const [openSaveMenuId, setOpenSaveMenuId] = useState<string | null>(null);
   const [editingHistoryNameId, setEditingHistoryNameId] = useState<string | null>(null);
   const [historyNameDraft, setHistoryNameDraft] = useState("");
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams();
+    if (selectedUserEmail) {
+      nextParams.set("user", selectedUserEmail);
+    }
+    if (showHistory) {
+      nextParams.set("history", "1");
+    }
+    if (showHistory && expandedEntryId) {
+      nextParams.set("sheet", expandedEntryId);
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [selectedUserEmail, showHistory, expandedEntryId, setSearchParams]);
 
   useEffect(() => {
     if (!isOwnerLoggedIn()) {
@@ -501,9 +516,11 @@ export default function OwnerDashboard() {
   const handleToggleHistory = async (email: string) => {
     if (showHistory) {
       setShowHistory(false);
+      setExpandedEntryId(null);
       return;
     }
 
+    setExpandedEntryId(null);
     setShowHistory(true);
     setHistoryLoading(true);
     try {
@@ -547,9 +564,7 @@ export default function OwnerDashboard() {
     setSaveMessage(null);
     setPwResetMsg(null);
     setArchiveMsg(null);
-    setShowHistory(false);
     setHistoryEntries([]);
-    setExpandedEntryId(null);
   }, [selectedUserEmail]);
 
   // Keep the opened user details screen updated with the latest customers, data sheet, and history.
@@ -559,11 +574,15 @@ export default function OwnerDashboard() {
     let cancelled = false;
 
     const refreshSelectedUserData = async () => {
-      await loadDashboardData();
-
-      if (!cancelled && showHistory) {
-        setHistoryEntries(await getHistoryByEmail(selectedUserEmail));
+      if (showHistory) {
+        const nextHistory = await getHistoryByEmail(selectedUserEmail);
+        if (!cancelled) {
+          setHistoryEntries(nextHistory);
+        }
+        return;
       }
+
+      await loadDashboardData();
     };
 
     void refreshSelectedUserData();

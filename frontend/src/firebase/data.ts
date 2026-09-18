@@ -196,12 +196,13 @@ export async function saveSheetByEmail(email: string, sheet: SheetState): Promis
   return normalized;
 }
 
-export async function getHistoryByEmail(email: string): Promise<SheetHistoryEntry[]> {
+export async function getHistoryByEmail(email: string, forceServer = false): Promise<SheetHistoryEntry[]> {
   if (!db) {
     return [];
   }
 
-  const snapshot = await getDoc(doc(db, SHEET_HISTORIES_COLLECTION, normalizeEmail(email)));
+  const ref = doc(db, SHEET_HISTORIES_COLLECTION, normalizeEmail(email));
+  const snapshot = await (forceServer ? getDocFromServer(ref) : getDoc(ref));
   if (!snapshot.exists()) {
     return [];
   }
@@ -222,6 +223,23 @@ export async function saveHistoryByEmail(email: string, entries: SheetHistoryEnt
   );
 
   return entries;
+}
+
+export function subscribeHistoryByEmail(email: string, callback: (entries: SheetHistoryEntry[]) => void): () => void {
+  if (!db) return () => {};
+
+  const docRef = doc(db, SHEET_HISTORIES_COLLECTION, normalizeEmail(email));
+  return onSnapshot(docRef, (snapshot) => {
+    if (snapshot.metadata.hasPendingWrites) return;
+
+    if (!snapshot.exists()) {
+      callback([]);
+      return;
+    }
+
+    const data = snapshot.data() as { entries?: SheetHistoryEntry[] };
+    callback(Array.isArray(data.entries) ? data.entries : []);
+  });
 }
 
 export async function saveSheetSnapshotByEmail(email: string, sheet: SheetState, name?: string): Promise<SheetHistoryEntry> {
