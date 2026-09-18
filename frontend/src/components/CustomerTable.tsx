@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getCustomers, subscribeCustomersChanged } from "../utils/customerData";
 import { notifyMilkDataChanged } from "../utils/milkData";
 
@@ -152,6 +153,7 @@ function normalizeRows(rows: SheetRow[], dayCount: number): SheetRow[] {
 }
 
 function CustomerTable() {
+  const navigate = useNavigate();
   const [sheetState, setSheetState] = useState<SheetState>(createInitialState());
   const [showSaveNameModal, setShowSaveNameModal] = useState(false);
   const [showChangeSheetModal, setShowChangeSheetModal] = useState(false);
@@ -608,6 +610,24 @@ function CustomerTable() {
     saveState({ dayCount: dayCount - 1, rows: nextRows });
   };
 
+  const backToCurrentSheet = async () => {
+    const activeUser = getActiveUser();
+    if (!activeUser?.email) {
+      navigate("/customer-details", { replace: true });
+      return;
+    }
+
+    activeHistoryIdRef.current = null;
+    setActiveHistoryId(null);
+    const currentSheet = await getSheetByEmail(activeUser.email, true);
+    setSheetState({
+      dayCount: currentSheet.dayCount,
+      rows: normalizeRows(currentSheet.rows, currentSheet.dayCount)
+    });
+    setSaveStatus("saved");
+    navigate("/customer-details", { replace: true });
+  };
+
   return (
     <div className="space-y-3 bg-white p-2 md:p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
@@ -623,7 +643,7 @@ function CustomerTable() {
             type="button"
             onClick={removeRow}
             disabled={rows.length <= 1}
-            className="min-h-[44px] rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+            className="min-h-[44px] rounded-lg border border-red-500 bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
           >
             Remove Row
           </button>
@@ -638,35 +658,46 @@ function CustomerTable() {
             type="button"
             onClick={removeColumn}
             disabled={dayCount <= 1}
-            className="min-h-[44px] rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+            className="min-h-[44px] rounded-lg border border-red-500 bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
           >
             Remove Column
           </button>
           <button
             type="button"
             onClick={() => void archiveToHistory("")}
-            className="min-h-[44px] rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50 sm:text-sm"
+            className="min-h-[44px] rounded-lg border border-amber-500 bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600 sm:text-sm"
           >
             Archive
           </button>
           <button
             type="button"
             onClick={openChangeSheetModal}
-            className="min-h-[44px] rounded-lg border border-blue-300 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 sm:text-sm"
+            className="min-h-[44px] rounded-lg border border-indigo-500 bg-indigo-500 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-600 sm:text-sm"
           >
             Archived Sheets
           </button>
         </div>
-        <button
-          type="button"
-          onClick={openSaveNameModal}
-          className="w-full min-h-[44px] rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 sm:ml-auto sm:w-auto sm:text-sm"
-        >
+        <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
+          {activeHistoryId ? (
+            <button
+              type="button"
+              onClick={() => void backToCurrentSheet()}
+              className="min-h-[44px] min-w-0 flex-1 whitespace-nowrap rounded-lg border border-sky-500 bg-sky-500 px-2 py-2 text-xs font-semibold text-white hover:bg-sky-600 sm:flex-none sm:px-3 sm:text-sm"
+            >
+              Back to Current Sheet
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={openSaveNameModal}
+            className="min-h-[44px] min-w-0 flex-1 whitespace-nowrap rounded-lg border border-emerald-500 bg-emerald-500 px-2 py-2 text-xs font-semibold text-white hover:bg-emerald-600 sm:flex-none sm:px-3 sm:text-sm"
+          >
             Save to History
-        </button>
-          <span className="self-center text-xs font-medium text-slate-500" aria-live="polite">
+          </button>
+          <span className="sr-only" aria-live="polite">
             {saveStatus === "saving" ? "Saving..." : "Saved"}
           </span>
+        </div>
       </div>
 
       {showSaveNameModal && (

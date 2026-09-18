@@ -85,28 +85,21 @@ function cloneSheetState(sheet: SheetState): SheetState {
 
 function trimSheetToUsedRange(sheet: SheetState): SheetState {
   let lastUsedRow = -1;
-  let lastUsedDay = -1;
 
   sheet.rows.forEach((row, rowIndex) => {
     const rowHasData = row.customerName.trim() !== "" || row.shift.trim() !== "" || row.days.some((value) => value !== 0);
     if (rowHasData) {
       lastUsedRow = rowIndex;
     }
-
-    row.days.forEach((value, dayIndex) => {
-      if (value !== 0) {
-        lastUsedDay = Math.max(lastUsedDay, dayIndex);
-      }
-    });
   });
 
-  const dayCount = Math.max(1, lastUsedDay + 1);
+  const dayCount = INITIAL_DAYS;
   const rows = sheet.rows
     .slice(0, Math.max(1, lastUsedRow + 1))
     .map((row, index) => ({
       ...row,
       serialNumber: index + 1,
-      days: row.days.slice(0, dayCount)
+      days: Array.from({ length: dayCount }, (_, dayIndex) => row.days[dayIndex] ?? 0)
     }));
 
   return { dayCount, rows };
@@ -256,6 +249,7 @@ export async function archiveSheetByEmail(email: string, sheet: SheetState, name
     ...archivedSheet,
     id: `history-${Date.now()}`,
     savedAt: new Date().toISOString(),
+    archived: true,
     ...(trimmedName ? { name: trimmedName } : {})
   };
 

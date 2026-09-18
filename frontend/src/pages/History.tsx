@@ -317,6 +317,7 @@ function History() {
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
   const [editingNameEntryId, setEditingNameEntryId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState("");
+  const visibleHistory = history.filter((entry) => entry.archived !== true);
 
   useEffect(() => {
     const activeUser = getActiveUser();
@@ -364,12 +365,12 @@ function History() {
       </div>
 
       <div className="space-y-4 md:space-y-6">
-        {history.length === 0 ? (
+        {visibleHistory.length === 0 ? (
           <div className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 text-xs md:text-sm text-slate-600 shadow-sm">
             No history saved yet.
           </div>
         ) : (
-          history.map((entry, index) => {
+          visibleHistory.map((entry, index) => {
             const effectiveDayCount = getEffectiveDayCount(entry);
             const total = entry.rows.reduce(
               (entryTotal, row) =>
@@ -388,7 +389,7 @@ function History() {
                   className="flex w-full flex-col gap-2 pr-6 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:pr-0 md:gap-3"
                 >
                   <div>
-                    <h2 className="text-base md:text-lg font-semibold text-slate-800">{entry.name || `Sheet ${history.length - index}`}</h2>
+                    <h2 className="text-base md:text-lg font-semibold text-slate-800">{entry.name || `Sheet ${visibleHistory.length - index}`}</h2>
                     <p className="text-xs md:text-sm text-slate-500">Saved on {formatDate(entry.savedAt)}</p>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 md:gap-2 text-xs md:text-sm text-slate-600">
@@ -401,12 +402,12 @@ function History() {
 
                 {isExpanded && (
                 <>
-                <div className="mt-3 flex flex-col sm:flex-row gap-2 mb-3">
-                  <div className="relative flex-1 sm:flex-none">
+                <div className="mt-3 mb-3 grid grid-cols-2 gap-2 sm:flex sm:flex-row">
+                  <div className="relative min-w-0 flex-1 sm:flex-none">
                     <button
                       type="button"
                       onClick={() => setOpenSaveMenu(openSaveMenu === entry.id ? null : entry.id)}
-                      className="w-full rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 transition"
+                      className="w-full rounded-lg border border-emerald-500 bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 transition"
                     >
                       Save Sheet
                     </button>
@@ -417,7 +418,7 @@ function History() {
                           <button
                             type="button"
                             onClick={() => {
-                              downloadSheetAsPdf(entry, history.length - index);
+                              downloadSheetAsPdf(entry, visibleHistory.length - index);
                               setOpenSaveMenu(null);
                             }}
                             className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100"
@@ -427,7 +428,7 @@ function History() {
                           <button
                             type="button"
                             onClick={() => {
-                              downloadSheetAsExcel(entry, history.length - index);
+                              downloadSheetAsExcel(entry, visibleHistory.length - index);
                               setOpenSaveMenu(null);
                             }}
                             className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100"
@@ -444,14 +445,14 @@ function History() {
                       setEditingNameEntryId(entry.id);
                       setNameDraft(entry.name || "");
                     }}
-                    className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50 transition flex-1 sm:flex-none"
+                    className="w-full rounded-lg border border-amber-500 bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600 transition sm:w-auto sm:flex-none"
                   >
                     Edit Sheet Name
                   </button>
                   <button
                     type="button"
                     onClick={() => navigate(`/customer-details?edit=${encodeURIComponent(entry.id)}`)}
-                    className="rounded-lg border border-blue-300 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 transition flex-1 sm:flex-none sm:ml-auto"
+                    className="w-full rounded-lg border border-sky-500 bg-sky-500 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-600 transition sm:w-auto sm:flex-none sm:ml-auto"
                   >
                     Edit Sheet
                   </button>
@@ -460,7 +461,7 @@ function History() {
                     onClick={() => {
                       void deleteSheet(entry.id);
                     }}
-                    className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition flex-1 sm:flex-none"
+                    className="w-full rounded-lg border border-red-500 bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 transition sm:w-auto sm:flex-none"
                   >
                     Delete Sheet
                   </button>

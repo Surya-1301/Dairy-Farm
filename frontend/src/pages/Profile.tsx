@@ -394,7 +394,7 @@ function Profile() {
               type="button"
               onClick={handleRemoveAvatar}
               disabled={loading}
-              className="rounded-lg border border-slate-300 px-4 py-3 text-xs md:text-sm font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-50 w-full min-h-[48px] flex items-center justify-center transition"
+              className="rounded-lg border border-slate-500 bg-slate-500 px-4 py-3 text-xs md:text-sm font-semibold text-white hover:bg-slate-600 active:bg-slate-700 disabled:opacity-50 w-full min-h-[48px] flex items-center justify-center transition"
             >
               Remove Avatar
             </button>
@@ -413,7 +413,7 @@ function Profile() {
             type="button"
             onClick={() => { void handleResetPassword(); }}
             disabled={loading || resetLoading}
-            className="w-full sm:flex-1 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 hover:bg-amber-100 active:bg-amber-200 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
+            className="w-full sm:flex-1 rounded-lg border border-amber-500 bg-amber-500 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-600 active:bg-amber-700 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
           >
             {resetLoading ? "Sending..." : "Reset Password"}
           </button>
@@ -421,7 +421,7 @@ function Profile() {
             type="button"
             onClick={handleDeleteAccount}
             disabled={loading || resetLoading}
-            className="w-full sm:flex-1 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 active:bg-red-200 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
+            className="w-full sm:flex-1 rounded-lg border border-red-500 bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 active:bg-red-700 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
           >
             {loading ? "Deleting..." : "Delete Account"}
           </button>
@@ -432,7 +432,7 @@ function Profile() {
         <button
           type="button"
           onClick={() => { void handleLogout(); }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 active:bg-red-200 min-h-[48px] transition"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500 bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 active:bg-red-700 min-h-[48px] transition"
         >
           Logout
         </button>
