@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCustomers, subscribeCustomersChanged } from "../utils/customerData";
 import { notifyMilkDataChanged } from "../utils/milkData";
@@ -152,6 +152,12 @@ function normalizeRows(rows: SheetRow[], dayCount: number): SheetRow[] {
   }));
 }
 
+const ACTIVE_HISTORY_STORAGE_PREFIX = "dairy-farm-active-history:";
+
+function getActiveHistoryStorageKey(email: string): string {
+  return `${ACTIVE_HISTORY_STORAGE_PREFIX}${email.trim().toLowerCase()}`;
+}
+
 function CustomerTable() {
   const navigate = useNavigate();
   const [sheetState, setSheetState] = useState<SheetState>(createInitialState());
@@ -173,6 +179,10 @@ function CustomerTable() {
     dayIndex: number;
     text: string;
   } | null>(null);
+  const [selectedRowIndices, setSelectedRowIndices] = useState<number[]>([]);
+  const [selectedDayIndices, setSelectedDayIndices] = useState<number[]>([]);
+  const lastSelectedRowIndexRef = useRef<number | null>(null);
+  const lastSelectedDayIndexRef = useRef<number | null>(null);
 
   const { rows, dayCount } = sheetState;
 
@@ -326,7 +336,10 @@ function CustomerTable() {
         return;
       }
 
-      const editId = new URLSearchParams(window.location.search).get("edit");
+      const storageKey = getActiveHistoryStorageKey(activeUser.email);
+      const queryEditId = new URLSearchParams(window.location.search).get("edit");
+      const storedEditId = window.sessionStorage.getItem(storageKey);
+      const editId = queryEditId || storedEditId;
       let initialSheet: SheetState | null = null;
 
       // When an archived sheet is open, load ONLY that archived entry. Do not load
@@ -342,6 +355,7 @@ function CustomerTable() {
           };
           activeHistoryIdRef.current = historyEntry.id;
           setActiveHistoryId(historyEntry.id);
+          window.sessionStorage.setItem(storageKey, historyEntry.id);
           historyEntriesRef.current = history;
           setHistoryEntries(history);
         } else {
@@ -352,9 +366,11 @@ function CustomerTable() {
             dayCount: currentSheet.dayCount,
             rows: normalizeRows(currentSheet.rows, currentSheet.dayCount)
           };
+          window.sessionStorage.removeItem(storageKey);
           navigate("/customer-details", { replace: true });
         }
       } else {
+        window.sessionStorage.removeItem(storageKey);
         const currentSheet = await getSheetByEmail(activeUser.email);
         initialSheet = {
           dayCount: currentSheet.dayCount,
@@ -416,6 +432,8 @@ function CustomerTable() {
     const nextSheet = await archiveSheetByEmail(activeUser.email, { dayCount, rows }, name);
     activeHistoryIdRef.current = null;
     setActiveHistoryId(null);
+    const activeUserEmail = activeUser.email;
+    window.sessionStorage.removeItem(getActiveHistoryStorageKey(activeUserEmail));
     setSheetState(nextSheet);
     notifyMilkDataChanged();
     navigate("/customer-details", { replace: true });
@@ -467,6 +485,7 @@ function CustomerTable() {
     const currentSheet = await getSheetByEmail(activeUser.email, true);
     setActiveHistoryId(null);
     activeHistoryIdRef.current = null;
+    window.sessionStorage.removeItem(getActiveHistoryStorageKey(activeUser.email));
     setSheetState(currentSheet);
     setHistoryEntries(nextHistory.filter((entry) => entry.archived !== false));
     setShowSaveNameModal(false);
@@ -511,6 +530,7 @@ function CustomerTable() {
       };
       activeHistoryIdRef.current = entry.id;
       setActiveHistoryId(entry.id);
+      window.sessionStorage.setItem(getActiveHistoryStorageKey(activeUser.email), entry.id);
       setSheetState(nextSheet);
       notifyMilkDataChanged();
       setShowChangeSheetModal(false);
@@ -540,6 +560,7 @@ function CustomerTable() {
     if (activeHistoryId === entry.id) {
       activeHistoryIdRef.current = null;
       setActiveHistoryId(null);
+      window.sessionStorage.removeItem(getActiveHistoryStorageKey(activeUser.email));
       const currentSheet = await getSheetByEmail(activeUser.email, true);
       setSheetState({
         dayCount: currentSheet.dayCount,
@@ -593,6 +614,118 @@ function CustomerTable() {
     saveState({ dayCount, rows: nextRows });
   };
 
+  const selectRow = (rowIndex: number, event: MouseEvent<HTMLElement>) => {
+    const groupStarts = buildGroupStartIndices(rows);
+    const groupStart = groupStarts[rowIndex] ?? rowIndex;
+    const groupEnd = (() => {
+      for (let index = groupStart + 1; index < groupStarts.length; index += 1) {
+        if (groupStarts[index] !== groupStart) {
+          return index - 1;
+        }
+      }
+      return rows.length - 1;
+    })();
+    const getGroupRows = (start: number, end: number) =>
+      Array.from({ length: Math.max(0, end - start + 1) }, (_, index) => start + index);
+
+    const isRangeSelection = event.shiftKey && lastSelectedRowIndexRef.current !== null;
+    const isToggleSelection = event.ctrlKey || event.metaKey;
+
+    setSelectedRowIndices((current) => {
+      if (isRangeSelection) {
+        const lastStart = lastSelectedRowIndexRef.current as number;
+        const rangeStart = Math.min(lastStart, groupStart);
+        const rangeEnd = Math.max(
+          (() => {
+            for (let index = lastStart + 1; index < groupStarts.length; index += 1) {
+              if (groupStarts[index] !== lastStart) {
+                return index - 1;
+              }
+            }
+            return rows.length - 1;
+          })(),
+          groupEnd
+        );
+        const range = getGroupRows(rangeStart, rangeEnd);
+        return isToggleSelection ? Array.from(new Set([...current, ...range])).sort((a, b) => a - b) : range;
+      }
+
+      const groupRows = getGroupRows(groupStart, groupEnd);
+      if (isToggleSelection) {
+        const allSelected = groupRows.every((index) => current.includes(index));
+        return allSelected
+          ? current.filter((index) => !groupRows.includes(index))
+          : Array.from(new Set([...current, ...groupRows])).sort((a, b) => a - b);
+      }
+
+      // Clicking the already-selected row edge again clears that selection.
+      const onlyThisGroupIsSelected =
+        current.length === groupRows.length && groupRows.every((index) => current.includes(index));
+      return onlyThisGroupIsSelected ? [] : groupRows;
+    });
+
+    lastSelectedRowIndexRef.current = groupStart;
+  };
+
+  const selectDayColumn = (dayIndex: number, event: MouseEvent<HTMLElement>) => {
+    const isRangeSelection = event.shiftKey && lastSelectedDayIndexRef.current !== null;
+    const isToggleSelection = event.ctrlKey || event.metaKey;
+
+    setSelectedDayIndices((current) => {
+      if (isRangeSelection) {
+        const start = Math.min(lastSelectedDayIndexRef.current as number, dayIndex);
+        const end = Math.max(lastSelectedDayIndexRef.current as number, dayIndex);
+        const range = Array.from({ length: end - start + 1 }, (_, index) => start + index);
+        return isToggleSelection ? Array.from(new Set([...current, ...range])).sort((a, b) => a - b) : range;
+      }
+
+      if (isToggleSelection) {
+        return current.includes(dayIndex)
+          ? current.filter((index) => index !== dayIndex)
+          : [...current, dayIndex].sort((a, b) => a - b);
+      }
+
+      // Clicking the already-selected column edge again clears that selection.
+      return current.length === 1 && current[0] === dayIndex ? [] : [dayIndex];
+    });
+
+    lastSelectedDayIndexRef.current = dayIndex;
+  };
+
+  const removeSelectedRows = () => {
+    if (selectedRowIndices.length === 0 || rows.length - selectedRowIndices.length < 1) {
+      return;
+    }
+
+    const selected = new Set(selectedRowIndices);
+    const nextRows = rows
+      .filter((_, index) => !selected.has(index))
+      .map((row, index) => ({
+        ...row,
+        serialNumber: index + 1
+      }));
+
+    saveState({ dayCount, rows: nextRows });
+    setSelectedRowIndices([]);
+    lastSelectedRowIndexRef.current = null;
+  };
+
+  const removeSelectedColumns = () => {
+    if (selectedDayIndices.length === 0 || dayCount - selectedDayIndices.length < 1) {
+      return;
+    }
+
+    const selected = new Set(selectedDayIndices);
+    const nextRows = rows.map((row) => ({
+      ...row,
+      days: row.days.filter((_, index) => !selected.has(index))
+    }));
+
+    saveState({ dayCount: dayCount - selectedDayIndices.length, rows: nextRows });
+    setSelectedDayIndices([]);
+    lastSelectedDayIndexRef.current = null;
+  };
+
   const addRow = () => {
     const nextRows = [...rows, createEmptyRow(rows.length + 1, dayCount)];
     saveState({ dayCount, rows: nextRows });
@@ -609,6 +742,8 @@ function CustomerTable() {
     }));
 
     saveState({ dayCount, rows: nextRows });
+    setSelectedRowIndices([]);
+    lastSelectedRowIndexRef.current = null;
   };
 
   const addColumn = () => {
@@ -631,6 +766,8 @@ function CustomerTable() {
     }));
 
     saveState({ dayCount: dayCount - 1, rows: nextRows });
+    setSelectedDayIndices((current) => current.filter((index) => index < dayCount - 1));
+    lastSelectedDayIndexRef.current = null;
   };
 
   const backToCurrentSheet = async () => {
@@ -642,6 +779,7 @@ function CustomerTable() {
 
     activeHistoryIdRef.current = null;
     setActiveHistoryId(null);
+    window.sessionStorage.removeItem(getActiveHistoryStorageKey(activeUser.email));
     const currentSheet = await getSheetByEmail(activeUser.email, true);
     setSheetState({
       dayCount: currentSheet.dayCount,
@@ -672,6 +810,14 @@ function CustomerTable() {
           </button>
           <button
             type="button"
+            onClick={removeSelectedRows}
+            disabled={selectedRowIndices.length === 0 || rows.length - selectedRowIndices.length < 1}
+            className="min-h-[44px] rounded-lg border border-rose-600 bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+          >
+            Delete{selectedRowIndices.length ? ` (${selectedRowIndices.length})` : ""}
+          </button>
+          <button
+            type="button"
             onClick={addColumn}
             className="min-h-[44px] rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
           >
@@ -684,6 +830,14 @@ function CustomerTable() {
             className="min-h-[44px] rounded-lg border border-red-500 bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
           >
             Remove Column
+          </button>
+          <button
+            type="button"
+            onClick={removeSelectedColumns}
+            disabled={selectedDayIndices.length === 0 || dayCount - selectedDayIndices.length < 1}
+            className="min-h-[44px] rounded-lg border border-rose-600 bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+          >
+            Delete{selectedDayIndices.length ? ` (${selectedDayIndices.length})` : ""}
           </button>
           <button
             type="button"
@@ -833,14 +987,31 @@ function CustomerTable() {
         <table className="min-w-[1080px] table-fixed border-collapse text-center text-xs md:text-sm">
           <thead className="bg-slate-100 font-semibold text-slate-800">
             <tr>
-              <th className="sticky top-0 z-20 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">S No</th>
+              <th className="sticky top-0 z-20 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">
+                S No
+              </th>
               <th className="sticky top-0 left-0 z-30 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">Customer Name</th>
               <th className="sticky top-0 z-20 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">Shift</th>
-              {Array.from({ length: dayCount }, (_, index) => (
-                <th key={`day-${index + 1}`} className="sticky top-0 z-20 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">
-                  Day {index + 1}
-                </th>
-              ))}
+              {Array.from({ length: dayCount }, (_, index) => {
+                const isSelected = selectedDayIndices.includes(index);
+                return (
+                  <th
+                    key={`day-${index + 1}`}
+                    className={`sticky top-0 z-20 w-24 border border-slate-400 px-1 py-2 md:w-28 md:px-2 ${
+                      isSelected ? "bg-blue-200 text-blue-950" : "bg-slate-100"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={(event) => selectDayColumn(index, event)}
+                      aria-label={`Select Day ${index + 1} column`}
+                      className="flex min-h-10 w-full cursor-pointer select-none flex-col items-center justify-center rounded px-1 text-center hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <span>Day {index + 1}</span>
+                    </button>
+                  </th>
+                );
+              })}
               <th className="sticky top-0 z-20 w-24 border border-slate-400 bg-slate-100 px-1 py-2 md:w-28 md:px-2">Total</th>
             </tr>
           </thead>
@@ -855,31 +1026,57 @@ function CustomerTable() {
               const nameSpan = nameCellSpans[rowIndex];
               const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : total;
 
+              const isRowSelected = selectedRowIndices.includes(rowIndex);
+
               return (
-                <tr key={row.serialNumber} className="bg-white">
+                <tr key={`${row.serialNumber}-${rowIndex}`} className={isRowSelected ? "bg-blue-50" : "bg-white"}>
                   {nameSpan > 0 && (
-                    <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 md:px-2 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerialNumbers[rowIndex]}</td>
+                    <td
+                      rowSpan={nameSpan}
+                      onClick={(event) => selectRow(rowIndex, event)}
+                      className={`cursor-pointer select-none border border-slate-300 px-1 py-1 md:px-2 font-semibold align-middle ${
+                        isRowSelected ? "bg-blue-200 text-blue-950 font-bold" : "bg-slate-50 hover:bg-blue-100"
+                      }`}
+                      style={{ verticalAlign: "middle" }}
+                      aria-label={`Select row ${displaySerialNumbers[rowIndex] || rowIndex + 1}`}
+                    >
+                      <div className="flex min-h-9 w-full items-center justify-center rounded px-2 text-center">
+                        {displaySerialNumbers[rowIndex]}
+                      </div>
+                    </td>
                   )}
                   {nameSpan > 0 && (
-                    <td rowSpan={nameSpan} className="sticky left-0 z-10 border border-slate-300 bg-white px-1 py-1 md:px-2 align-middle" style={{ verticalAlign: "middle" }}>
+                    <td
+                      rowSpan={nameSpan}
+                      className={`sticky left-0 z-10 border border-slate-300 px-1 py-1 md:px-2 align-middle ${
+                        isRowSelected ? "bg-blue-100" : "bg-white"
+                      }`}
+                      style={{ verticalAlign: "middle" }}
+                    >
                       <input
                         value={row.customerName}
                         onChange={(event) => updateCustomerName(row.serialNumber, event.target.value)}
-                        className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-left"
+                        className={`h-9 w-full rounded border border-slate-300 px-2 py-1 text-left ${isRowSelected ? "bg-blue-50" : "bg-white"}`}
                       />
                     </td>
                   )}
-                  <td className="border border-slate-300 px-1 py-1 md:px-2">
+                  <td className={`border border-slate-300 px-1 py-1 md:px-2 ${isRowSelected ? "bg-blue-100" : "bg-white"}`}>
                     <input
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
-                      className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-center"
+                      className={`h-9 w-full rounded border border-slate-300 px-2 py-1 text-center ${isRowSelected ? "bg-blue-50" : "bg-white"}`}
                     />
                   </td>
                   {row.days.map((value, dayIndex) => (
                     <td
                       key={`${row.serialNumber}-${dayIndex + 1}`}
-                      className="border border-slate-300 px-1 py-1"
+                      className={`border border-slate-300 px-1 py-1 ${
+                        selectedDayIndices.includes(dayIndex)
+                          ? "bg-blue-50"
+                          : isRowSelected
+                          ? "bg-blue-100"
+                          : "bg-white"
+                      }`}
                     >
                       <input
                         type="text"
@@ -918,12 +1115,17 @@ function CustomerTable() {
                           updateDayValue(row.serialNumber, dayIndex, event.target.value);
                           setEditingDayCell(null);
                         }}
-                        className="h-9 w-full rounded border border-slate-300 bg-white px-2 py-1 text-center"
+                        className={`h-9 w-full rounded border border-slate-300 px-2 py-1 text-center ${selectedDayIndices.includes(dayIndex) ? "bg-blue-100" : isRowSelected ? "bg-blue-50" : "bg-white"}`}
                       />
                     </td>
                   ))}
                   {nameSpan > 0 && (
-                    <td rowSpan={nameSpan} className="border border-slate-300 px-1 py-1 font-semibold md:px-2">
+                    <td
+                      rowSpan={nameSpan}
+                      className={`border border-slate-300 px-1 py-1 font-semibold md:px-2 ${
+                        isRowSelected ? "bg-blue-100" : "bg-white"
+                      }`}
+                    >
                       {displayTotal}
                     </td>
                   )}

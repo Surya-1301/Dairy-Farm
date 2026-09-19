@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import ExcelJS from "exceljs";
@@ -312,9 +312,10 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number) {
 
 function History() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [history, setHistory] = useState<SheetHistoryEntry[]>([]);
   const [openSaveMenu, setOpenSaveMenu] = useState<string | null>(null);
-  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(() => searchParams.get("sheet"));
   const [editingNameEntryId, setEditingNameEntryId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState("");
   const visibleHistory = history.filter((entry) => entry.archived !== true);
@@ -326,8 +327,16 @@ function History() {
       return;
     }
 
-    void getHistoryByEmail(activeUser.email).then(setHistory);
+    void getHistoryByEmail(activeUser.email, true).then(setHistory);
   }, []);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams();
+    if (expandedEntryId) {
+      nextParams.set("sheet", expandedEntryId);
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [expandedEntryId, setSearchParams]);
 
   const deleteSheet = async (entryId: string) => {
     const activeUser = getActiveUser();
@@ -338,6 +347,9 @@ function History() {
     const nextHistory = history.filter((entry) => entry.id !== entryId);
 
     setHistory(nextHistory);
+    if (expandedEntryId === entryId) {
+      setExpandedEntryId(null);
+    }
     await saveHistoryByEmail(activeUser.email, nextHistory);
   };
 
