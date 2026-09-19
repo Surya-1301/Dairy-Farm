@@ -176,6 +176,22 @@ type SheetLayoutState = {
 type DragKind = "row" | "day-column";
 type ActiveDrag = { kind: DragKind; sourceIndex: number };
 
+type SheetClipboardPayload =
+  | {
+      kind: "rows";
+      dayCount: number;
+      rows: SheetRow[];
+      rowHeights: number[];
+    }
+  | {
+      kind: "columns";
+      dayCount: number;
+      columns: number[][];
+      columnWidths: number[];
+    };
+
+const SHEET_CLIPBOARD_PREFIX = "DAIRY_FARM_SHEET_CLIPBOARD_V1\n";
+
 const LAYOUT_STORAGE_PREFIX = "dairy-farm-sheet-layout:";
 const DEFAULT_SERIAL_WIDTH = 80;
 const DEFAULT_CUSTOMER_WIDTH = 144;
@@ -272,6 +288,7 @@ function CustomerTable() {
   const [selectedDayIndices, setSelectedDayIndices] = useState<number[]>([]);
   const lastSelectedRowIndexRef = useRef<number | null>(null);
   const lastSelectedDayIndexRef = useRef<number | null>(null);
+  const lastSelectionKindRef = useRef<"row" | "column" | null>(null);
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>(() => createDefaultColumnWidths(INITIAL_DAYS));
   const [rowHeights, setRowHeights] = useState<number[]>(() =>
     Array.from({ length: createInitialState().rows.length }, () => DEFAULT_ROW_HEIGHT)
@@ -1120,6 +1137,227 @@ function CustomerTable() {
     window.addEventListener("blur", stopResize);
   };
 
+  const isEditableClipboardTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    const tagName = target.tagName.toLowerCase();
+    return tagName === "input" || tagName === "textarea" || target.isContentEditable;
+  };
+
+  const writeTextToClipboard = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch (error) {
+        console.warn("Clipboard API write failed; trying fallback copy.", error);
+      }
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    textarea.setAttribute("aria-hidden", "true");
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      document.execCommand("copy");
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  };
+
+  const copySelectedRows = async () => {
+    if (selectedRowIndices.length === 0) return;
+
+    const selected = new Set(selectedRowIndices);
+    const sourceRows = rows
+      .filter((_, index) => selected.has(index))
+      .map((row) => ({
+        ...row,
+        days: [...row.days]
+      }));
+    const heights = normalizeRowHeights(rowHeights, rows.length)
+      .filter((_, index) => selected.has(index));
+
+    const payload: SheetClipboardPayload = {
+      kind: "rows",
+      dayCount,
+      rows: sourceRows,
+      rowHeights: heights
+    };
+
+    await writeTextToClipboard(SHEET_CLIPBOARD_PREFIX + JSON.stringify(payload));
+  };
+
+  const copySelectedColumns = async () => {
+    if (selectedDayIndices.length === 0) return;
+
+    const sortedIndices = [...selectedDayIndices].sort((a, b) => a - b);
+    const payload: SheetClipboardPayload = {
+      kind: "columns",
+      dayCount: sortedIndices.length,
+      columns: sortedIndices.map((dayIndex) => rows.map((row) => row.days[dayIndex] ?? 0)),
+      columnWidths: sortedIndices.map((dayIndex) => columnWidths.days[dayIndex] ?? DEFAULT_DAY_WIDTH)
+    };
+
+    await writeTextToClipboard(SHEET_CLIPBOARD_PREFIX + JSON.stringify(payload));
+  };
+
+  const pasteSheetClipboard = (rawText: string) => {
+    if (!rawText.startsWith(SHEET_CLIPBOARD_PREFIX)) {
+      return false;
+    }
+
+    try {
+      const payload = JSON.parse(rawText.slice(SHEET_CLIPBOARD_PREFIX.length)) as SheetClipboardPayload;
+
+      if (payload.kind === "rows" && payload.rows.length > 0 && selectedRowIndices.length > 0) {
+        const targetStart = Math.min(...selectedRowIndices);
+        const nextDayCount = Math.max(
+          dayCount,
+          payload.dayCount,
+          ...payload.rows.map((sourceRow) => sourceRow.days.length)
+        );
+        const requiredRowCount = Math.max(rows.length, targetStart + payload.rows.length);
+        const nextRows = Array.from({ length: requiredRowCount }, (_, index) => {
+          const existing = rows[index];
+          return existing
+            ? {
+                ...existing,
+                days: Array.from({ length: nextDayCount }, (_, dayIndex) => existing.days[dayIndex] ?? 0)
+              }
+            : createEmptyRow(index + 1, nextDayCount);
+        });
+        const nextHeights = normalizeRowHeights(rowHeights, requiredRowCount);
+
+        payload.rows.forEach((sourceRow, offset) => {
+          const targetIndex = targetStart + offset;
+          nextRows[targetIndex] = {
+            ...sourceRow,
+            serialNumber: targetIndex + 1,
+            days: Array.from({ length: nextDayCount }, (_, dayIndex) => sourceRow.days[dayIndex] ?? 0)
+          };
+          nextHeights[targetIndex] = payload.rowHeights[offset] ?? DEFAULT_ROW_HEIGHT;
+        });
+
+        saveState({ dayCount: nextDayCount, rows: nextRows });
+        setRowHeights(nextHeights);
+        setSelectedRowIndices([]);
+        lastSelectedRowIndexRef.current = null;
+        lastSelectionKindRef.current = "row";
+        return true;
+      }
+
+      if (payload.kind === "columns" && payload.columns.length > 0 && selectedDayIndices.length > 0) {
+        const targetStart = Math.min(...selectedDayIndices);
+        const nextDayCount = Math.max(dayCount, targetStart + payload.columns.length);
+        const nextRows = rows.map((row, rowIndex) => {
+          const nextDays = Array.from({ length: nextDayCount }, (_, dayIndex) => row.days[dayIndex] ?? 0);
+
+          payload.columns.forEach((columnValues, offset) => {
+            const targetDayIndex = targetStart + offset;
+            nextDays[targetDayIndex] = columnValues[rowIndex] ?? 0;
+          });
+
+          return { ...row, days: nextDays };
+        });
+
+        const sourceRowCount = payload.columns[0]?.length ?? rows.length;
+        for (let rowIndex = nextRows.length; rowIndex < sourceRowCount; rowIndex += 1) {
+          const days = Array.from({ length: nextDayCount }, () => 0);
+          payload.columns.forEach((columnValues, offset) => {
+            days[targetStart + offset] = columnValues[rowIndex] ?? 0;
+          });
+          nextRows.push({
+            ...createEmptyRow(rowIndex + 1, nextDayCount),
+            days
+          });
+        }
+
+        const currentWidths = normalizeColumnWidths(columnWidths, nextDayCount);
+        const nextWidths = [...currentWidths.days];
+        payload.columnWidths.forEach((width, offset) => {
+          const targetDayIndex = targetStart + offset;
+          nextWidths[targetDayIndex] = Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width));
+        });
+
+        saveState({ dayCount: nextDayCount, rows: nextRows });
+        setColumnWidths({ ...currentWidths, days: nextWidths });
+        setSelectedDayIndices([]);
+        lastSelectedDayIndexRef.current = null;
+        lastSelectionKindRef.current = "column";
+        return true;
+      }
+    } catch (error) {
+      console.error("Failed to paste Dairy Farm sheet data:", error);
+    }
+
+    return false;
+  };
+
+  useEffect(() => {
+    const handleClipboardShortcuts = async (event: KeyboardEvent) => {
+      const modifier = event.ctrlKey || event.metaKey;
+      if (!modifier || isEditableClipboardTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+
+      if (key === "c") {
+        if (lastSelectionKindRef.current === "column" && selectedDayIndices.length > 0) {
+          event.preventDefault();
+          await copySelectedColumns();
+        } else if (lastSelectionKindRef.current === "row" && selectedRowIndices.length > 0) {
+          event.preventDefault();
+          await copySelectedRows();
+        }
+        return;
+      }
+
+      if (key === "v") {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (pasteSheetClipboard(text)) {
+            event.preventDefault();
+          }
+        } catch {
+          // The native paste event below still handles browsers that deny clipboard-read permission.
+        }
+      }
+    };
+
+    const handlePaste = (event: ClipboardEvent) => {
+      if (isEditableClipboardTarget(event.target)) {
+        return;
+      }
+
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (pasteSheetClipboard(text)) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("keydown", handleClipboardShortcuts);
+    window.addEventListener("paste", handlePaste);
+    return () => {
+      window.removeEventListener("keydown", handleClipboardShortcuts);
+      window.removeEventListener("paste", handlePaste);
+    };
+  }, [
+    columnWidths,
+    dayCount,
+    rowHeights,
+    rows,
+    selectedDayIndices,
+    selectedRowIndices
+  ]);
+
   const selectRow = (rowIndex: number, event: MouseEvent<HTMLElement>) => {
     const groupStarts = buildGroupStartIndices(rows);
     const groupStart = groupStarts[rowIndex] ?? rowIndex;
@@ -1171,6 +1409,7 @@ function CustomerTable() {
     });
 
     lastSelectedRowIndexRef.current = groupStart;
+    lastSelectionKindRef.current = "row";
   };
 
   const selectDayColumn = (dayIndex: number, event: MouseEvent<HTMLElement>) => {
@@ -1196,6 +1435,7 @@ function CustomerTable() {
     });
 
     lastSelectedDayIndexRef.current = dayIndex;
+    lastSelectionKindRef.current = "column";
   };
 
   const removeSelectedRows = () => {
@@ -1365,7 +1605,13 @@ function CustomerTable() {
             Archived Sheets
           </button>
         </div>
-        <div className="col-span-1 grid grid-cols-2 gap-2 sm:col-span-2 md:col-span-3 md:contents lg:col-span-auto lg:flex lg:items-center lg:gap-2">
+        <div
+          className={
+            activeHistoryId
+              ? "col-span-1 grid grid-cols-2 gap-2 sm:col-span-2 md:col-span-3 md:contents lg:col-span-auto lg:flex lg:items-center lg:gap-2"
+              : "col-span-1 flex gap-2 sm:col-span-2 md:col-span-3 md:contents lg:col-span-auto lg:flex lg:items-center lg:gap-2"
+          }
+        >
           {activeHistoryId ? (
             <button
               type="button"
@@ -1378,7 +1624,7 @@ function CustomerTable() {
           <button
             type="button"
             onClick={openSaveNameModal}
-            className={`w-full min-h-[40px] min-w-0 rounded-lg border border-emerald-500 bg-emerald-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-emerald-600 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 ${activeHistoryId ? "md:col-span-3 md:row-start-4" : "md:col-start-3 md:row-start-3"} lg:col-start-auto lg:row-start-auto lg:col-span-auto lg:w-auto lg:whitespace-nowrap touch-manipulation whitespace-nowrap` }
+            className={`min-h-[40px] min-w-0 rounded-lg border border-emerald-500 bg-emerald-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-emerald-600 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 ${activeHistoryId ? "w-full md:col-span-3 md:row-start-4" : "w-full flex-1"} lg:col-start-auto lg:row-start-auto lg:col-span-auto lg:w-auto lg:whitespace-nowrap touch-manipulation whitespace-nowrap`}
           >
             Save to History
           </button>
