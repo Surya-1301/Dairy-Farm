@@ -83,7 +83,7 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
-function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
+function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob {
   const doc = new jsPDF({ orientation: "landscape" });
   const effectiveDayCount = getEffectiveDayCount(entry);
   const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
@@ -102,11 +102,20 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
   doc.text("RAIPUR DUGDH UTPADAN ASSOCIATION", pageWidth / 2, 8, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(12);
-  doc.text(`${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${effectiveDayCount} days · Total ${total}`, pageWidth / 2, 15, { align: "center" });
+  doc.text(
+    `${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${effectiveDayCount} days · Total ${total}`,
+    pageWidth / 2,
+    15,
+    { align: "center" }
+  );
 
-  const head = [
-    ["S No", "Customer Name", "Shift", ...Array.from({ length: effectiveDayCount }, (_, i) => `Day ${i + 1}`), "Total"],
-  ];
+  const head = [[
+    "S No",
+    "Customer Name",
+    "Shift",
+    ...Array.from({ length: effectiveDayCount }, (_, i) => `Day ${i + 1}`),
+    "Total"
+  ]];
 
   const body = entry.rows.map((row, index) => {
     const rowTotal = row.days.reduce((sum, v) => sum + v, 0);
@@ -125,22 +134,48 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
         ...row.days.slice(0, effectiveDayCount),
         nameSpan > 1
           ? { content: String(displayTotal), rowSpan: nameSpan }
-          : displayTotal
+          : String(displayTotal)
       ];
     }
 
-    return [row.shift || "-", ...row.days.slice(0, effectiveDayCount)];
+    return [
+      displaySerialNumbers[index] ?? String(row.serialNumber),
+      row.customerName || "",
+      row.shift || "-",
+      ...row.days.slice(0, effectiveDayCount),
+      String(rowTotal)
+    ];
   });
 
   autoTable(doc, {
     head,
     body,
     startY: 22,
-    styles: { fontSize: 7, cellPadding: 1.5, halign: "center", lineColor: [203, 213, 225], lineWidth: 0.1 },
-    headStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: "bold", lineColor: [203, 213, 225], lineWidth: 0.1 },
-    bodyStyles: { fillColor: [255, 255, 255], lineColor: [203, 213, 225], lineWidth: 0.1 },
-    columnStyles: { 1: { halign: "left" } },
-    alternateRowStyles: { fillColor: [255, 255, 255] },
+    styles: {
+      fontSize: 7,
+      cellPadding: 1.5,
+      halign: "center",
+      lineColor: [203, 213, 225],
+      lineWidth: 0.1
+    },
+    headStyles: {
+      fillColor: [241, 245, 249],
+      textColor: [30, 41, 59],
+      fontStyle: "bold",
+      lineColor: [203, 213, 225],
+      lineWidth: 0.1
+    },
+    bodyStyles: {
+      fillColor: [255, 255, 255],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.1
+    },
+    columnStyles: {
+      1: { halign: "left" }
+    },
+    alternateRowStyles: {
+      fillColor: [255, 255, 255]
+    },
     didParseCell: (data) => {
       const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
       if (
@@ -177,10 +212,47 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
           });
         }
       }
-    },
+    }
   });
 
-  doc.save(`${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.pdf`);
+  return doc.output("blob");
+}
+
+function getSheetPdfFileName(entry: SheetHistoryEntry, sheetNumber: number): string {
+  return `${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.pdf`;
+}
+
+function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
+  const blob = buildSheetPdfBlob(entry, sheetNumber);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = getSheetPdfFileName(entry, sheetNumber);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+async function shareSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
+  const blob = buildSheetPdfBlob(entry, sheetNumber);
+  const file = new File([blob], getSheetPdfFileName(entry, sheetNumber), {
+    type: "application/pdf"
+  });
+
+  if (navigator.share && navigator.canShare?.({ files: [file] })) {
+    await navigator.share({
+      title: entry.name || `Sheet ${sheetNumber}`,
+      text: "Dairy Farm sheet PDF",
+      files: [file]
+    });
+    return;
+  }
+
+  // Browsers without file-sharing support cannot attach the generated PDF to
+  // the native share sheet. Download the same PDF so the user can share it
+  // through the device's Files/Share UI without generating any other format.
+  downloadSheetAsPdf(entry, sheetNumber);
 }
 
 
@@ -451,6 +523,15 @@ function History() {
                       </>
                     )}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void shareSheetAsPdf(entry, visibleHistory.length - index);
+                    }}
+                    className="w-full rounded-lg border border-violet-500 bg-violet-500 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600 transition sm:w-auto sm:flex-none"
+                  >
+                    Share PDF
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
