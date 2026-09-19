@@ -2023,8 +2023,12 @@ function CustomerTable() {
 
 
       <div
-        className="w-full min-w-0 max-w-full overflow-auto overscroll-contain rounded-md [scrollbar-width:thin] [-webkit-overflow-scrolling:touch] max-h-[70dvh] md:max-h-[72dvh] lg:max-h-none lg:overflow-x-auto lg:overflow-y-visible"
-        style={{ touchAction: "pan-x pan-y", WebkitOverflowScrolling: "touch" }}
+        className="w-full min-w-0 max-w-full overflow-auto overscroll-contain rounded-md [scrollbar-width:thin] [-webkit-overflow-scrolling:touch] max-h-[70dvh] md:max-h-[72dvh] lg:h-[calc(100dvh-145px)] lg:max-h-none"
+        style={{
+          touchAction: "pan-x pan-y",
+          WebkitOverflowScrolling: "touch",
+          scrollbarGutter: "stable"
+        }}
       >
         <table className="min-w-[1080px] table-fixed border-collapse text-center text-xs md:text-sm">
           <colgroup>
@@ -2081,8 +2085,8 @@ function CustomerTable() {
                     onDragOver={(event) => handleDayColumnDragOver(index, event)}
                     onDrop={(event) => handleDayColumnDrop(index, event)}
                     onDragEnd={clearDragState}
-                    style={{ width: columnWidths.days[index], position: "relative" }}
-                    className={`sticky top-0 z-20 border border-slate-400 px-1 py-2 sm:px-1.5 ${
+                    style={{ width: columnWidths.days[index] }}
+                    className={`sticky top-0 z-50 border border-slate-400 px-1 py-2 sm:px-1.5 lg:relative lg:top-auto lg:z-20 ${
                       isSelected ? "bg-blue-200 text-blue-950" : "bg-slate-100"
                     }`}
                   >

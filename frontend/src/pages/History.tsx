@@ -549,15 +549,17 @@ function History() {
                   >
                     Edit Sheet
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void deleteSheet(entry.id);
-                    }}
-                    className="w-full rounded-lg border border-red-500 bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 transition sm:w-auto sm:flex-none"
-                  >
-                    Delete Sheet
-                  </button>
+                  <div className="col-span-2 flex justify-center sm:contents">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void deleteSheet(entry.id);
+                      }}
+                      className="w-full rounded-lg border border-red-500 bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 transition sm:w-auto sm:flex-none"
+                    >
+                      Delete Sheet
+                    </button>
+                  </div>
                 </div>
 
                 {editingNameEntryId === entry.id && (
