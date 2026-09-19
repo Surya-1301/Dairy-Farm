@@ -41,14 +41,24 @@ function formatShiftLabel(group: Customer[]): string {
 }
 
 function getGroupShiftPriority(group: Customer[]): number {
-  if (group.length > 1) return 0; // Both shift first
-  if (group[0].shift === "M") return 1; // Morning second
-  if (group[0].shift === "E") return 2; // Evening third
+  const hasMorning = group.some((customer) => customer.shift === "M");
+  const hasEvening = group.some((customer) => customer.shift === "E");
+
+  if (hasMorning && hasEvening) return 0; // Both shifts first
+  if (hasMorning) return 1; // Morning-only second
+  if (hasEvening) return 2; // Evening-only third
   return 3;
 }
 
 function sortCustomerGroups(groups: Customer[][]): Customer[][] {
   return [...groups].sort((a, b) => {
+    const priorityDifference =
+      getGroupShiftPriority(a) - getGroupShiftPriority(b);
+
+    if (priorityDifference !== 0) {
+      return priorityDifference;
+    }
+
     return a[0].serialNumber - b[0].serialNumber;
   });
 }

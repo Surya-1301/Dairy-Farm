@@ -57,6 +57,18 @@ function getGroupShiftPriority(group: Customer[]): number {
 
 function sortCustomerGroups(groups: Customer[][]): Customer[][] {
   return [...groups].sort((a, b) => {
+    // On refresh, keep the sheet in the same customer priority order:
+    // 1. Customers with both Morning (M) and Evening (E)
+    // 2. Morning-only customers
+    // 3. Evening-only customers
+    const priorityDifference =
+      getGroupShiftPriority(a) - getGroupShiftPriority(b);
+
+    if (priorityDifference !== 0) {
+      return priorityDifference;
+    }
+
+    // Keep the existing customer order inside each priority group.
     return a[0].serialNumber - b[0].serialNumber;
   });
 }
@@ -652,14 +664,44 @@ function CustomerTable() {
     void (async () => {
       const customers = await getCustomers();
 
+      // Keep the master customer records in the same priority order used by the
+      // refreshed sheet. This makes the Customers page update immediately too.
+      const orderedCustomers = getOrderedCustomers(customers);
+      const expectedSerialByCustomerKey = new Map<string, number>();
+
+      orderedCustomers.forEach((customer, index) => {
+        const key = `${customer.name.trim().toLowerCase()}|${customer.shift.trim().toUpperCase()}`;
+        expectedSerialByCustomerKey.set(key, index + 1);
+      });
+
+      const masterOrderChanged = customers.some((customer) => {
+        const key = `${customer.name.trim().toLowerCase()}|${customer.shift.trim().toUpperCase()}`;
+        return customer.serialNumber !== expectedSerialByCustomerKey.get(key);
+      });
+
+      let masterCustomers = customers;
+
+      if (masterOrderChanged) {
+        masterCustomers = customers.map((customer) => {
+          const key = `${customer.name.trim().toLowerCase()}|${customer.shift.trim().toUpperCase()}`;
+          const expectedSerial = expectedSerialByCustomerKey.get(key);
+
+          return expectedSerial
+            ? { ...customer, serialNumber: expectedSerial }
+            : customer;
+        });
+
+        const activeUser = getActiveUser();
+        if (activeUser?.email) {
+          await saveCustomersByEmail(activeUser.email, masterCustomers);
+          notifyCustomersChanged();
+        }
+      }
+
       setSheetState((prev) => {
         const { dayCount: prevDayCount, rows: prevRows } = prev;
 
-        if (customers.length === 0) {
-          // Guard against a previously-corrupted or shrunken sheet: never leave
-          // the table with fewer than the default row count just because there
-          // are no customers yet (this also self-heals sheets that were saved
-          // with too few rows by an earlier version of this logic).
+        if (masterCustomers.length === 0) {
           const defaultRowCount = createInitialSheet().rows.length;
           const isBlank = prevRows.every(
             (row) =>
@@ -679,35 +721,38 @@ function CustomerTable() {
           return fallbackState;
         }
 
-        // Order rows the same way the Customers page does: both-shift customers
-        // first, then Morning-only, then Evening-only.
-        const orderedCustomers = getOrderedCustomers(customers);
+        // The refreshed sheet order is:
+        // 1. both M + E
+        // 2. M only
+        // 3. E only
+        const refreshedOrderedCustomers = getOrderedCustomers(masterCustomers);
 
-        // Match existing day data by name+shift (not array position) so that
-        // reordering a customer into a new priority group doesn't scramble data.
+        // Match existing day data by name+shift so reordering never scrambles
+        // previously entered Day values.
         const existingRowByKey = new Map<string, SheetRow>();
         prevRows.forEach((row) => {
-          const key = `${row.customerName.trim().toLowerCase()}|${row.shift}`;
+          const key = `${row.customerName.trim().toLowerCase()}|${row.shift.trim().toUpperCase()}`;
           existingRowByKey.set(key, row);
         });
 
-        const namedRows = orderedCustomers.map((customer, index) => {
-          const key = `${(customer.name || "").trim().toLowerCase()}|${customer.shift || ""}`;
+        const namedRows = refreshedOrderedCustomers.map((customer, index) => {
+          const key = `${customer.name.trim().toLowerCase()}|${customer.shift.trim().toUpperCase()}`;
           const existingRow = existingRowByKey.get(key);
+
           return {
             serialNumber: index + 1,
             customerName: customer.name || "",
             shift: customer.shift || existingRow?.shift || "",
-            days: Array.from({ length: prevDayCount }, (_, dayIndex) => existingRow?.days?.[dayIndex] ?? 0)
+            days: Array.from(
+              { length: prevDayCount },
+              (_, dayIndex) => existingRow?.days?.[dayIndex] ?? 0
+            )
           };
         });
 
-        // Never shrink the sheet's row count when syncing customers in. If the
-        // user manually sized the sheet to, say, 50 rows, adding a customer
-        // should not collapse it down to just the number of named customers —
-        // pad the remainder with empty rows so the manually-set row count sticks.
         const targetRowCount = Math.max(namedRows.length, prevRows.length, 1);
         const nextRows = [...namedRows];
+
         for (let i = namedRows.length; i < targetRowCount; i++) {
           nextRows.push(createEmptyRow(i + 1, prevDayCount));
         }
@@ -715,7 +760,9 @@ function CustomerTable() {
         const changed =
           nextRows.length !== prevRows.length ||
           nextRows.some(
-            (r, i) => r.customerName !== prevRows[i]?.customerName || r.shift !== prevRows[i]?.shift
+            (row, index) =>
+              row.customerName !== prevRows[index]?.customerName ||
+              row.shift !== prevRows[index]?.shift
           );
 
         if (changed) {
@@ -730,6 +777,7 @@ function CustomerTable() {
       });
     })();
   };
+
 
   useEffect(() => {
     let isMounted = true;
