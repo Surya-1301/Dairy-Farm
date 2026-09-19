@@ -272,8 +272,8 @@ function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob 
         halign: "center"
       },
       1: {
-        cellWidth: 32,
-        halign: "left"
+        cellWidth: 25,
+        halign: "center"
       },
       2: {
         cellWidth: 10,

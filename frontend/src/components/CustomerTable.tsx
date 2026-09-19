@@ -2030,7 +2030,7 @@ function CustomerTable() {
           scrollbarGutter: "stable"
         }}
       >
-        <table className="min-w-[1080px] table-fixed border-collapse text-center text-xs md:text-sm">
+        <table className="min-w-[1080px] table-fixed border-collapse border border-slate-400 text-center text-xs md:text-sm">
           <colgroup>
             <col style={{ width: columnWidths.serial }} />
             <col style={{ width: columnWidths.customerName }} />
@@ -2086,7 +2086,7 @@ function CustomerTable() {
                     onDrop={(event) => handleDayColumnDrop(index, event)}
                     onDragEnd={clearDragState}
                     style={{ width: columnWidths.days[index] }}
-                    className={`sticky top-0 z-50 border border-slate-400 px-1 py-2 sm:px-1.5 lg:relative lg:top-auto lg:z-20 ${
+                    className={`sticky top-0 z-50 border border-slate-400 px-1 py-2 sm:px-1.5 ${
                       isSelected ? "bg-blue-200 text-blue-950" : "bg-slate-100"
                     }`}
                   >
@@ -2109,7 +2109,7 @@ function CustomerTable() {
               })}
               <th
                 style={{ width: columnWidths.total, position: "relative" }}
-                className="lg:sticky lg:top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="lg:sticky lg:top-0 z-20 border-l-2 border-r-2 border-t border-b border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
               >
                 Total
                 <span
@@ -2267,7 +2267,7 @@ function CustomerTable() {
                     <td
                       rowSpan={nameSpan}
                       style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, verticalAlign: "middle" }}
-                      className={`border border-slate-300 px-1 py-1 font-semibold md:px-2 ${
+                      className={`border-l-2 border-r-2 border-y border-slate-300 px-1 py-1 font-semibold md:px-2 ${
                         isGroupSelected ? "bg-blue-100" : "bg-white"
                       }`}
                     >
@@ -2279,6 +2279,45 @@ function CustomerTable() {
             });
             })()}
           </tbody>
+          <tfoot
+            className="sticky bottom-0 z-40 bg-slate-100"
+            style={{ position: "sticky", bottom: 0, zIndex: 40 }}
+          >
+            <tr className="bg-slate-100 font-bold text-slate-900">
+              <td
+                colSpan={3}
+                className="border-l-2 border-y border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5"
+              >
+                Total
+              </td>
+              {Array.from({ length: dayCount }, (_, dayIndex) => {
+                const dayTotal = rows.reduce(
+                  (sum, row) => sum + (row.days[dayIndex] ?? 0),
+                  0
+                );
+
+                return (
+                  <td
+                    key={`daily-total-${dayIndex}`}
+                    className="border-l-2 border-r-2 border-y border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5"
+                    style={{ position: "relative", zIndex: 41 }}
+                  >
+                    {dayTotal}
+                  </td>
+                );
+              })}
+              <td
+                className="border border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5"
+                style={{ position: "relative", zIndex: 41 }}
+              >
+                {rows.reduce(
+                  (grandTotal, row) =>
+                    grandTotal + row.days.reduce((sum, value) => sum + value, 0),
+                  0
+                )}
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
