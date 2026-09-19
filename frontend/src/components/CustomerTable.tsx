@@ -49,9 +49,18 @@ function groupCustomersByName(customers: Customer[]): Customer[][] {
 // Both-shift customers first, then Morning-only, then Evening-only — matches the
 // ordering shown on the Customers page.
 function getGroupShiftPriority(group: Customer[]): number {
-  if (group.length > 1) return 0;
-  if (group[0].shift === "M") return 1;
-  if (group[0].shift === "E") return 2;
+  const hasMorning = group.some((customer) => customer.shift === "M");
+  const hasEvening = group.some((customer) => customer.shift === "E");
+
+  // 1. Both M + E
+  if (hasMorning && hasEvening) return 0;
+
+  // 2. Morning only
+  if (hasMorning) return 1;
+
+  // 3. Evening only
+  if (hasEvening) return 2;
+
   return 3;
 }
 
@@ -663,45 +672,41 @@ function CustomerTable() {
 
     void (async () => {
       const customers = await getCustomers();
+      const activeUser = getActiveUser();
 
-      // Keep the master customer records in the same priority order used by the
-      // refreshed sheet. This makes the Customers page update immediately too.
+      if (!activeUser?.email) {
+        return;
+      }
+
+      // Always normalize the master customer order first so the Customers page
+      // and the sheet use exactly the same ordering.
       const orderedCustomers = getOrderedCustomers(customers);
-      const expectedSerialByCustomerKey = new Map<string, number>();
+      const reorderedCustomers = orderedCustomers.map((customer, index) => ({
+        ...customer,
+        serialNumber: index + 1
+      }));
 
-      orderedCustomers.forEach((customer, index) => {
-        const key = `${customer.name.trim().toLowerCase()}|${customer.shift.trim().toUpperCase()}`;
-        expectedSerialByCustomerKey.set(key, index + 1);
-      });
-
-      const masterOrderChanged = customers.some((customer) => {
-        const key = `${customer.name.trim().toLowerCase()}|${customer.shift.trim().toUpperCase()}`;
-        return customer.serialNumber !== expectedSerialByCustomerKey.get(key);
-      });
-
-      let masterCustomers = customers;
-
-      if (masterOrderChanged) {
-        masterCustomers = customers.map((customer) => {
-          const key = `${customer.name.trim().toLowerCase()}|${customer.shift.trim().toUpperCase()}`;
-          const expectedSerial = expectedSerialByCustomerKey.get(key);
-
-          return expectedSerial
-            ? { ...customer, serialNumber: expectedSerial }
-            : customer;
+      const masterOrderChanged =
+        customers.length !== reorderedCustomers.length ||
+        reorderedCustomers.some((customer, index) => {
+          const current = customers[index];
+          return (
+            !current ||
+            current.serialNumber !== customer.serialNumber ||
+            current.name !== customer.name ||
+            current.shift !== customer.shift
+          );
         });
 
-        const activeUser = getActiveUser();
-        if (activeUser?.email) {
-          await saveCustomersByEmail(activeUser.email, masterCustomers);
-          notifyCustomersChanged();
-        }
+      if (masterOrderChanged) {
+        await saveCustomersByEmail(activeUser.email, reorderedCustomers);
+        notifyCustomersChanged();
       }
 
       setSheetState((prev) => {
         const { dayCount: prevDayCount, rows: prevRows } = prev;
 
-        if (masterCustomers.length === 0) {
+        if (reorderedCustomers.length === 0) {
           const defaultRowCount = createInitialSheet().rows.length;
           const isBlank = prevRows.every(
             (row) =>
@@ -714,29 +719,34 @@ function CustomerTable() {
             return prev;
           }
 
-          const fallbackRows = normalizeRows(createInitialSheet().rows, prevDayCount);
-          const fallbackState = { dayCount: prevDayCount, rows: fallbackRows };
+          const fallbackRows = normalizeRows(
+            createInitialSheet().rows,
+            prevDayCount
+          );
+          const fallbackState = {
+            dayCount: prevDayCount,
+            rows: fallbackRows
+          };
+
           queueAutoSave(fallbackState, null);
-          setRowHeights((current) => normalizeRowHeights(current, fallbackRows.length));
+          setRowHeights((current) =>
+            normalizeRowHeights(current, fallbackRows.length)
+          );
           return fallbackState;
         }
 
-        // The refreshed sheet order is:
-        // 1. both M + E
-        // 2. M only
-        // 3. E only
-        const refreshedOrderedCustomers = getOrderedCustomers(masterCustomers);
-
-        // Match existing day data by name+shift so reordering never scrambles
-        // previously entered Day values.
+        // Match existing day data by name+shift rather than array position so
+        // moving a customer between M/E priority groups never changes values.
         const existingRowByKey = new Map<string, SheetRow>();
         prevRows.forEach((row) => {
-          const key = `${row.customerName.trim().toLowerCase()}|${row.shift.trim().toUpperCase()}`;
+          const key = getSheetCustomerKey(row);
           existingRowByKey.set(key, row);
         });
 
-        const namedRows = refreshedOrderedCustomers.map((customer, index) => {
-          const key = `${customer.name.trim().toLowerCase()}|${customer.shift.trim().toUpperCase()}`;
+        const namedRows = reorderedCustomers.map((customer, index) => {
+          const key = `${customer.name.trim().toLowerCase()}|${customer.shift
+            .trim()
+            .toUpperCase()}`;
           const existingRow = existingRowByKey.get(key);
 
           return {
@@ -750,10 +760,14 @@ function CustomerTable() {
           };
         });
 
-        const targetRowCount = Math.max(namedRows.length, prevRows.length, 1);
+        const targetRowCount = Math.max(
+          namedRows.length,
+          prevRows.length,
+          1
+        );
         const nextRows = [...namedRows];
 
-        for (let i = namedRows.length; i < targetRowCount; i++) {
+        for (let i = namedRows.length; i < targetRowCount; i += 1) {
           nextRows.push(createEmptyRow(i + 1, prevDayCount));
         }
 
@@ -766,18 +780,25 @@ function CustomerTable() {
           );
 
         if (changed) {
-          const nextState = { dayCount: prevDayCount, rows: nextRows };
+          const nextState = {
+            dayCount: prevDayCount,
+            rows: nextRows
+          };
+
           queueAutoSave(nextState, null);
-          setRowHeights((current) => normalizeRowHeights(current, nextRows.length));
+          setRowHeights((current) =>
+            normalizeRowHeights(current, nextRows.length)
+          );
           notifyMilkDataChanged();
           return nextState;
         }
 
         return prev;
       });
-    })();
+    })().catch((error) => {
+      console.error("Failed to synchronize customers and sheet order:", error);
+    });
   };
-
 
   useEffect(() => {
     let isMounted = true;
