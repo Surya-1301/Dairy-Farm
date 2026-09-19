@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCustomers, subscribeCustomersChanged } from "../utils/customerData";
 import { notifyMilkDataChanged } from "../utils/milkData";
@@ -160,6 +160,73 @@ type PendingAutoSave = {
   historyId: string | null;
 };
 
+type ColumnWidths = {
+  serial: number;
+  customerName: number;
+  shift: number;
+  days: number[];
+  total: number;
+};
+
+type SheetLayoutState = {
+  columnWidths: ColumnWidths;
+  rowHeights: number[];
+};
+
+type DragKind = "row" | "day-column";
+type ActiveDrag = { kind: DragKind; sourceIndex: number };
+
+const LAYOUT_STORAGE_PREFIX = "dairy-farm-sheet-layout:";
+const DEFAULT_SERIAL_WIDTH = 80;
+const DEFAULT_CUSTOMER_WIDTH = 144;
+const DEFAULT_SHIFT_WIDTH = 80;
+const DEFAULT_DAY_WIDTH = 96;
+const DEFAULT_TOTAL_WIDTH = 80;
+const MIN_COLUMN_WIDTH = 56;
+const MAX_COLUMN_WIDTH = 420;
+const DEFAULT_ROW_HEIGHT = 56;
+const MIN_ROW_HEIGHT = 36;
+const MAX_ROW_HEIGHT = 180;
+
+function getLayoutStorageKey(email: string, historyId: string | null): string {
+  return `${LAYOUT_STORAGE_PREFIX}${email.trim().toLowerCase()}:${historyId ?? "current"}`;
+}
+
+function createDefaultColumnWidths(dayCount: number): ColumnWidths {
+  return {
+    serial: DEFAULT_SERIAL_WIDTH,
+    customerName: DEFAULT_CUSTOMER_WIDTH,
+    shift: DEFAULT_SHIFT_WIDTH,
+    days: Array.from({ length: dayCount }, () => DEFAULT_DAY_WIDTH),
+    total: DEFAULT_TOTAL_WIDTH
+  };
+}
+
+function normalizeColumnWidths(widths: Partial<ColumnWidths> | undefined, dayCount: number): ColumnWidths {
+  const defaults = createDefaultColumnWidths(dayCount);
+  const clamp = (value: number, fallback: number) =>
+    Number.isFinite(value) ? Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, value)) : fallback;
+
+  return {
+    serial: clamp(widths?.serial ?? defaults.serial, defaults.serial),
+    customerName: clamp(widths?.customerName ?? defaults.customerName, defaults.customerName),
+    shift: clamp(widths?.shift ?? defaults.shift, defaults.shift),
+    days: Array.from({ length: dayCount }, (_, index) =>
+      clamp(widths?.days?.[index] ?? defaults.days[index], defaults.days[index])
+    ),
+    total: clamp(widths?.total ?? defaults.total, defaults.total)
+  };
+}
+
+function normalizeRowHeights(heights: number[] | undefined, rowCount: number): number[] {
+  return Array.from({ length: rowCount }, (_, index) => {
+    const value = heights?.[index];
+    return Number.isFinite(value)
+      ? Math.min(MAX_ROW_HEIGHT, Math.max(MIN_ROW_HEIGHT, value as number))
+      : DEFAULT_ROW_HEIGHT;
+  });
+}
+
 function getActiveHistoryStorageKey(email: string): string {
   return `${ACTIVE_HISTORY_STORAGE_PREFIX}${email.trim().toLowerCase()}`;
 }
@@ -205,8 +272,98 @@ function CustomerTable() {
   const [selectedDayIndices, setSelectedDayIndices] = useState<number[]>([]);
   const lastSelectedRowIndexRef = useRef<number | null>(null);
   const lastSelectedDayIndexRef = useRef<number | null>(null);
+  const [columnWidths, setColumnWidths] = useState<ColumnWidths>(() => createDefaultColumnWidths(INITIAL_DAYS));
+  const [rowHeights, setRowHeights] = useState<number[]>(() =>
+    Array.from({ length: createInitialState().rows.length }, () => DEFAULT_ROW_HEIGHT)
+  );
+  const [layoutReady, setLayoutReady] = useState(false);
+  const activeColumnResizeRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+  const activeRowResizeRef = useRef<{ rowIndex: number; startY: number; startHeight: number } | null>(null);
+  const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const { rows, dayCount } = sheetState;
+
+  useEffect(() => {
+    const activeUser = getActiveUser();
+    if (!activeUser?.email) {
+      setColumnWidths(createDefaultColumnWidths(dayCount));
+      setRowHeights(normalizeRowHeights(undefined, rows.length));
+      setLayoutReady(true);
+      return;
+    }
+
+    setLayoutReady(false);
+    try {
+      const raw = window.localStorage.getItem(getLayoutStorageKey(activeUser.email, activeHistoryIdRef.current));
+      if (!raw) {
+        setColumnWidths(createDefaultColumnWidths(dayCount));
+        setRowHeights(normalizeRowHeights(undefined, rows.length));
+      } else {
+        const saved = JSON.parse(raw) as Partial<SheetLayoutState>;
+        setColumnWidths(normalizeColumnWidths(saved.columnWidths, dayCount));
+        setRowHeights(normalizeRowHeights(saved.rowHeights, rows.length));
+      }
+    } catch (error) {
+      console.error("Failed to load sheet layout:", error);
+      setColumnWidths(createDefaultColumnWidths(dayCount));
+      setRowHeights(normalizeRowHeights(undefined, rows.length));
+    } finally {
+      setLayoutReady(true);
+    }
+  }, [activeHistoryId]);
+
+  useEffect(() => {
+    if (!layoutReady) {
+      return;
+    }
+
+    const activeUser = getActiveUser();
+    if (!activeUser?.email) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        getLayoutStorageKey(activeUser.email, activeHistoryIdRef.current),
+        JSON.stringify({ columnWidths, rowHeights } satisfies SheetLayoutState)
+      );
+    } catch (error) {
+      console.error("Failed to save sheet layout:", error);
+    }
+  }, [activeHistoryId, columnWidths, rowHeights, layoutReady]);
+
+  useEffect(() => {
+    if (!layoutReady) {
+      return;
+    }
+    setColumnWidths((current) => normalizeColumnWidths(current, dayCount));
+    setRowHeights((current) => normalizeRowHeights(current, rows.length));
+  }, [dayCount, rows.length, layoutReady]);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      const activeUser = getActiveUser();
+      if (!activeUser?.email || !event.key || event.key !== getLayoutStorageKey(activeUser.email, activeHistoryIdRef.current)) {
+        return;
+      }
+
+      if (activeColumnResizeRef.current || activeRowResizeRef.current || !event.newValue) {
+        return;
+      }
+
+      try {
+        const saved = JSON.parse(event.newValue) as Partial<SheetLayoutState>;
+        setColumnWidths(normalizeColumnWidths(saved.columnWidths, dayCount));
+        setRowHeights(normalizeRowHeights(saved.rowHeights, rows.length));
+      } catch {
+        // Ignore malformed layout snapshots from another tab.
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [dayCount, rows.length, activeHistoryId]);
 
   const flushPendingAutoSave = async () => {
     if (autoSaveInFlightRef.current) {
@@ -349,6 +506,7 @@ function CustomerTable() {
           const fallbackRows = normalizeRows(createInitialSheet().rows, prevDayCount);
           const fallbackState = { dayCount: prevDayCount, rows: fallbackRows };
           queueAutoSave(fallbackState, null);
+          setRowHeights((current) => normalizeRowHeights(current, fallbackRows.length));
           return fallbackState;
         }
 
@@ -394,6 +552,7 @@ function CustomerTable() {
         if (changed) {
           const nextState = { dayCount: prevDayCount, rows: nextRows };
           queueAutoSave(nextState, null);
+          setRowHeights((current) => normalizeRowHeights(current, nextRows.length));
           notifyMilkDataChanged();
           return nextState;
         }
@@ -736,6 +895,231 @@ function CustomerTable() {
     saveState({ dayCount, rows: nextRows });
   };
 
+  const getGroupBounds = (rowIndex: number) => {
+    const groupStarts = buildGroupStartIndices(rows);
+    const start = groupStarts[rowIndex] ?? rowIndex;
+    let end = start;
+    while (end + 1 < rows.length && groupStarts[end + 1] === start) {
+      end += 1;
+    }
+    return { start, end };
+  };
+
+  const handleRowDragStart = (rowIndex: number, event: React.DragEvent<HTMLElement>) => {
+    const { start } = getGroupBounds(rowIndex);
+    setActiveDrag({ kind: "row", sourceIndex: start });
+    setDragOverIndex(start);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", `row:${start}`);
+  };
+
+  const handleRowDragOver = (rowIndex: number, event: React.DragEvent<HTMLElement>) => {
+    if (activeDrag?.kind !== "row") return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverIndex(getGroupBounds(rowIndex).start);
+  };
+
+  const handleRowDrop = (rowIndex: number, event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    if (activeDrag?.kind !== "row") return;
+
+    const sourceBounds = getGroupBounds(activeDrag.sourceIndex);
+    const targetStart = getGroupBounds(rowIndex).start;
+
+    if (targetStart === sourceBounds.start) {
+      setActiveDrag(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    const movingRows = rows.slice(sourceBounds.start, sourceBounds.end + 1);
+    const movingHeights = normalizeRowHeights(rowHeights, rows.length).slice(sourceBounds.start, sourceBounds.end + 1);
+    const remainingRows = [
+      ...rows.slice(0, sourceBounds.start),
+      ...rows.slice(sourceBounds.end + 1)
+    ];
+    const remainingHeights = [
+      ...normalizeRowHeights(rowHeights, rows.length).slice(0, sourceBounds.start),
+      ...normalizeRowHeights(rowHeights, rows.length).slice(sourceBounds.end + 1)
+    ];
+
+    const adjustedTarget = targetStart > sourceBounds.start
+      ? targetStart - movingRows.length
+      : targetStart;
+
+    const nextRows = [
+      ...remainingRows.slice(0, adjustedTarget),
+      ...movingRows,
+      ...remainingRows.slice(adjustedTarget)
+    ].map((row, index) => ({ ...row, serialNumber: index + 1 }));
+
+    const nextHeights = [
+      ...remainingHeights.slice(0, adjustedTarget),
+      ...movingHeights,
+      ...remainingHeights.slice(adjustedTarget)
+    ];
+
+    setSelectedRowIndices([]);
+    lastSelectedRowIndexRef.current = null;
+    setRowHeights(nextHeights);
+    saveState({ dayCount, rows: nextRows });
+    setActiveDrag(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDayColumnDragStart = (dayIndex: number, event: React.DragEvent<HTMLElement>) => {
+    setActiveDrag({ kind: "day-column", sourceIndex: dayIndex });
+    setDragOverIndex(dayIndex);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", `day-column:${dayIndex}`);
+  };
+
+  const handleDayColumnDragOver = (dayIndex: number, event: React.DragEvent<HTMLElement>) => {
+    if (activeDrag?.kind !== "day-column") return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverIndex(dayIndex);
+  };
+
+  const handleDayColumnDrop = (dayIndex: number, event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    if (activeDrag?.kind !== "day-column") return;
+
+    const sourceIndex = activeDrag.sourceIndex;
+    const targetIndex = dayIndex;
+
+    if (sourceIndex === targetIndex) {
+      setActiveDrag(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    const nextRows = rows.map((row) => {
+      const nextDays = [...row.days];
+      const [moved] = nextDays.splice(sourceIndex, 1);
+      nextDays.splice(targetIndex, 0, moved);
+      return { ...row, days: nextDays };
+    });
+
+    setColumnWidths((current) => {
+      const nextDays = [...current.days];
+      const [movedWidth] = nextDays.splice(sourceIndex, 1);
+      nextDays.splice(targetIndex, 0, movedWidth);
+      return { ...current, days: nextDays };
+    });
+    setSelectedDayIndices([]);
+    lastSelectedDayIndexRef.current = null;
+    saveState({ dayCount, rows: nextRows });
+    setActiveDrag(null);
+    setDragOverIndex(null);
+  };
+
+  const clearDragState = () => {
+    setActiveDrag(null);
+    setDragOverIndex(null);
+  };
+
+  const startColumnResize = (key: string, startWidth: number, event: ReactPointerEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    activeColumnResizeRef.current = { key, startX: event.clientX, startWidth };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is not available in every browser.
+    }
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const resize = activeColumnResizeRef.current;
+      if (!resize) {
+        return;
+      }
+
+      const nextWidth = Math.min(
+        MAX_COLUMN_WIDTH,
+        Math.max(MIN_COLUMN_WIDTH, resize.startWidth + (moveEvent.clientX - resize.startX))
+      );
+
+      setColumnWidths((current) => {
+        if (resize.key === "serial") return { ...current, serial: nextWidth };
+        if (resize.key === "customerName") return { ...current, customerName: nextWidth };
+        if (resize.key === "shift") return { ...current, shift: nextWidth };
+        if (resize.key === "total") return { ...current, total: nextWidth };
+        if (resize.key.startsWith("day:")) {
+          const dayIndex = Number(resize.key.slice(4));
+          const days = [...current.days];
+          days[dayIndex] = nextWidth;
+          return { ...current, days };
+        }
+        return current;
+      });
+    };
+
+    const stopResize = () => {
+      activeColumnResizeRef.current = null;
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+  };
+
+  const startRowResize = (rowIndex: number, startHeight: number, event: ReactPointerEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    activeRowResizeRef.current = { rowIndex, startY: event.clientY, startHeight };
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "row-resize";
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is not available in every browser. Window listeners still handle dragging.
+    }
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const resize = activeRowResizeRef.current;
+      if (!resize) {
+        return;
+      }
+
+      const deltaY = moveEvent.clientY - resize.startY;
+      const nextHeight = Math.min(
+        MAX_ROW_HEIGHT,
+        Math.max(MIN_ROW_HEIGHT, resize.startHeight + deltaY)
+      );
+
+      setRowHeights((current) => {
+        const next = normalizeRowHeights(current, rows.length);
+        if (next[resize.rowIndex] === nextHeight) {
+          return current;
+        }
+        next[resize.rowIndex] = nextHeight;
+        return next;
+      });
+    };
+
+    const stopResize = () => {
+      activeRowResizeRef.current = null;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+      window.removeEventListener("blur", stopResize);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+    window.addEventListener("blur", stopResize);
+  };
+
   const selectRow = (rowIndex: number, event: MouseEvent<HTMLElement>) => {
     const groupStarts = buildGroupStartIndices(rows);
     const groupStart = groupStarts[rowIndex] ?? rowIndex;
@@ -828,6 +1212,7 @@ function CustomerTable() {
       }));
 
     saveState({ dayCount, rows: nextRows });
+    setRowHeights((current) => current.filter((_, index) => !selected.has(index)));
     setSelectedRowIndices([]);
     lastSelectedRowIndexRef.current = null;
   };
@@ -864,6 +1249,7 @@ function CustomerTable() {
     }));
 
     saveState({ dayCount, rows: nextRows });
+    setRowHeights((current) => normalizeRowHeights(current, Math.max(1, rows.length - 1)));
     setSelectedRowIndices([]);
     lastSelectedRowIndexRef.current = null;
   };
@@ -875,6 +1261,7 @@ function CustomerTable() {
     }));
 
     saveState({ dayCount: dayCount + 1, rows: nextRows });
+    setColumnWidths((current) => ({ ...current, days: [...normalizeColumnWidths(current, dayCount).days, DEFAULT_DAY_WIDTH] }));
   };
 
   const removeColumn = () => {
@@ -888,6 +1275,7 @@ function CustomerTable() {
     }));
 
     saveState({ dayCount: dayCount - 1, rows: nextRows });
+    setColumnWidths((current) => ({ ...current, days: current.days.slice(0, -1) }));
     setSelectedDayIndices((current) => current.filter((index) => index < dayCount - 1));
     lastSelectedDayIndexRef.current = null;
   };
@@ -1108,19 +1496,62 @@ function CustomerTable() {
 
       <div className="w-full overflow-x-auto overscroll-x-contain touch-pan-x rounded-md">
         <table className="min-w-[1080px] table-fixed border-collapse text-center text-xs md:text-sm">
+          <colgroup>
+            <col style={{ width: columnWidths.serial }} />
+            <col style={{ width: columnWidths.customerName }} />
+            <col style={{ width: columnWidths.shift }} />
+            {columnWidths.days.map((width, index) => (
+              <col key={`day-col-width-${index}`} style={{ width }} />
+            ))}
+            <col style={{ width: columnWidths.total }} />
+          </colgroup>
           <thead className="bg-slate-100 font-semibold text-slate-800">
             <tr>
-              <th className="sticky top-0 z-20 w-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:w-24 md:w-24 md:px-1.5">
+              <th
+                style={{ width: columnWidths.serial, position: "relative" }}
+                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+              >
                 S No
+                <span
+                  onPointerDown={(event) => startColumnResize("serial", columnWidths.serial, event)}
+                  className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
+                  aria-hidden="true"
+                />
               </th>
-              <th className="sticky top-0 left-0 z-30 w-28 border border-slate-400 bg-slate-100 px-1 py-2 sm:w-32 md:w-36 md:px-1.5">Customer Name</th>
-              <th className="sticky top-0 z-20 w-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:w-24 md:w-24 md:px-1.5">Shift</th>
+              <th
+                style={{ width: columnWidths.customerName, position: "relative" }}
+                className="sticky top-0 left-0 z-30 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+              >
+                Customer Name
+                <span
+                  onPointerDown={(event) => startColumnResize("customerName", columnWidths.customerName, event)}
+                  className="absolute inset-y-0 right-0 z-40 w-2 cursor-col-resize touch-none"
+                  aria-hidden="true"
+                />
+              </th>
+              <th
+                style={{ width: columnWidths.shift, position: "relative" }}
+                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+              >
+                Shift
+                <span
+                  onPointerDown={(event) => startColumnResize("shift", columnWidths.shift, event)}
+                  className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
+                  aria-hidden="true"
+                />
+              </th>
               {Array.from({ length: dayCount }, (_, index) => {
                 const isSelected = selectedDayIndices.includes(index);
                 return (
                   <th
                     key={`day-${index + 1}`}
-                    className={`sticky top-0 z-20 w-20 border border-slate-400 px-1 py-2 sm:w-24 md:w-24 md:px-1.5 ${
+                    draggable
+                    onDragStart={(event) => handleDayColumnDragStart(index, event)}
+                    onDragOver={(event) => handleDayColumnDragOver(index, event)}
+                    onDrop={(event) => handleDayColumnDrop(index, event)}
+                    onDragEnd={clearDragState}
+                    style={{ width: columnWidths.days[index], position: "relative" }}
+                    className={`sticky top-0 z-20 border border-slate-400 px-1 py-2 sm:px-1.5 ${
                       isSelected ? "bg-blue-200 text-blue-950" : "bg-slate-100"
                     }`}
                   >
@@ -1128,14 +1559,30 @@ function CustomerTable() {
                       type="button"
                       onClick={(event) => selectDayColumn(index, event)}
                       aria-label={`Select Day ${index + 1} column`}
+                      title="Click to select. Drag this Day header to move the column left or right."
                       className="flex min-h-10 w-full cursor-pointer select-none flex-col items-center justify-center rounded px-1 text-center hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <span>Day {index + 1}</span>
                     </button>
+                    <span
+                      onPointerDown={(event) => startColumnResize(`day:${index}`, columnWidths.days[index], event)}
+                      className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
+                      aria-hidden="true"
+                    />
                   </th>
                 );
               })}
-              <th className="sticky top-0 z-20 w-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:w-24 md:w-24 md:px-1.5">Total</th>
+              <th
+                style={{ width: columnWidths.total, position: "relative" }}
+                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+              >
+                Total
+                <span
+                  onPointerDown={(event) => startColumnResize("total", columnWidths.total, event)}
+                  className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
+                  aria-hidden="true"
+                />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -1152,29 +1599,56 @@ function CustomerTable() {
               const isRowSelected = selectedRowIndices.includes(rowIndex);
 
               return (
-                <tr key={`${row.serialNumber}-${rowIndex}`} className={isRowSelected ? "bg-blue-50" : "bg-white"}>
+                <tr
+                  key={`${row.serialNumber}-${rowIndex}`}
+                  style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT }}
+                  className={isRowSelected ? "bg-blue-50" : "bg-white"}
+                >
                   {nameSpan > 0 && (
                     <td
                       rowSpan={nameSpan}
+                      draggable
+                      onDragStart={(event) => handleRowDragStart(rowIndex, event)}
+                      onDragOver={(event) => handleRowDragOver(rowIndex, event)}
+                      onDrop={(event) => handleRowDrop(rowIndex, event)}
+                      onDragEnd={clearDragState}
                       onClick={(event) => selectRow(rowIndex, event)}
-                      className={`cursor-pointer select-none border border-slate-300 px-1 py-1 md:px-2 font-semibold align-middle ${
+                      style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, position: "relative", verticalAlign: "middle" }}
+                      className={`cursor-grab select-none border border-slate-300 px-1 py-1 md:px-2 font-semibold align-middle ${
+                        activeDrag?.kind === "row" && activeDrag.sourceIndex === getGroupBounds(rowIndex).start
+                          ? "opacity-50"
+                          : dragOverIndex === getGroupBounds(rowIndex).start && activeDrag?.kind === "row"
+                          ? "ring-2 ring-blue-500 ring-inset"
+                          : ""
+                      } ${
                         isRowSelected ? "bg-blue-200 text-blue-950 font-bold" : "bg-slate-50 hover:bg-blue-100"
                       }`}
-                      style={{ verticalAlign: "middle" }}
                       aria-label={`Select row ${displaySerialNumbers[rowIndex] || rowIndex + 1}`}
+                      title="Click to select. Drag the S No cell to move the whole row group."
                     >
                       <div className="flex min-h-9 w-full items-center justify-center rounded px-2 text-center">
                         {displaySerialNumbers[rowIndex]}
                       </div>
+                      <div
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          startRowResize(rowIndex, rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, event);
+                        }}
+                        className="absolute bottom-0 left-0 z-[70] h-3 w-full cursor-row-resize touch-none rounded-sm bg-transparent hover:bg-slate-300/40"
+                        style={{ touchAction: "none", pointerEvents: "auto", cursor: "row-resize" }}
+                        aria-label={`Resize row ${rowIndex + 1}`}
+                        role="separator"
+                        aria-orientation="horizontal"
+                      />
                     </td>
                   )}
                   {nameSpan > 0 && (
                     <td
                       rowSpan={nameSpan}
-                      className={`sticky left-0 z-10 w-28 border border-slate-300 px-1 py-1 sm:w-32 md:w-36 md:px-2 align-middle ${
+                      style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, verticalAlign: "middle" }}
+                      className={`sticky left-0 z-10 border border-slate-300 px-1 py-1 md:px-2 align-middle ${
                         isRowSelected ? "bg-blue-100" : "bg-white"
                       }`}
-                      style={{ verticalAlign: "middle" }}
                     >
                       <input
                         value={row.customerName}
@@ -1183,16 +1657,20 @@ function CustomerTable() {
                       />
                     </td>
                   )}
-                  <td className={`border border-slate-300 px-1 py-1 md:px-2 ${isRowSelected ? "bg-blue-100" : "bg-white"}`}>
+                  <td
+                    style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, position: "relative", verticalAlign: "middle" }}
+                    className={`border border-slate-300 px-1 py-1 md:px-2 ${isRowSelected ? "bg-blue-100" : "bg-white"}`}
+                  >
                     <input
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
                       className={`h-9 w-full rounded border border-slate-300 px-2 py-1 text-center ${isRowSelected ? "bg-blue-50" : "bg-white"}`}
                     />
-                  </td>
+                    </td>
                   {row.days.map((value, dayIndex) => (
                     <td
                       key={`${row.serialNumber}-${dayIndex + 1}`}
+                      style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, verticalAlign: "middle" }}
                       className={`border border-slate-300 px-1 py-1 ${
                         selectedDayIndices.includes(dayIndex)
                           ? "bg-blue-50"
@@ -1245,6 +1723,7 @@ function CustomerTable() {
                   {nameSpan > 0 && (
                     <td
                       rowSpan={nameSpan}
+                      style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, verticalAlign: "middle" }}
                       className={`border border-slate-300 px-1 py-1 font-semibold md:px-2 ${
                         isRowSelected ? "bg-blue-100" : "bg-white"
                       }`}
