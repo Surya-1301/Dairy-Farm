@@ -49,9 +49,6 @@ function getGroupShiftPriority(group: Customer[]): number {
 
 function sortCustomerGroups(groups: Customer[][]): Customer[][] {
   return [...groups].sort((a, b) => {
-    const priorityDifference =
-      getGroupShiftPriority(a) - getGroupShiftPriority(b);
-    if (priorityDifference !== 0) return priorityDifference;
     return a[0].serialNumber - b[0].serialNumber;
   });
 }
