@@ -1916,7 +1916,7 @@ function CustomerTable() {
             disabled={selectedRowIndices.length === 0 || rows.length - selectedRowIndices.length < 1}
             className="w-full min-h-[40px] rounded-lg border border-rose-600 bg-rose-600 px-2 py-2 text-[11px] font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 touch-manipulation whitespace-nowrap"
           >
-            Delete{selectedRowIndices.length ? ` (${selectedRowIndices.length})` : ""}
+            Delete Row{selectedRowIndices.length ? ` (${selectedRowIndices.length})` : ""}
           </button>
           <button
             type="button"
@@ -1939,7 +1939,7 @@ function CustomerTable() {
             disabled={selectedDayIndices.length === 0 || dayCount - selectedDayIndices.length < 1}
             className="w-full min-h-[40px] rounded-lg border border-rose-600 bg-rose-600 px-2 py-2 text-[11px] font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 touch-manipulation whitespace-nowrap"
           >
-            Delete{selectedDayIndices.length ? ` (${selectedDayIndices.length})` : ""}
+            Delete Column{selectedDayIndices.length ? ` (${selectedDayIndices.length})` : ""}
           </button>
           <button
             type="button"
@@ -2024,12 +2024,12 @@ function CustomerTable() {
       )}
 
       {showChangeSheetModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-lg">
-            <div className="flex items-center justify-between gap-3">
-              <div>
+        <div className="fixed inset-0 z-50 max-sm:z-[9999] flex items-center justify-center bg-black/40 p-2 sm:p-4">
+          <div className="w-[calc(100vw-1rem)] max-w-md max-h-[calc(100dvh-1rem)] overflow-hidden rounded-xl bg-white p-3 shadow-lg sm:p-4">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
                 <h3 className="text-sm font-semibold text-slate-800">Archived sheets</h3>
-                <p className="mt-1 text-xs text-slate-500">Open a saved sheet to edit it.</p>
+                <p className="mt-1 truncate text-xs text-slate-500">Open a saved sheet to edit it.</p>
               </div>
               <button
                 type="button"
@@ -2045,17 +2045,17 @@ function CustomerTable() {
             ) : archivedEntries.length === 0 ? (
               <p className="mt-4 text-sm text-slate-500">No saved sheets found. Save a sheet to History first.</p>
             ) : (
-              <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+              <div className="mt-4 max-h-[58dvh] space-y-2 overflow-y-auto overscroll-contain pr-1">
                 {archivedEntries.map((entry, index) => (
                   <div
                     key={entry.id}
-                    className="flex min-h-[52px] w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left"
+                    className="flex min-h-[52px] w-full flex-col gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left sm:flex-row sm:items-center sm:justify-between"
                   >
                     <span>
                       <span className="block text-sm font-semibold text-slate-800">{entry.name || `Sheet ${archivedEntries.length - index}`}</span>
                       <span className="mt-1 block text-xs text-slate-500">Saved {new Date(entry.savedAt).toLocaleString()}</span>
                     </span>
-                    <span className="ml-3 flex shrink-0 items-center gap-3">
+                    <span className="flex w-full shrink-0 items-center justify-end gap-4 sm:ml-3 sm:w-auto">
                       <button
                         type="button"
                         onClick={() => void changeSheet(entry)}
@@ -2077,7 +2077,7 @@ function CustomerTable() {
                 ))}
               </div>
             )}
-            <div className="mt-4 flex justify-end">
+            <div className="mt-3 flex justify-end sm:mt-4">
               <button
                 type="button"
                 onClick={() => setShowChangeSheetModal(false)}
