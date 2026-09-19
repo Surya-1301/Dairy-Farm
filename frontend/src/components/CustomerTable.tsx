@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { getCustomers, subscribeCustomersChanged } from "../utils/customerData";
+import { getCustomers, subscribeCustomersChanged, notifyCustomersChanged } from "../utils/customerData";
 import { notifyMilkDataChanged } from "../utils/milkData";
 
 import { getActiveUser } from "../firebase/auth";
@@ -14,6 +14,7 @@ import {
   saveSheetToHistoryByEmail,
   subscribeHistoryByEmail,
   subscribeSheetByEmail,
+  saveCustomersByEmail,
   type SheetHistoryEntry,
   type SheetState,
   type SheetRow,
@@ -56,8 +57,6 @@ function getGroupShiftPriority(group: Customer[]): number {
 
 function sortCustomerGroups(groups: Customer[][]): Customer[][] {
   return [...groups].sort((a, b) => {
-    const priorityDifference = getGroupShiftPriority(a) - getGroupShiftPriority(b);
-    if (priorityDifference !== 0) return priorityDifference;
     return a[0].serialNumber - b[0].serialNumber;
   });
 }
@@ -247,6 +246,16 @@ function getActiveHistoryStorageKey(email: string): string {
   return `${ACTIVE_HISTORY_STORAGE_PREFIX}${email.trim().toLowerCase()}`;
 }
 
+function cloneSheetState(state: SheetState): SheetState {
+  return {
+    dayCount: state.dayCount,
+    rows: state.rows.map((row) => ({
+      ...row,
+      days: [...row.days]
+    }))
+  };
+}
+
 function normalizeSheetState(state: SheetState): SheetState {
   return {
     dayCount: state.dayCount,
@@ -260,6 +269,147 @@ function normalizeSheetState(state: SheetState): SheetState {
     }))
   };
 }
+
+function getSheetCustomerKey(row: Pick<SheetRow, "customerName" | "shift">): string {
+  return `${row.customerName.trim().toLowerCase()}|${row.shift.trim().toUpperCase()}`;
+}
+
+function getSheetCustomerProjection(rows: SheetRow[]): string[] {
+  return rows
+    .filter((row) => row.customerName.trim() !== "")
+    .map(getSheetCustomerKey);
+}
+
+function customerProjectionChanged(previousRows: SheetRow[], nextRows: SheetRow[]): boolean {
+  const previousProjection = getSheetCustomerProjection(previousRows);
+  const nextProjection = getSheetCustomerProjection(nextRows);
+
+  if (previousProjection.length !== nextProjection.length) {
+    return true;
+  }
+
+  return previousProjection.some((key, index) => key !== nextProjection[index]);
+}
+
+async function syncCustomersFromSheet(
+  previousRows: SheetRow[],
+  nextRows: SheetRow[]
+): Promise<void> {
+  const activeUser = getActiveUser();
+  if (!activeUser?.email) {
+    return;
+  }
+
+  if (!customerProjectionChanged(previousRows, nextRows)) {
+    return;
+  }
+
+  try {
+    const existingCustomers = await getCustomers();
+    const usedCustomerIndices = new Set<number>();
+    const nextCustomers: Customer[] = [];
+
+    const previousKeyAtIndex = (index: number) => {
+      const row = previousRows[index];
+      return row?.customerName.trim() ? getSheetCustomerKey(row) : "";
+    };
+
+    const nextKeyAtIndex = (index: number) => {
+      const row = nextRows[index];
+      return row?.customerName.trim() ? getSheetCustomerKey(row) : "";
+    };
+
+    const previousKeys = previousRows.map((_, index) => previousKeyAtIndex(index));
+    const nextKeys = nextRows.map((_, index) => nextKeyAtIndex(index));
+
+    const findUnusedCustomerIndex = (key: string): number => {
+      if (!key) {
+        return -1;
+      }
+
+      return existingCustomers.findIndex(
+        (customer, index) =>
+          !usedCustomerIndices.has(index) &&
+          `${customer.name.trim().toLowerCase()}|${customer.shift.trim().toUpperCase()}` === key
+      );
+    };
+
+    const findUnusedCustomerByPreviousRow = (rowIndex: number): number => {
+      const previousKey = previousKeys[rowIndex];
+      if (!previousKey) {
+        return -1;
+      }
+      return findUnusedCustomerIndex(previousKey);
+    };
+
+    for (let rowIndex = 0; rowIndex < nextRows.length; rowIndex += 1) {
+      const nextRow = nextRows[rowIndex];
+      const nextName = nextRow.customerName.trim();
+
+      if (!nextName) {
+        continue;
+      }
+
+      const previousRow = previousRows[rowIndex];
+      const previousKey = previousKeys[rowIndex];
+      const nextKey = nextKeys[rowIndex];
+
+      let customerIndex = -1;
+
+      // Prefer the previous row's customer when a name/shift was edited in place.
+      // For a true row reorder, both identities also occur elsewhere in the other
+      // snapshot, so we use the current exact key instead.
+      const previousIdentityMovedElsewhere =
+        Boolean(previousKey) &&
+        nextKeys.some((key, index) => index !== rowIndex && key === previousKey);
+
+      const currentIdentityCameFromElsewhere =
+        Boolean(nextKey) &&
+        previousKeys.some((key, index) => index !== rowIndex && key === nextKey);
+
+      const isLikelyReorder =
+        previousKey &&
+        nextKey &&
+        previousKey !== nextKey &&
+        previousIdentityMovedElsewhere &&
+        currentIdentityCameFromElsewhere;
+
+      if (!isLikelyReorder && previousRow?.customerName.trim()) {
+        customerIndex = findUnusedCustomerByPreviousRow(rowIndex);
+      }
+
+      if (customerIndex === -1) {
+        customerIndex = findUnusedCustomerIndex(nextKey);
+      }
+
+      // If the row is new, preserve no fabricated mobile/address data; the
+      // Customers page can fill those fields later through its normal editor.
+      const sourceCustomer =
+        customerIndex >= 0 ? existingCustomers[customerIndex] : undefined;
+
+      if (customerIndex >= 0) {
+        usedCustomerIndices.add(customerIndex);
+      }
+
+      nextCustomers.push({
+        serialNumber: nextCustomers.length + 1,
+        name: nextName,
+        mobile: sourceCustomer?.mobile ?? "",
+        address: sourceCustomer?.address ?? "",
+        shift: nextRow.shift ?? "",
+        createdAt: sourceCustomer?.createdAt ?? new Date().toISOString()
+      });
+    }
+
+    // The sheet is the source of truth for the customer/shift rows. Any existing
+    // master record that no longer has a corresponding named sheet row is removed.
+    await saveCustomersByEmail(activeUser.email, nextCustomers);
+    notifyCustomersChanged();
+  } catch (error) {
+    console.error("Failed to sync sheet customers to the Customers page:", error);
+  }
+}
+
 
 function CustomerTable() {
   const navigate = useNavigate();
@@ -298,6 +448,8 @@ function CustomerTable() {
   const activeRowResizeRef = useRef<{ rowIndex: number; startY: number; startHeight: number } | null>(null);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const undoStackRef = useRef<SheetState[]>([]);
+  const redoStackRef = useRef<SheetState[]>([]);
 
   const { rows, dayCount } = sheetState;
 
@@ -710,9 +862,57 @@ function CustomerTable() {
 
   const saveState = (nextState: SheetState) => {
     const normalizedState = normalizeSheetState(nextState);
+    const currentState = cloneSheetState(sheetState);
+
+    undoStackRef.current.push(currentState);
+    redoStackRef.current = [];
 
     setSheetState(normalizedState);
     queueAutoSave(normalizedState, activeHistoryIdRef.current);
+
+    if (!activeHistoryIdRef.current && customerProjectionChanged(currentState.rows, normalizedState.rows)) {
+      void syncCustomersFromSheet(currentState.rows, normalizedState.rows);
+    }
+
+    notifyMilkDataChanged();
+  };
+
+  const undoSheetChange = async () => {
+    const previousState = undoStackRef.current.pop();
+    if (!previousState) {
+      return;
+    }
+
+    const currentState = cloneSheetState(sheetState);
+    redoStackRef.current.push(currentState);
+
+    const normalizedState = normalizeSheetState(previousState);
+    setSheetState(normalizedState);
+    queueAutoSave(normalizedState, activeHistoryIdRef.current);
+
+    if (!activeHistoryIdRef.current && customerProjectionChanged(currentState.rows, normalizedState.rows)) {
+      void syncCustomersFromSheet(currentState.rows, normalizedState.rows);
+    }
+
+    notifyMilkDataChanged();
+  };
+
+  const redoSheetChange = async () => {
+    const nextState = redoStackRef.current.pop();
+    if (!nextState) {
+      return;
+    }
+
+    const currentState = cloneSheetState(sheetState);
+    undoStackRef.current.push(currentState);
+
+    const normalizedState = normalizeSheetState(nextState);
+    setSheetState(normalizedState);
+    queueAutoSave(normalizedState, activeHistoryIdRef.current);
+
+    if (!activeHistoryIdRef.current && customerProjectionChanged(currentState.rows, normalizedState.rows)) {
+      void syncCustomersFromSheet(currentState.rows, normalizedState.rows);
+    }
 
     notifyMilkDataChanged();
   };
@@ -871,7 +1071,11 @@ function CustomerTable() {
 
   const updateCustomerName = (serialNumber: number, customerName: string) => {
     const targetRow = rows.find((row) => row.serialNumber === serialNumber);
-    const oldKey = targetRow?.customerName.trim().toLowerCase() ?? "";
+    if (!targetRow) {
+      return;
+    }
+
+    const oldKey = targetRow.customerName.trim().toLowerCase();
 
     const nextRows = rows.map((row) => {
       if (row.serialNumber === serialNumber) {
@@ -887,6 +1091,11 @@ function CustomerTable() {
   };
 
   const updateShift = (serialNumber: number, shift: string) => {
+    const targetRow = rows.find((row) => row.serialNumber === serialNumber);
+    if (!targetRow) {
+      return;
+    }
+
     const nextRows = rows.map((row) =>
       row.serialNumber === serialNumber ? { ...row, shift } : row
     );
@@ -981,6 +1190,7 @@ function CustomerTable() {
     lastSelectedRowIndexRef.current = null;
     setRowHeights(nextHeights);
     saveState({ dayCount, rows: nextRows });
+
     setActiveDrag(null);
     setDragOverIndex(null);
   };
@@ -1301,15 +1511,34 @@ function CustomerTable() {
   };
 
   useEffect(() => {
-    const handleClipboardShortcuts = async (event: KeyboardEvent) => {
-      const modifier = event.ctrlKey || event.metaKey;
-      if (!modifier || isEditableClipboardTarget(event.target)) {
+    const handleSheetShortcuts = async (event: KeyboardEvent) => {
+      if (isEditableClipboardTarget(event.target)) {
         return;
       }
 
       const key = event.key.toLowerCase();
+      const modifier = event.ctrlKey || event.metaKey;
 
-      if (key === "c") {
+      // Ctrl/Cmd + Z: undo the latest sheet change.
+      // Ctrl/Cmd + Shift + Z and Ctrl/Cmd + Y: redo the latest undone change.
+      if (modifier && key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          await redoSheetChange();
+        } else {
+          await undoSheetChange();
+        }
+        return;
+      }
+
+      if (modifier && key === "y") {
+        event.preventDefault();
+        await redoSheetChange();
+        return;
+      }
+
+      // Ctrl/Cmd + C: copy the currently selected row(s) or Day column(s).
+      if (modifier && key === "c") {
         if (lastSelectionKindRef.current === "column" && selectedDayIndices.length > 0) {
           event.preventDefault();
           await copySelectedColumns();
@@ -1320,15 +1549,46 @@ function CustomerTable() {
         return;
       }
 
-      if (key === "v") {
+      // Ctrl/Cmd + V: paste sheet data into the current selection.
+      if (modifier && key === "v") {
         try {
-          const text = await navigator.clipboard.readText();
-          if (pasteSheetClipboard(text)) {
+          const clipboardText = await navigator.clipboard.readText();
+          if (pasteSheetClipboard(clipboardText)) {
             event.preventDefault();
           }
         } catch {
           // The native paste event below still handles browsers that deny clipboard-read permission.
         }
+        return;
+      }
+
+      // Ctrl/Cmd + S: force the pending sheet changes to save immediately.
+      if (modifier && key === "s") {
+        event.preventDefault();
+        await flushPendingAutoSave();
+        return;
+      }
+
+      // Delete / Backspace: remove the currently selected rows or Day columns.
+      // This is intentionally disabled while an input is focused.
+      if (!modifier && (key === "delete" || key === "backspace")) {
+        if (lastSelectionKindRef.current === "column" && selectedDayIndices.length > 0) {
+          event.preventDefault();
+          removeSelectedColumns();
+        } else if (lastSelectionKindRef.current === "row" && selectedRowIndices.length > 0) {
+          event.preventDefault();
+          removeSelectedRows();
+        }
+        return;
+      }
+
+      // Escape: clear the current sheet selection.
+      if (key === "escape") {
+        setSelectedRowIndices([]);
+        setSelectedDayIndices([]);
+        lastSelectedRowIndexRef.current = null;
+        lastSelectedDayIndexRef.current = null;
+        lastSelectionKindRef.current = null;
       }
     };
 
@@ -1337,16 +1597,16 @@ function CustomerTable() {
         return;
       }
 
-      const text = event.clipboardData?.getData("text/plain") ?? "";
-      if (pasteSheetClipboard(text)) {
+      const clipboardText = event.clipboardData?.getData("text/plain") ?? "";
+      if (pasteSheetClipboard(clipboardText)) {
         event.preventDefault();
       }
     };
 
-    window.addEventListener("keydown", handleClipboardShortcuts);
+    window.addEventListener("keydown", handleSheetShortcuts);
     window.addEventListener("paste", handlePaste);
     return () => {
-      window.removeEventListener("keydown", handleClipboardShortcuts);
+      window.removeEventListener("keydown", handleSheetShortcuts);
       window.removeEventListener("paste", handlePaste);
     };
   }, [
@@ -1357,6 +1617,28 @@ function CustomerTable() {
     selectedDayIndices,
     selectedRowIndices
   ]);
+
+  // Select exactly one shift row on double-click. A single click on the
+  // Shift input remains available for normal editing, while a double-click
+  // selects only that shift for row deletion.
+  const selectSingleShiftRow = (rowIndex: number, event: MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+
+    const isToggleSelection = event.ctrlKey || event.metaKey;
+
+    setSelectedRowIndices((current) => {
+      if (isToggleSelection) {
+        return current.includes(rowIndex)
+          ? current.filter((index) => index !== rowIndex)
+          : [...current, rowIndex].sort((a, b) => a - b);
+      }
+
+      return current.length === 1 && current[0] === rowIndex ? [] : [rowIndex];
+    });
+
+    lastSelectedRowIndexRef.current = rowIndex;
+    lastSelectionKindRef.current = "row";
+  };
 
   const selectRow = (rowIndex: number, event: MouseEvent<HTMLElement>) => {
     const groupStarts = buildGroupStartIndices(rows);
@@ -1740,7 +2022,10 @@ function CustomerTable() {
       )}
 
 
-      <div className="w-full overflow-x-auto overscroll-x-contain touch-pan-x rounded-md">
+      <div
+        className="w-full min-w-0 max-w-full overflow-auto overscroll-contain rounded-md [scrollbar-width:thin] [-webkit-overflow-scrolling:touch] max-h-[70dvh] md:max-h-[72dvh] lg:max-h-none lg:overflow-x-auto lg:overflow-y-visible"
+        style={{ touchAction: "pan-x pan-y", WebkitOverflowScrolling: "touch" }}
+      >
         <table className="min-w-[1080px] table-fixed border-collapse text-center text-xs md:text-sm">
           <colgroup>
             <col style={{ width: columnWidths.serial }} />
@@ -1755,7 +2040,7 @@ function CustomerTable() {
             <tr>
               <th
                 style={{ width: columnWidths.serial, position: "relative" }}
-                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="lg:sticky lg:top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
               >
                 S No
                 <span
@@ -1766,7 +2051,7 @@ function CustomerTable() {
               </th>
               <th
                 style={{ width: columnWidths.customerName, position: "relative" }}
-                className="sticky top-0 left-0 z-30 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="lg:sticky lg:top-0 lg:left-0 z-30 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
               >
                 Customer Name
                 <span
@@ -1777,7 +2062,7 @@ function CustomerTable() {
               </th>
               <th
                 style={{ width: columnWidths.shift, position: "relative" }}
-                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="lg:sticky lg:top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
               >
                 Shift
                 <span
@@ -1820,7 +2105,7 @@ function CustomerTable() {
               })}
               <th
                 style={{ width: columnWidths.total, position: "relative" }}
-                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="lg:sticky lg:top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
               >
                 Total
                 <span
@@ -1843,6 +2128,12 @@ function CustomerTable() {
               const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : total;
 
               const isRowSelected = selectedRowIndices.includes(rowIndex);
+              const groupStart = groupStartIndices[rowIndex] ?? rowIndex;
+              const groupEnd = groupStart + Math.max(1, nameSpan || 1) - 1;
+              const isGroupSelected = Array.from(
+                { length: Math.max(1, groupEnd - groupStart + 1) },
+                (_, index) => groupStart + index
+              ).every((index) => selectedRowIndices.includes(index));
 
               return (
                 <tr
@@ -1867,10 +2158,10 @@ function CustomerTable() {
                           ? "ring-2 ring-blue-500 ring-inset"
                           : ""
                       } ${
-                        isRowSelected ? "bg-blue-200 text-blue-950 font-bold" : "bg-slate-50 hover:bg-blue-100"
+                        isGroupSelected ? "bg-blue-200 text-blue-950 font-bold" : "bg-slate-50 hover:bg-blue-100"
                       }`}
                       aria-label={`Select row ${displaySerialNumbers[rowIndex] || rowIndex + 1}`}
-                      title="Click to select. Drag the S No cell to move the whole row group."
+                      title="Click to select the whole customer row group. Click a Shift cell to select only that shift."
                     >
                       <div className="flex min-h-9 w-full items-center justify-center rounded px-2 text-center">
                         {displaySerialNumbers[rowIndex]}
@@ -1893,7 +2184,7 @@ function CustomerTable() {
                       rowSpan={nameSpan}
                       style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, verticalAlign: "middle" }}
                       className={`sticky left-0 z-10 border border-slate-300 px-1 py-1 md:px-2 align-middle ${
-                        isRowSelected ? "bg-blue-100" : "bg-white"
+                        isGroupSelected ? "bg-blue-100" : "bg-white"
                       }`}
                     >
                       <input
@@ -1904,8 +2195,10 @@ function CustomerTable() {
                     </td>
                   )}
                   <td
+                    onDoubleClick={(event) => selectSingleShiftRow(rowIndex, event)}
                     style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, position: "relative", verticalAlign: "middle" }}
                     className={`border border-slate-300 px-1 py-1 md:px-2 ${isRowSelected ? "bg-blue-100" : "bg-white"}`}
+                    title="Double-click this Shift cell to select only this shift row for deletion. Single click edits normally."
                   >
                     <input
                       value={row.shift}
@@ -1971,7 +2264,7 @@ function CustomerTable() {
                       rowSpan={nameSpan}
                       style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, verticalAlign: "middle" }}
                       className={`border border-slate-300 px-1 py-1 font-semibold md:px-2 ${
-                        isRowSelected ? "bg-blue-100" : "bg-white"
+                        isGroupSelected ? "bg-blue-100" : "bg-white"
                       }`}
                     >
                       {displayTotal}

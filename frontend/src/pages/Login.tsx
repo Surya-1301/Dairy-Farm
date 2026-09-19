@@ -14,25 +14,6 @@ import raipurBanner from "../assets/raipur-banner.png";
 
 type AuthMode = "signin" | "signup" | "reset" | "google-signup";
 
-// Prompts the browser's own password manager (Chrome/Edge Credential
-// Management API) to save the sign-in, instead of storing anything ourselves.
-async function saveCredentialToBrowserPasswordManager(emailValue: string, passwordValue: string) {
-  try {
-    const PasswordCredentialCtor = (window as unknown as { PasswordCredential?: new (data: unknown) => Credential }).PasswordCredential;
-    if (!PasswordCredentialCtor || !navigator.credentials) return;
-
-    const credential = new PasswordCredentialCtor({
-      id: emailValue,
-      password: passwordValue,
-      name: emailValue
-    });
-    await navigator.credentials.store(credential);
-  } catch {
-    // Browser password manager isn't available/supported, or the user
-    // dismissed the save prompt — fail silently either way.
-  }
-}
-
 function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -44,7 +25,7 @@ function Login() {
   const [email, setEmail] = useState(initialEmail);
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otpInput, setOtpInput] = useState("");
@@ -107,9 +88,6 @@ function Login() {
         goToDashboard();
       } else {
         await signInWithEmailPassword(email, password);
-        if (rememberMe) {
-          await saveCredentialToBrowserPasswordManager(email.trim(), password);
-        }
         goToDashboard();
       }
     } catch (error) {
@@ -267,7 +245,7 @@ function Login() {
           <label className="block text-sm font-medium text-slate-700">
             Password
             <input
-              type="password"
+              type={mode === "signin" && showPassword ? "text" : "password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -282,11 +260,11 @@ function Login() {
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <input
                 type="checkbox"
-                checked={rememberMe}
-                onChange={(event) => setRememberMe(event.target.checked)}
+                checked={showPassword}
+                onChange={(event) => setShowPassword(event.target.checked)}
                 className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-2 focus:ring-brand-500"
               />
-              Remember me
+              Show password
             </label>
             <button
               type="button"
