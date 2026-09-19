@@ -12,6 +12,7 @@ import {
   saveHistoryByEmail,
   saveSheetByEmail,
   saveSheetToHistoryByEmail,
+  subscribeHistoryByEmail,
   subscribeSheetByEmail,
   type SheetHistoryEntry,
   type SheetState,
@@ -154,8 +155,27 @@ function normalizeRows(rows: SheetRow[], dayCount: number): SheetRow[] {
 
 const ACTIVE_HISTORY_STORAGE_PREFIX = "dairy-farm-active-history:";
 
+type PendingAutoSave = {
+  state: SheetState;
+  historyId: string | null;
+};
+
 function getActiveHistoryStorageKey(email: string): string {
   return `${ACTIVE_HISTORY_STORAGE_PREFIX}${email.trim().toLowerCase()}`;
+}
+
+function normalizeSheetState(state: SheetState): SheetState {
+  return {
+    dayCount: state.dayCount,
+    rows: state.rows.map((row, index) => ({
+      ...row,
+      serialNumber: index + 1,
+      days: Array.from(
+        { length: state.dayCount },
+        (_, dayIndex) => row.days?.[dayIndex] ?? 0
+      )
+    }))
+  };
 }
 
 function CustomerTable() {
@@ -170,8 +190,10 @@ function CustomerTable() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [changingSheet, setChangingSheet] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
-  const [saveVersion, setSaveVersion] = useState(0);
   const [sheetNameInput, setSheetNameInput] = useState("");
+  const pendingAutoSaveRef = useRef<PendingAutoSave | null>(null);
+  const autoSaveTimerRef = useRef<number | null>(null);
+  const autoSaveInFlightRef = useRef(false);
   // Holds the raw text (e.g. "2+3+5") while a day cell is being typed into, so
   // the "+" characters aren't stripped before the user finishes the expression.
   const [editingDayCell, setEditingDayCell] = useState<{
@@ -186,51 +208,112 @@ function CustomerTable() {
 
   const { rows, dayCount } = sheetState;
 
-  useEffect(() => {
-    if (saveVersion === 0) {
+  const flushPendingAutoSave = async () => {
+    if (autoSaveInFlightRef.current) {
       return;
     }
 
-    let cancelled = false;
-    const timer = window.setTimeout(async () => {
-      const activeUser = getActiveUser();
-      if (!activeUser?.email) {
-        return;
-      }
+    const pending = pendingAutoSaveRef.current;
+    if (!pending) {
+      setSaveStatus("saved");
+      return;
+    }
 
-      setSaveStatus("saving");
-      const normalizedState: SheetState = {
-        dayCount: sheetState.dayCount,
-        rows: sheetState.rows.map((row, index) => ({
-          ...row,
-          serialNumber: index + 1,
-          days: Array.from({ length: sheetState.dayCount }, (_, dayIndex) => row.days[dayIndex] ?? 0)
-        }))
-      };
+    pendingAutoSaveRef.current = null;
 
-      if (activeHistoryIdRef.current) {
+    const activeUser = getActiveUser();
+    if (!activeUser?.email) {
+      setSaveStatus("saved");
+      return;
+    }
+
+    autoSaveInFlightRef.current = true;
+    setSaveStatus("saving");
+
+    try {
+      if (pending.historyId) {
+        // When an archived/history sheet is open, auto-save the complete edited
+        // sheet back into that exact history entry. This keeps the archived copy
+        // and the editable history sheet synchronized without touching the live
+        // current sheet.
         const nextHistory = historyEntriesRef.current.map((entry) =>
-          entry.id === activeHistoryIdRef.current
-            ? { ...entry, ...normalizedState, savedAt: new Date().toISOString() }
+          entry.id === pending.historyId
+            ? {
+                ...entry,
+                ...pending.state,
+                savedAt: new Date().toISOString()
+              }
             : entry
         );
+
         historyEntriesRef.current = nextHistory;
         setHistoryEntries(nextHistory);
         await saveHistoryByEmail(activeUser.email, nextHistory);
       } else {
-        await saveSheetByEmail(activeUser.email, normalizedState);
+        // For the live/current sheet, auto-save the complete normalized state.
+        await saveSheetByEmail(activeUser.email, pending.state);
       }
 
-      if (!cancelled) {
-        setSaveStatus("saved");
+      setSaveStatus("saved");
+    } catch (error) {
+      console.error("Automatic sheet save failed:", error);
+      setSaveStatus("saving");
+
+      // Keep the latest state queued so a temporary Firebase/network failure is
+      // retried automatically instead of silently losing the user's changes.
+      if (!pendingAutoSaveRef.current) {
+        pendingAutoSaveRef.current = pending;
       }
-    }, 700);
+    } finally {
+      autoSaveInFlightRef.current = false;
+
+      if (pendingAutoSaveRef.current && autoSaveTimerRef.current === null) {
+        autoSaveTimerRef.current = window.setTimeout(() => {
+          autoSaveTimerRef.current = null;
+          void flushPendingAutoSave();
+        }, 500);
+      }
+    }
+  };
+
+  const queueAutoSave = (state: SheetState, historyId: string | null = activeHistoryIdRef.current) => {
+    pendingAutoSaveRef.current = {
+      state: normalizeSheetState(state),
+      historyId
+    };
+    setSaveStatus("saving");
+
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      void flushPendingAutoSave();
+    }, 500);
+  };
+
+  // Flush any pending save when this component is leaving the page or when the
+  // browser hides the tab. The normal debounced save remains the primary path,
+  // while this reduces the chance of losing the last edit during navigation.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        void flushPendingAutoSave();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (autoSaveTimerRef.current !== null) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      void flushPendingAutoSave();
     };
-  }, [saveVersion, sheetState]);
+  }, []);
 
   // Sync customer names from master customer data. Rows always mirror the customer list
   // 1:1: adding a customer automatically adds a matching row, and removing a customer
@@ -264,11 +347,9 @@ function CustomerTable() {
           }
 
           const fallbackRows = normalizeRows(createInitialSheet().rows, prevDayCount);
-          const activeUser = getActiveUser();
-          if (activeUser?.email) {
-            void saveSheetByEmail(activeUser.email, { dayCount: prevDayCount, rows: fallbackRows });
-          }
-          return { dayCount: prevDayCount, rows: fallbackRows };
+          const fallbackState = { dayCount: prevDayCount, rows: fallbackRows };
+          queueAutoSave(fallbackState, null);
+          return fallbackState;
         }
 
         // Order rows the same way the Customers page does: both-shift customers
@@ -311,12 +392,10 @@ function CustomerTable() {
           );
 
         if (changed) {
-          const activeUser = getActiveUser();
-          if (activeUser?.email) {
-            void saveSheetByEmail(activeUser.email, { dayCount: prevDayCount, rows: nextRows });
-          }
+          const nextState = { dayCount: prevDayCount, rows: nextRows };
+          queueAutoSave(nextState, null);
           notifyMilkDataChanged();
-          return { dayCount: prevDayCount, rows: nextRows };
+          return nextState;
         }
 
         return prev;
@@ -328,6 +407,7 @@ function CustomerTable() {
     let isMounted = true;
     let unsubscribeCustomers: (() => void) | undefined;
     let unsubscribeSheet: (() => void) | undefined;
+    let unsubscribeHistory: (() => void) | undefined;
 
     const init = async () => {
       const activeUser = getActiveUser();
@@ -381,8 +461,42 @@ function CustomerTable() {
       if (!isMounted || !initialSheet) return;
       setSheetState(initialSheet);
 
+      // Keep the history document live in every open tab. This makes archived/history
+      // sheets update immediately in a second tab when another tab saves a change.
+      unsubscribeHistory = subscribeHistoryByEmail(activeUser.email, (entries) => {
+        if (!isMounted) {
+          return;
+        }
+
+        historyEntriesRef.current = entries;
+        setHistoryEntries(entries);
+
+        const openedHistoryId = activeHistoryIdRef.current;
+        if (!openedHistoryId) {
+          return;
+        }
+
+        const remoteEntry = entries.find((entry) => entry.id === openedHistoryId);
+        if (!remoteEntry) {
+          return;
+        }
+
+        // Do not replace unsaved local edits with an incoming snapshot. Once the
+        // local edit is persisted, the next remote snapshot is applied normally.
+        if (pendingAutoSaveRef.current || autoSaveInFlightRef.current) {
+          return;
+        }
+
+        setSheetState({
+          dayCount: remoteEntry.dayCount,
+          rows: normalizeRows(remoteEntry.rows, remoteEntry.dayCount)
+        });
+        setSaveStatus("saved");
+        notifyMilkDataChanged();
+      });
+
       // Only the live sheet needs customer/sheet synchronization. An archived sheet
-      // must remain isolated from the current live sheet while it is open.
+      // remains isolated from the current live sheet while it is open.
       if (!activeHistoryIdRef.current) {
         syncCustomersToSheet();
         unsubscribeCustomers = subscribeCustomersChanged(syncCustomersToSheet);
@@ -392,10 +506,18 @@ function CustomerTable() {
             return;
           }
 
+          // A remote update is safe to apply as long as this tab has no unsaved
+          // local edit waiting to be persisted.
+          if (pendingAutoSaveRef.current || autoSaveInFlightRef.current) {
+            return;
+          }
+
           setSheetState({
             dayCount: nextSheet.dayCount,
             rows: normalizeRows(nextSheet.rows, nextSheet.dayCount)
           });
+          setSaveStatus("saved");
+          notifyMilkDataChanged();
         });
       }
     };
@@ -406,19 +528,15 @@ function CustomerTable() {
       isMounted = false;
       unsubscribeCustomers?.();
       unsubscribeSheet?.();
+      unsubscribeHistory?.();
     };
   }, []);
 
   const saveState = (nextState: SheetState) => {
-    const normalizedRows = nextState.rows.map((row, index) => ({
-      ...row,
-      serialNumber: index + 1
-    }));
-    const normalizedState = { ...nextState, rows: normalizedRows };
+    const normalizedState = normalizeSheetState(nextState);
 
     setSheetState(normalizedState);
-    setSaveStatus("saving");
-    setSaveVersion((version) => version + 1);
+    queueAutoSave(normalizedState, activeHistoryIdRef.current);
 
     notifyMilkDataChanged();
   };
@@ -429,7 +547,11 @@ function CustomerTable() {
       return;
     }
 
-    const nextSheet = await archiveSheetByEmail(activeUser.email, { dayCount, rows }, name);
+    // Make sure the newest edit is persisted before creating an archived copy.
+    await flushPendingAutoSave();
+
+    const normalizedCurrent = normalizeSheetState(sheetState);
+    const nextSheet = await archiveSheetByEmail(activeUser.email, normalizedCurrent, name);
     activeHistoryIdRef.current = null;
     setActiveHistoryId(null);
     const activeUserEmail = activeUser.email;
@@ -450,8 +572,11 @@ function CustomerTable() {
       return;
     }
 
+    await flushPendingAutoSave();
+    const normalizedCurrent = normalizeSheetState(sheetState);
+
     if (!activeHistoryId) {
-      const savedEntry = await saveSheetToHistoryByEmail(activeUser.email, sheetState, sheetNameInput);
+      const savedEntry = await saveSheetToHistoryByEmail(activeUser.email, normalizedCurrent, sheetNameInput);
       const nextHistory = [savedEntry, ...historyEntriesRef.current];
       historyEntriesRef.current = nextHistory;
       setHistoryEntries(nextHistory);
@@ -459,14 +584,7 @@ function CustomerTable() {
       return;
     }
 
-    const normalizedState: SheetState = {
-      dayCount: sheetState.dayCount,
-      rows: sheetState.rows.map((row, index) => ({
-        ...row,
-        serialNumber: index + 1,
-        days: Array.from({ length: sheetState.dayCount }, (_, dayIndex) => row.days[dayIndex] ?? 0)
-      }))
-    };
+    const normalizedState = normalizedCurrent;
 
     const nextHistory = historyEntriesRef.current.map((entry) =>
       entry.id === activeHistoryId
@@ -552,6 +670,10 @@ function CustomerTable() {
     const sheetLabel = entry.name || "this sheet";
     if (!window.confirm(`Delete ${sheetLabel}? This cannot be undone.`)) {
       return;
+    }
+
+    if (activeHistoryId === entry.id) {
+      await flushPendingAutoSave();
     }
 
     const nextHistory = historyEntriesRef.current.filter((item) => item.id !== entry.id);
@@ -777,6 +899,7 @@ function CustomerTable() {
       return;
     }
 
+    await flushPendingAutoSave();
     activeHistoryIdRef.current = null;
     setActiveHistoryId(null);
     window.sessionStorage.removeItem(getActiveHistoryStorageKey(activeUser.email));
