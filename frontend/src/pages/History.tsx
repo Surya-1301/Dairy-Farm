@@ -84,28 +84,42 @@ function formatDate(value: string) {
 }
 
 function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob {
-  const doc = new jsPDF({ orientation: "landscape" });
+  const doc = new jsPDF({
+    orientation: "landscape",
+    unit: "mm",
+    format: "a4",
+    compress: true
+  });
+
   const effectiveDayCount = getEffectiveDayCount(entry);
   const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
-  const groupStartIndices = buildGroupStartIndices(entry.rows);
-  const nameCellSpans = buildNameCellSpans(groupStartIndices);
-  const combinedTotals = buildCombinedTotals(entry.rows, groupStartIndices);
 
   const total = entry.rows.reduce(
-    (entryTotal, row) => entryTotal + row.days.reduce((rowTotal, value) => rowTotal + value, 0),
+    (entryTotal, row) =>
+      entryTotal +
+      row.days
+        .slice(0, effectiveDayCount)
+        .reduce((rowTotal, value) => rowTotal + value, 0),
     0
   );
 
   const pageWidth = doc.internal.pageSize.getWidth();
-  doc.setFontSize(16);
+  const marginX = 5;
+
+  // Same header hierarchy as the saved History sheet.
+  doc.setTextColor(15, 23, 42);
   doc.setFont("helvetica", "bold");
-  doc.text("RAIPUR DUGDH UTPADAN ASSOCIATION", pageWidth / 2, 8, { align: "center" });
+  doc.setFontSize(15);
+  doc.text("RAIPUR DUGDH UTPADAN ASSOCIATION", pageWidth / 2, 8, {
+    align: "center"
+  });
+
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(12);
+  doc.setFontSize(9);
   doc.text(
     `${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${effectiveDayCount} days · Total ${total}`,
     pageWidth / 2,
-    15,
+    14,
     { align: "center" }
   );
 
@@ -113,110 +127,168 @@ function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob 
     "S No",
     "Customer Name",
     "Shift",
-    ...Array.from({ length: effectiveDayCount }, (_, i) => `Day ${i + 1}`),
+    ...Array.from(
+      { length: effectiveDayCount },
+      (_, index) => `Day ${index + 1}`
+    ),
     "Total"
   ]];
 
-  const body = entry.rows.map((row, index) => {
-    const rowTotal = row.days.reduce((sum, v) => sum + v, 0);
-    const nameSpan = nameCellSpans[index];
-    const displayTotal = nameSpan > 1 ? combinedTotals[index] : rowTotal;
+  /*
+   * IMPORTANT FOR THE HISTORY LAYOUT:
+   *
+   * When a customer has both M and E:
+   *   S No       -> one merged cell across M + E
+   *   Name       -> one merged cell across M + E
+   *   Shift      -> M and E are separate rows
+   *   Day values -> separate M and E rows
+   *   Total      -> one merged cell containing M + E combined total
+   *
+   * AutoTable rowSpan cells must NOT be repeated as empty cells on the
+   * second row. The second row starts at the Shift column. This prevents
+   * the Day columns from being shifted.
+   */
+  const body: any[][] = [];
 
-    if (nameSpan > 0) {
-      return [
-        nameSpan > 1
-          ? { content: String(displaySerialNumbers[index] ?? String(row.serialNumber)), rowSpan: nameSpan }
-          : displaySerialNumbers[index] ?? String(row.serialNumber),
-        nameSpan > 1
-          ? { content: row.customerName, rowSpan: nameSpan }
-          : row.customerName,
+  for (let index = 0; index < entry.rows.length; index += 1) {
+    const row = entry.rows[index];
+    const nextRow = entry.rows[index + 1];
+
+    const sameCustomerAsNext =
+      Boolean(nextRow?.customerName.trim()) &&
+      nextRow.customerName.trim().toLowerCase() ===
+        row.customerName.trim().toLowerCase();
+
+    const previousRow = entry.rows[index - 1];
+    const sameCustomerAsPrevious =
+      Boolean(previousRow?.customerName.trim()) &&
+      previousRow.customerName.trim().toLowerCase() ===
+        row.customerName.trim().toLowerCase();
+
+    const rowTotal = row.days
+      .slice(0, effectiveDayCount)
+      .reduce((sum, value) => sum + value, 0);
+
+    // First row of a two-shift customer: merge S No, Name and Total.
+    if (sameCustomerAsNext && !sameCustomerAsPrevious) {
+      const combinedTotal =
+        rowTotal +
+        nextRow.days
+          .slice(0, effectiveDayCount)
+          .reduce((sum, value) => sum + value, 0);
+
+      body.push([
+        {
+          content: String(displaySerialNumbers[index] ?? row.serialNumber),
+          rowSpan: 2
+        },
+        {
+          content: row.customerName,
+          rowSpan: 2
+        },
         row.shift || "-",
-        ...row.days.slice(0, effectiveDayCount),
-        nameSpan > 1
-          ? { content: String(displayTotal), rowSpan: nameSpan }
-          : String(displayTotal)
-      ];
+        ...row.days.slice(0, effectiveDayCount).map((value) => String(value)),
+        {
+          content: String(combinedTotal),
+          rowSpan: 2
+        }
+      ]);
+
+      continue;
     }
 
-    return [
-      displaySerialNumbers[index] ?? String(row.serialNumber),
+    // Second row of a two-shift customer.
+    // Do NOT add placeholders for the row-spanned columns.
+    if (sameCustomerAsPrevious) {
+      body.push([
+        row.shift || "-",
+        ...row.days.slice(0, effectiveDayCount).map((value) => String(value))
+      ]);
+
+      continue;
+    }
+
+    // Single-shift customer.
+    body.push([
+      String(displaySerialNumbers[index] ?? row.serialNumber),
       row.customerName || "",
       row.shift || "-",
-      ...row.days.slice(0, effectiveDayCount),
+      ...row.days.slice(0, effectiveDayCount).map((value) => String(value)),
       String(rowTotal)
-    ];
-  });
+    ]);
+  }
 
   autoTable(doc, {
     head,
     body,
-    startY: 22,
-    styles: {
-      fontSize: 7,
-      cellPadding: 1.5,
-      halign: "center",
-      lineColor: [203, 213, 225],
-      lineWidth: 0.1
+    startY: 20,
+    margin: {
+      left: marginX,
+      right: marginX,
+      top: 20,
+      bottom: 5
     },
+    tableWidth: pageWidth - marginX * 2,
+    theme: "grid",
+    showHead: "everyPage",
+    pageBreak: "auto",
+    rowPageBreak: "avoid",
+
+    styles: {
+      font: "helvetica",
+      fontSize: 6.4,
+      cellPadding: 1.15,
+      overflow: "hidden",
+      halign: "center",
+      valign: "middle",
+      textColor: [30, 41, 59],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15,
+      minCellHeight: 6.8
+    },
+
     headStyles: {
       fillColor: [241, 245, 249],
       textColor: [30, 41, 59],
       fontStyle: "bold",
+      fontSize: 6.4,
+      halign: "center",
+      valign: "middle",
       lineColor: [203, 213, 225],
-      lineWidth: 0.1
+      lineWidth: 0.15,
+      cellPadding: 1.15,
+      minCellHeight: 7
     },
+
     bodyStyles: {
       fillColor: [255, 255, 255],
       lineColor: [203, 213, 225],
-      lineWidth: 0.1
+      lineWidth: 0.15
     },
-    columnStyles: {
-      1: { halign: "left" }
-    },
-    alternateRowStyles: {
-      fillColor: [255, 255, 255]
-    },
-    didParseCell: (data) => {
-      const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
-      if (
-        data.section === "body" &&
-        raw &&
-        typeof raw === "object" &&
-        "rowSpan" in raw &&
-        typeof raw.rowSpan === "number" &&
-        raw.rowSpan > 1
-      ) {
-        data.cell.text = [""];
-        data.cell.styles.valign = "middle";
-      }
-    },
-    didDrawCell: (data) => {
-      const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
-      if (
-        data.section === "body" &&
-        raw &&
-        typeof raw === "object" &&
-        "rowSpan" in raw &&
-        typeof raw.rowSpan === "number" &&
-        raw.rowSpan > 1
-      ) {
-        const content = String(raw.content ?? "");
-        const centerY = data.cell.y + data.cell.height / 2;
 
-        if (data.column.index === 1) {
-          data.doc.text(content, data.cell.x + 2, centerY, { baseline: "middle" });
-        } else {
-          data.doc.text(content, data.cell.x + data.cell.width / 2, centerY, {
-            align: "center",
-            baseline: "middle"
-          });
-        }
+    columnStyles: {
+      0: {
+        cellWidth: 14,
+        halign: "center"
+      },
+      1: {
+        cellWidth: 32,
+        halign: "left"
+      },
+      2: {
+        cellWidth: 10,
+        halign: "center"
+      },
+      [3 + effectiveDayCount]: {
+        cellWidth: 16,
+        halign: "center"
       }
     }
   });
 
   return doc.output("blob");
 }
+
 
 function getSheetPdfFileName(entry: SheetHistoryEntry, sheetNumber: number): string {
   return `${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.pdf`;
