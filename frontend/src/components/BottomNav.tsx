@@ -85,32 +85,83 @@ function BottomNav() {
 
   const links = isOwner ? ownerLinks : userLinks;
 
+  // Mobile-first: 56px touch targets, safe-area padding, active pill + center FAB for Data entry
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-slate-50 shadow-sm">
-      <div
-        className={
-          isOwner
-            ? "flex w-full items-center justify-center px-2 py-2"
-            : "grid w-full items-center px-2 py-2"
-        }
-        style={isOwner ? { gap: "150px" } : { gridTemplateColumns: `repeat(${links.length}, minmax(0, 1fr))` }}
-      >
-        {links.map((link) => (
-          <NavLink
-            key={link.to}
-            to={link.to}
-            className={({ isActive }) =>
-              `flex min-w-0 flex-col items-center justify-center rounded-lg px-1 py-1 text-center text-xs font-medium outline-none transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
-                isActive
-                  ? "text-blue-600"
-                  : "text-gray-500 hover:text-blue-500"
-              }`
-            }
-          >
-            <link.Icon className="mb-1 h-6 w-6" />
-            <span className="max-w-full truncate">{link.label}</span>
-          </NavLink>
-        ))}
+    <nav
+      className="bottom-nav fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-4px_20px_-8px_rgba(15,23,42,0.15)] backdrop-blur dark:border-[#333333] dark:bg-[#161616]/95"
+      style={{
+        paddingBottom: "var(--safe-area-inset-bottom)",
+        paddingLeft: "var(--safe-area-inset-left)",
+        paddingRight: "var(--safe-area-inset-right)"
+      }}
+    >
+      <div className="mx-auto w-full max-w-6xl">
+        {isOwner ? (
+          <div className="flex items-center justify-center gap-3 px-4 py-2">
+            {links.map((link) => (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                className={({ isActive }) =>
+                  `flex min-h-[56px] min-w-[96px] flex-col items-center justify-center rounded-2xl px-4 py-1.5 text-center text-[11px] font-semibold outline-none transition active:scale-95 focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                    isActive ? "text-brand-600 dark:text-blue-300" : "text-slate-400 dark:text-slate-500"
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <link.Icon className="mb-0.5 h-6 w-6" />
+                    <span className={`max-w-full truncate rounded-full px-3 py-0.5 ${isActive ? "bg-brand-50 dark:bg-white/10" : ""}`}>
+                      {link.label}
+                    </span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+        ) : (
+          <div className="grid w-full grid-cols-5 items-end px-1 pb-1 pt-1.5">
+            {links.map((link) => {
+              const isFab = link.to === "/customer-details";
+              if (isFab) {
+                return (
+                  <NavLink
+                    key={link.to}
+                    to={link.to}
+                    aria-label="Milk entry"
+                    className={({ isActive }) =>
+                      `mx-auto -mt-7 flex h-14 w-14 items-center justify-center rounded-full border-4 border-slate-50 text-white shadow-lg transition active:scale-95 dark:border-[#161616] ${
+                        isActive ? "bg-brand-600" : "bg-brand-500"
+                      }`
+                    }
+                  >
+                    <link.Icon className="h-6 w-6" />
+                  </NavLink>
+                );
+              }
+              return (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  className={({ isActive }) =>
+                    `flex min-h-[56px] min-w-0 flex-col items-center justify-center rounded-xl px-1 py-1 text-center text-[10px] font-semibold outline-none transition active:scale-95 focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                      isActive ? "text-brand-600 dark:text-blue-300" : "text-slate-400 dark:text-slate-500"
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <link.Icon className="mb-0.5 h-6 w-6" />
+                      <span className={`max-w-full truncate rounded-full px-2.5 py-0.5 ${isActive ? "bg-brand-50 dark:bg-white/10" : ""}`}>
+                        {link.label}
+                      </span>
+                    </>
+                  )}
+                </NavLink>
+              );
+            })}
+          </div>
+        )}
       </div>
     </nav>
   );

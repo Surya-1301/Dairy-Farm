@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dairy UI Preview - All 3 Options</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:Poppins,sans-serif;background:#0f172a} .phone{width:320px;border-radius:32px;border:10px solid #000;background:#f8fafc;overflow:hidden;position:relative} .darkphone{background:#161616;color:#fff}</style>
+</head>
+<body class="min-h-screen p-6 text-white">
+<h1 class="text-2xl font-bold text-center">🥛 Raipur Dairy — UI/UX Preview — All 3 Options</h1>
+<p class="text-center text-slate-400 text-sm mt-1 mb-8">Open: <span class="text-emerald-300">frontend/public/ui-preview.html</span> in browser</p>
+<div class="flex flex-wrap gap-8 justify-center items-start">
+
+<!-- OPTION 1 -->
+<div>
+<h2 class="text-lg font-bold mb-3 text-center">1. App Shell + BottomNav</h2>
+<div class="phone">
+<div class="bg-white px-4 pt-3 pb-2 flex items-center justify-between">
+<div class="flex items-center gap-2"><div class="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">R</div><div><p class="text-[13px] font-bold text-slate-900 leading-none">Namaste, Ramesh 👋</p><p class="text-[11px] text-slate-500">Raipur Dairy Farm</p></div></div><div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">🌙</div>
+</div>
+<div class="px-4 py-3 bg-[#f8fafc]"><div class="bg-white rounded-2xl shadow p-4"><p class="text-[11px] uppercase text-slate-400 font-semibold">Today Collection</p><p class="text-2xl font-bold text-slate-900">128.5 L</p><div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden flex"><div class="bg-amber-400 w-[55%]"></div><div class="bg-violet-500 w-[45%]"></div></div><div class="flex justify-between mt-1 text-[11px]"><span class="text-amber-600">● M 70L</span><span class="text-violet-600">● E 58L</span></div></div>
+<div class="mt-3 bg-white rounded-2xl shadow p-4 text-[12px] text-slate-500">Content area scrolls here...<br><br>Header is sticky, cards lift.</div></div>
+<div class="bg-white border-t px-2 pt-2 pb-5 flex items-end justify-between text-[10px] font-medium">
+<div class="flex flex-col items-center px-2 py-1 rounded-full bg-blue-50 text-blue-600"><span class="text-lg">🏠</span>Home</div>
+<div class="flex flex-col items-center text-slate-400 px-2"><span class="text-lg">👥</span>Customers</div>
+<div class="w-14 h-14 -mt-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl shadow-lg border-4 border-[#f8fafc]">+</div>
+<div class="flex flex-col items-center text-slate-400 px-2"><span class="text-lg">📊</span>History</div>
+<div class="flex flex-col items-center text-slate-400 px-2"><span class="text-lg">⚙️</span>Settings</div>
+</div>
+</div>
+<p class="text-xs text-slate-400 mt-2 w-[320px] text-center">New: greeting header + active pill + center FAB for milk entry (Data). Safe-area padded. Dark mode fixed.</p>
+</div>
+
+<!-- OPTION 2 -->
+<div>
+<h2 class="text-lg font-bold mb-3 text-center">2. Dashboard 2.0</h2>
+<div class="phone">
+<div class="bg-white px-4 py-3"><p class="font-bold text-slate-900">Dashboard</p><p class="text-[11px] text-slate-500">Tue, 22 Sep • 128.5 L today</p></div>
+<div class="p-3 space-y-3 bg-[#f8fafc]">
+<div class="grid grid-cols-2 gap-2">
+<div class="bg-white rounded-2xl p-3 shadow"><div class="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center">👥</div><p class="text-[10px] text-slate-500 uppercase mt-1">Customers</p><p class="text-xl font-bold">48</p><p class="text-[10px] text-emerald-600">+2 this week</p></div>
+<div class="bg-white rounded-2xl p-3 shadow"><div class="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center">₹</div><p class="text-[10px] text-slate-500 uppercase mt-1">Total</p><p class="text-xl font-bold">₹12,480</p><p class="text-[10px] text-slate-400">Sept till now</p></div>
+<div class="bg-amber-50 border border-amber-100 rounded-2xl p-3"><p class="text-[10px] text-amber-700 uppercase font-semibold">🌅 Morning</p><p class="text-xl font-bold">70.0 L</p><p class="text-[10px] text-amber-600">₹6,860</p></div>
+<div class="bg-violet-50 border border-violet-100 rounded-2xl p-3"><p class="text-[10px] text-violet-700 uppercase font-semibold">🌙 Evening</p><p class="text-xl font-bold">58.5 L</p><p class="text-[10px] text-violet-600">₹5,620</p></div>
+</div>
+<div class="bg-white rounded-2xl p-3 shadow"><div class="flex justify-between items-center"><p class="text-[13px] font-bold text-slate-800">Daily Collection</p><div class="flex bg-slate-100 rounded-full text-[10px] p-0.5"><span class="px-2 py-0.5 rounded-full bg-white shadow">Both</span><span class="px-2 py-0.5 text-slate-500">M</span><span class="px-2 py-0.5 text-slate-500">E</span></div></div><svg viewBox="0 0 260 80" class="w-full h-20 mt-2"><polyline points="0,60 30,50 60,55 90,35 120,40 150,25 180,30 210,15 240,20" fill="none" stroke="#1763d6" stroke-width="3" stroke-linecap="round"/><polyline points="0,65 30,60 60,58 90,50 120,52 150,45 180,42 210,35 240,32" fill="none" stroke="#f59e0b" stroke-width="3" stroke-dasharray="1 0" stroke-linecap="round"/></svg><div class="flex gap-3 text-[10px] mt-1"><span class="text-blue-600">● Morning</span><span class="text-amber-500">● Evening</span></div></div>
+</div>
+</div>
+<p class="text-xs text-slate-400 mt-2 w-[320px] text-center">New: icon stat cards, ₹ en-IN format, M|E|Both toggle chart, no grey boxes.</p>
+</div>
+
+<!-- OPTION 3 -->
+<div>
+<h2 class="text-lg font-bold mb-3 text-center">3. Customers 2.0</h2>
+<div class="phone">
+<div class="bg-white px-4 py-3"><p class="font-bold text-slate-900">Customers • 48</p><div class="mt-2 flex gap-2"><div class="flex-1 bg-slate-100 rounded-full px-3 py-2 text-[12px] text-slate-500">🔍 Search name / mobile...</div><div class="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-xl">+</div></div><div class="flex gap-1.5 mt-2 text-[11px]"><span class="px-3 py-1 rounded-full bg-slate-900 text-white">All</span><span class="px-3 py-1 rounded-full bg-slate-100">Morning</span><span class="px-3 py-1 rounded-full bg-slate-100">Evening</span><span class="px-3 py-1 rounded-full bg-slate-100">M&E</span></div></div>
+<div class="p-3 space-y-2 bg-[#f8fafc]">
+<div class="bg-white rounded-2xl p-3 shadow flex gap-3 items-center"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center font-bold text-blue-700">A</div><div class="flex-1"><p class="text-[13px] font-bold text-slate-900">Amit Verma <span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full ml-1">M & E</span></p><p class="text-[11px] text-slate-500">98271 •••21 • Shanti Nagar</p></div><div class="text-[13px]">✏️ 🗑️</div></div>
+<div class="bg-white rounded-2xl p-3 shadow flex gap-3 items-center"><div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center font-bold text-amber-700">S</div><div class="flex-1"><p class="text-[13px] font-bold text-slate-900">Sunita Yadav <span class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full ml-1">M</span></p><p class="text-[11px] text-slate-500">97551 •••09 • Kota Road</p></div><div class="text-[13px]">✏️ 🗑️</div></div>
+<div class="bg-white rounded-2xl p-3 shadow flex gap-3 items-center"><div class="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center font-bold text-violet-700">R</div><div class="flex-1"><p class="text-[13px] font-bold text-slate-900">Raju Sahu <span class="text-[9px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full ml-1">E</span></p><p class="text-[11px] text-slate-500">99812 •••77 • Tatibandh</p></div><div class="text-[13px]">✏️ 🗑️</div></div>
+<div class="rounded-2xl border-2 border-dashed border-slate-200 p-3 text-center text-[11px] text-slate-400">No more side-scroll table on mobile</div>
+</div>
+</div>
+<p class="text-xs text-slate-400 mt-2 w-[320px] text-center">New: cards replace 6-col table, sticky search + filters, bottom-sheet add form.</p>
+</div>
+
+</div>
+<div class="max-w-4xl mx-auto mt-10 bg-[#1e293b] rounded-2xl p-6 text-sm">
+<h3 class="font-bold text-lg">What changes in code?</h3>
+<ul class="mt-2 space-y-1 text-slate-300 list-disc pl-5"><li><b>Opt 1:</b> tailwind.config tokens + Layout header + BottomNav pill + FAB + dark fix in index.css</li><li><b>Opt 2:</b> new SummaryCards component + Chart toggle + ₹ toLocaleString('en-IN')</li><li><b>Opt 3:</b> Customers list → cards + search/filter + bottom-sheet form, no draggable table</li></ul>
+<p class="mt-4 text-emerald-300">Reply 1, 2, 3 or ALL — I'll implement in your frontend/src right away.</p>
+</div>
+</body>
+</html>

@@ -71,6 +71,8 @@ function Customers() {
   const [showForm, setShowForm] = useState(false);
   const [editingIds, setEditingIds] = useState<number[]>([]);
   const rowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
+  const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const [deleteTarget, setDeleteTarget] = useState<number[] | null>(null);
   const pendingScrollToSerial = useRef<number | null>(null);
   const shouldScrollBack = useRef(false);
   const [formData, setFormData] = useState({
@@ -79,7 +81,30 @@ function Customers() {
     address: "",
     shift: "",
   });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [shiftFilter, setShiftFilter] = useState<"All" | "M" | "E" | "Both">("All");
+  const [formError, setFormError] = useState("");
   const groupedCustomers = sortCustomerGroups(groupCustomersByName(customers));
+  const filteredGroups = groupedCustomers.filter((group) => {
+    const primary = group[0];
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      const hay = `${primary.name} ${primary.mobile} ${primary.address}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (shiftFilter === "All") return true;
+    const hasM = group.some((c) => c.shift === "M");
+    const hasE = group.some((c) => c.shift === "E");
+    if (shiftFilter === "Both") return hasM && hasE;
+    if (shiftFilter === "M") return hasM;
+    return hasE;
+  });
+  const shiftBadgeStyle = (label: string) => {
+    if (label.includes("&") || label === "M/E") return "bg-emerald-100 text-emerald-700";
+    if (label === "M") return "bg-amber-100 text-amber-700";
+    if (label === "E") return "bg-violet-100 text-violet-700";
+    return "bg-slate-100 text-slate-500";
+  };
 
   useEffect(() => {
     const loadCustomers = async () => {
@@ -109,7 +134,7 @@ function Customers() {
     }
 
     const serialNumber = pendingScrollToSerial.current;
-    const row = rowRefs.current[serialNumber];
+    const row = cardRefs.current[serialNumber] ?? rowRefs.current[serialNumber];
     if (!row) return;
 
     const frame = window.requestAnimationFrame(() => {
@@ -127,6 +152,7 @@ function Customers() {
   const handleAddClick = () => {
     setEditingIds([]);
     setFormData({ name: "", mobile: "", address: "", shift: "" });
+    setFormError("");
     setShowForm(true);
   };
 
@@ -149,9 +175,14 @@ function Customers() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError("");
 
     if (!formData.name.trim()) {
-      alert("Customer name is required");
+      setFormError("Customer name is required.");
+      return;
+    }
+    if (!formData.shift) {
+      setFormError("Please select a shift (Both / Morning / Evening).");
       return;
     }
 
@@ -243,16 +274,15 @@ function Customers() {
   };
 
   const handleDelete = async (serialNumbers: number[]) => {
-    const message =
-      serialNumbers.length > 1
-        ? "Are you sure you want to delete this customer (both shifts)?"
-        : "Are you sure you want to delete this customer?";
+    setDeleteTarget(serialNumbers);
+  };
 
-    if (window.confirm(message)) {
-      // Delete all linked shift records (e.g. Morning + Evening) in a single
-      // atomic operation so one record can never be dropped without the other.
-      await deleteCustomers(serialNumbers);
-    }
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    // Delete all linked shift records (e.g. Morning + Evening) in a single
+    // atomic operation so one record can never be dropped without the other.
+    await deleteCustomers(deleteTarget);
+    setDeleteTarget(null);
   };
 
   const getCustomerKey = (customer: Customer) =>
@@ -391,128 +421,245 @@ function Customers() {
     setShowForm(false);
     setFormData({ name: "", mobile: "", address: "", shift: "" });
     setEditingIds([]);
+    setFormError("");
   };
 
   return (
-    <div className="flex flex-col gap-4 md:gap-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-xl md:text-3xl font-bold text-slate-900">
-          Add Customer
-        </h1>
+    <div className="flex flex-col gap-3 md:gap-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-3xl font-bold text-slate-900">
+            Customers
+          </h1>
+          <p className="text-xs text-slate-500 md:text-sm">{filteredGroups.length} of {groupedCustomers.length} shown</p>
+        </div>
         {!showForm && (
           <button
             onClick={handleAddClick}
-            className="rounded-lg bg-brand-500 px-4 py-3 text-sm text-white font-medium hover:bg-brand-600 active:bg-brand-700 transition w-full sm:w-auto min-h-[48px] flex items-center justify-center"
+            className="rounded-full bg-brand-500 px-5 py-3 text-sm text-white font-semibold hover:bg-brand-600 active:scale-95 min-h-[48px] flex items-center justify-center shadow-card shrink-0"
           >
-            + Add Customer
+            + Add
           </button>
         )}
       </div>
 
+      <div className="sticky top-[57px] md:top-[65px] z-20 -mx-4 px-4 py-2 bg-slate-50/95 backdrop-blur dark:bg-[#161616]/95 md:static md:mx-0 md:px-0 md:py-0 md:bg-transparent">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base">🔍</span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search name / mobile..."
+              className="w-full rounded-full border border-slate-200 bg-white pl-10 pr-4 py-3 text-[15px] min-h-[48px] focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+        </div>
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 md:flex-wrap">
+          {(["All", "M", "E", "Both"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setShiftFilter(f)}
+              className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold min-h-[36px] active:scale-95 ${shiftFilter === f ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "bg-white text-slate-600 border border-slate-200 dark:bg-[#212121] dark:border-[#333] dark:text-slate-300"}`}
+            >
+              {f === "All" ? "All" : f === "Both" ? "M&E" : f === "M" ? "Morning" : "Evening"}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {showForm && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 md:p-6">
-          <h2 className="mb-4 text-base md:text-xl font-semibold text-slate-900">
-            {editingIds.length > 0 ? "Edit Customer" : "Add New Customer"}
-          </h2>
-          <form
-            onSubmit={handleSubmit}
-            className="flex flex-col gap-4 md:gap-5"
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 md:items-center md:p-4" onClick={handleCancel}>
+          <div
+            className="w-full max-w-md rounded-t-3xl bg-white p-4 pb-[max(1.5rem,var(--safe-area-inset-bottom))] shadow-2xl md:rounded-3xl md:p-6 dark:bg-[#212121]"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div>
-              <label className="block text-xs md:text-sm font-medium text-slate-700 mb-2">
-                Customer Name
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
-                placeholder="Enter customer name"
-                autoComplete="name"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs md:text-sm font-medium text-slate-700 mb-2">
-                Mobile Number
-              </label>
-              <input
-                type="tel"
-                value={formData.mobile}
-                onChange={(e) =>
-                  setFormData({ ...formData, mobile: e.target.value })
-                }
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
-                placeholder="Enter mobile number"
-                autoComplete="tel"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs md:text-sm font-medium text-slate-700 mb-2">
-                Address
-              </label>
-              <textarea
-                value={formData.address}
-                onChange={(e) =>
-                  setFormData({ ...formData, address: e.target.value })
-                }
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500 min-h-[120px]"
-                placeholder="Enter address"
-                rows={3}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs md:text-sm font-medium text-slate-700 mb-2">
-                Shift
-              </label>
-              <select
-                value={formData.shift}
-                onChange={(e) =>
-                  setFormData({ ...formData, shift: e.target.value })
-                }
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
-              >
-                <option value="">Select shift</option>
-                <option value="M/E">Both Shift</option>
-                <option value="M">Morning Shift</option>
-                <option value="E">Evening Shift</option>
-              </select>
-            </div>
-
-            <div className="flex gap-3 justify-end flex-col-reverse sm:flex-row">
+            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200 md:hidden" />
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-bold text-slate-900 md:text-xl dark:text-white">
+                {editingIds.length > 0 ? "Edit Customer" : "Add New Customer"}
+              </h2>
               <button
                 type="button"
                 onClick={handleCancel}
-                className="rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-700 font-medium hover:bg-slate-100 active:bg-slate-200 transition min-h-[48px] flex items-center justify-center"
+                aria-label="Close"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-xl text-slate-500 active:scale-95 dark:bg-white/10 dark:text-slate-300"
               >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="rounded-lg bg-brand-500 px-4 py-3 text-sm text-white font-medium hover:bg-brand-600 active:bg-brand-700 transition min-h-[48px] flex items-center justify-center"
-              >
-                {editingIds.length > 0 ? "Update" : "Add"} Customer
+                ×
               </button>
             </div>
-          </form>
+            {formError ? (
+              <p className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700">{formError}</p>
+            ) : null}
+            <form onSubmit={handleSubmit} className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto md:max-h-none md:overflow-visible">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Customer Name *
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base min-h-[48px] focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  placeholder="e.g. Amit Verma"
+                  autoComplete="name"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Mobile Number
+                </label>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={formData.mobile}
+                  onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) })}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base min-h-[48px] tracking-wider focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  placeholder="10-digit mobile"
+                  autoComplete="tel"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Address
+                </label>
+                <textarea
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base min-h-[88px] focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  placeholder="Village / street..."
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Shift *
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { v: "M/E", l: "Both M&E" },
+                    { v: "M", l: "Morning" },
+                    { v: "E", l: "Evening" },
+                  ].map((o) => (
+                    <button
+                      key={o.v}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, shift: o.v })}
+                      className={`rounded-2xl border px-2 py-3 text-[13px] font-semibold min-h-[48px] active:scale-95 ${formData.shift === o.v ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-white/10 dark:text-white" : "border-slate-200 bg-white text-slate-600 dark:bg-white/5 dark:border-[#444] dark:text-slate-300"}`}
+                    >
+                      {o.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-1 flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 min-h-[52px] active:scale-[0.98] dark:border-[#444] dark:text-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-[2] rounded-2xl bg-brand-500 px-4 py-3 text-sm font-bold text-white min-h-[52px] shadow-card active:scale-[0.98]"
+                >
+                  {editingIds.length > 0 ? "Update" : "+ Add"} Customer
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <div>
         {loading ? (
-          <div className="p-6 md:p-8 text-center text-slate-500 text-xs md:text-sm">
-            <p>Loading customers...</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-brand-500" />
+            <p className="mt-3 text-sm text-slate-500">Loading customers...</p>
           </div>
         ) : customers.length === 0 ? (
-          <div className="p-6 md:p-8 text-center text-slate-500 text-xs md:text-sm">
-            <p>No customers added yet. Click "Add Customer" to get started.</p>
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-card">
+            <p className="text-3xl">🐄</p>
+            <p className="mt-2 text-sm font-semibold text-slate-800">No customers yet</p>
+            <p className="mt-1 text-xs text-slate-500">Tap + Add to add your first customer.</p>
+          </div>
+        ) : filteredGroups.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
+            <p className="text-sm text-slate-500">No matches for {searchQuery || shiftFilter}. Try clearing search.</p>
           </div>
         ) : (
-          <table className="w-full">
+          <>
+            {/* Mobile cards - no side-scroll */}
+            <div className="flex flex-col gap-2.5 md:hidden">
+              {filteredGroups.map((group, groupIndex) => {
+                const primary = group[0];
+                const label = formatShiftLabel(group);
+                const initial = (primary.name.trim().charAt(0) || "?").toUpperCase();
+                return (
+                  <div
+                    key={primary.serialNumber}
+                    ref={(node) => {
+                      cardRefs.current[primary.serialNumber] = node;
+                    }}
+                    className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-card"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-base font-bold text-brand-700">
+                        {initial}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate text-[15px] font-bold text-slate-900">{primary.name}</p>
+                        </div>
+                        <p className="selectable mt-0.5 truncate text-xs text-slate-500">
+                          {primary.mobile || "No mobile"}{primary.address ? ` • ${primary.address}` : ""}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${shiftBadgeStyle(label)}`}>
+                        {label}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-4 gap-2">
+                      <button
+                        onClick={() => handleMove(group, "up")}
+                        disabled={groupIndex === 0}
+                        aria-label="Move up"
+                        className="flex min-h-[44px] items-center justify-center rounded-xl border border-slate-200 text-base text-slate-600 active:scale-95 disabled:opacity-30"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => handleMove(group, "down")}
+                        disabled={groupIndex === filteredGroups.length - 1}
+                        aria-label="Move down"
+                        className="flex min-h-[44px] items-center justify-center rounded-xl border border-slate-200 text-base text-slate-600 active:scale-95 disabled:opacity-30"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        onClick={() => handleEditClick(group)}
+                        className="flex min-h-[44px] items-center justify-center rounded-xl bg-brand-50 text-[13px] font-bold text-brand-700 active:scale-95"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(group.map((c) => c.serialNumber))}
+                        className="flex min-h-[44px] items-center justify-center rounded-xl bg-red-50 text-[13px] font-bold text-red-600 active:scale-95"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop / tablet table - kept for md+ */}
+            <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-card md:block">
+              <table className="w-full">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
@@ -536,7 +683,7 @@ function Customers() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {groupedCustomers.map((group, groupIndex) => {
+              {filteredGroups.map((group, groupIndex) => {
                 const primary = group[0];
                 const isDragging = draggedSerial === primary.serialNumber;
                 const isDropTarget = dropSerial === primary.serialNumber;
@@ -593,8 +740,23 @@ function Customers() {
               })}
             </tbody>
           </table>
+            </div>
+          </>
         )}
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 md:items-center" onClick={() => setDeleteTarget(null)}>
+          <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl dark:bg-[#212121]" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Customer?</h3>
+            <p className="mt-1 text-[13px] text-slate-500">This will remove this customer. This cannot be undone.</p>
+            <div className="mt-4 flex gap-2.5">
+              <button type="button" onClick={() => setDeleteTarget(null)} className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold min-h-[52px] active:scale-[0.98]">Cancel</button>
+              <button type="button" onClick={() => void confirmDelete()} className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-sm font-bold text-white min-h-[52px] active:scale-[0.98]">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

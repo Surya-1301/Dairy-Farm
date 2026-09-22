@@ -18,19 +18,29 @@ button {
   font-size: 16px;
 }
 
-/* Improve text rendering on mobile */
+/* Improve text rendering on mobile - allow selection for numbers/totals (mobile fix) */
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Disable text selection only on nav/buttons, allow everywhere else for mobile copy */
+nav,
+button,
+.bottom-nav {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
 }
 
-/* Allow text selection in inputs and textareas */
+/* Allow text selection everywhere else */
 input,
 textarea,
-[contenteditable] {
+[contenteditable],
+.selectable,
+td,
+p {
   -webkit-user-select: text;
   user-select: text;
 }
@@ -83,8 +93,9 @@ html.dark body {
   color: #f0f0f0;
 }
 
-* {
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+/* Mobile fix: only animate buttons/cards, not every cell in the big milk table */
+button, a, .card, nav {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 /* Page-level containers (Layout, BottomNav, full-screen auth pages) share this

@@ -1892,13 +1892,13 @@ function CustomerTable() {
   };
 
   return (
-    <div className="space-y-3 bg-white p-2 sm:p-2.5 md:p-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:flex lg:items-start lg:justify-between lg:gap-4">
-        <div className="col-span-1 grid grid-cols-2 gap-2 sm:col-span-2 sm:grid-cols-2 md:col-span-3 md:contents lg:col-span-auto lg:flex lg:flex-nowrap lg:items-center lg:gap-2">
+    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-card dark:bg-[#212121] dark:border-[#333]">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible lg:flex-nowrap lg:items-center lg:gap-2">
           <button
             type="button"
             onClick={addRow}
-            className="w-full min-h-[40px] rounded-lg bg-brand-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-brand-700 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 touch-manipulation whitespace-nowrap"
+            className="shrink-0 w-auto min-h-[48px] rounded-full bg-brand-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
           >
             Add Row
           </button>
@@ -1906,7 +1906,7 @@ function CustomerTable() {
             type="button"
             onClick={removeRow}
             disabled={rows.length <= 1}
-            className="w-full min-h-[40px] rounded-lg border border-red-500 bg-red-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 touch-manipulation whitespace-nowrap"
+            className="shrink-0 w-auto min-h-[48px] rounded-full border border-red-500 bg-red-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
           >
             Remove Row
           </button>
@@ -1914,14 +1914,14 @@ function CustomerTable() {
             type="button"
             onClick={removeSelectedRows}
             disabled={selectedRowIndices.length === 0 || rows.length - selectedRowIndices.length < 1}
-            className="w-full min-h-[40px] rounded-lg border border-rose-600 bg-rose-600 px-2 py-2 text-[11px] font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 touch-manipulation whitespace-nowrap"
+            className="shrink-0 w-auto min-h-[48px] rounded-full border border-rose-600 bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
           >
             Delete Row{selectedRowIndices.length ? ` (${selectedRowIndices.length})` : ""}
           </button>
           <button
             type="button"
             onClick={addColumn}
-            className="w-full min-h-[40px] rounded-lg bg-brand-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-brand-700 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 touch-manipulation whitespace-nowrap"
+            className="shrink-0 w-auto min-h-[48px] rounded-full bg-brand-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
           >
             Add Column
           </button>
@@ -1929,7 +1929,7 @@ function CustomerTable() {
             type="button"
             onClick={removeColumn}
             disabled={dayCount <= 1}
-            className="w-full min-h-[40px] rounded-lg border border-red-500 bg-red-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 touch-manipulation whitespace-nowrap"
+            className="shrink-0 w-auto min-h-[48px] rounded-full border border-red-500 bg-red-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
           >
             Remove Column
           </button>
@@ -1937,37 +1937,31 @@ function CustomerTable() {
             type="button"
             onClick={removeSelectedColumns}
             disabled={selectedDayIndices.length === 0 || dayCount - selectedDayIndices.length < 1}
-            className="w-full min-h-[40px] rounded-lg border border-rose-600 bg-rose-600 px-2 py-2 text-[11px] font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 touch-manipulation whitespace-nowrap"
+            className="shrink-0 w-auto min-h-[48px] rounded-full border border-rose-600 bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
           >
             Delete Column{selectedDayIndices.length ? ` (${selectedDayIndices.length})` : ""}
           </button>
           <button
             type="button"
             onClick={() => void archiveToHistory("")}
-            className="w-full min-h-[40px] rounded-lg border border-amber-500 bg-amber-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-amber-600 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 touch-manipulation whitespace-nowrap"
+            className="shrink-0 w-auto min-h-[48px] rounded-full border border-amber-500 bg-amber-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
           >
             Archive
           </button>
           <button
             type="button"
             onClick={openChangeSheetModal}
-            className="w-full min-h-[40px] rounded-lg border border-indigo-500 bg-indigo-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-indigo-600 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 touch-manipulation whitespace-nowrap"
+            className="shrink-0 w-auto min-h-[48px] rounded-full border border-indigo-500 bg-indigo-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
           >
             Archived Sheets
           </button>
         </div>
-        <div
-          className={
-            activeHistoryId
-              ? "col-span-1 grid grid-cols-2 gap-2 sm:col-span-2 md:col-span-3 md:contents lg:col-span-auto lg:flex lg:items-center lg:gap-2"
-              : "col-span-1 flex gap-2 sm:col-span-2 md:col-span-3 md:contents lg:col-span-auto lg:flex lg:items-center lg:gap-2"
-          }
-        >
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 lg:mx-0 lg:px-0 lg:overflow-visible lg:flex lg:items-center lg:gap-2">
           {activeHistoryId ? (
             <button
               type="button"
               onClick={() => void backToCurrentSheet()}
-              className="w-full min-h-[40px] min-w-0 rounded-lg border border-sky-500 bg-sky-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-sky-600 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 md:col-start-3 md:row-start-3 lg:col-start-auto lg:row-start-auto lg:w-auto lg:whitespace-nowrap touch-manipulation whitespace-nowrap"
+              className="shrink-0 w-auto min-h-[48px] rounded-full border border-sky-500 bg-sky-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
             >
               Back to Current Sheet
             </button>
@@ -1975,7 +1969,7 @@ function CustomerTable() {
           <button
             type="button"
             onClick={openSaveNameModal}
-            className={`min-h-[40px] min-w-0 rounded-lg border border-emerald-500 bg-emerald-500 px-2 py-2 text-[11px] font-semibold text-white hover:bg-emerald-600 sm:min-h-[42px] sm:px-2.5 sm:text-xs md:text-sm md:px-2.5 ${activeHistoryId ? "w-full md:col-span-3 md:row-start-4" : "w-full flex-1"} lg:col-start-auto lg:row-start-auto lg:col-span-auto lg:w-auto lg:whitespace-nowrap touch-manipulation whitespace-nowrap`}
+            className={`shrink-0 min-h-[48px] rounded-full border border-emerald-500 bg-emerald-500 px-5 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap ${activeHistoryId ? "w-auto" : "flex-1 lg:flex-none"}`}
           >
             Save to History
           </button>
@@ -2113,7 +2107,7 @@ function CustomerTable() {
             <tr>
               <th
                 style={{ width: columnWidths.serial, position: "relative" }}
-                className="lg:sticky lg:top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
               >
                 S No
                 <span
@@ -2124,7 +2118,7 @@ function CustomerTable() {
               </th>
               <th
                 style={{ width: columnWidths.customerName, position: "relative" }}
-                className="lg:sticky lg:top-0 lg:left-0 z-30 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="sticky top-0 left-0 z-30 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
               >
                 Customer Name
                 <span
@@ -2135,7 +2129,7 @@ function CustomerTable() {
               </th>
               <th
                 style={{ width: columnWidths.shift, position: "relative" }}
-                className="lg:sticky lg:top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
               >
                 Shift
                 <span
@@ -2263,7 +2257,7 @@ function CustomerTable() {
                       <input
                         value={row.customerName}
                         onChange={(event) => updateCustomerName(row.serialNumber, event.target.value)}
-                        className={`h-9 w-full min-w-0 rounded border border-slate-300 px-2 py-1 text-left ${isRowSelected ? "bg-blue-50" : "bg-white"}`}
+                        className={`h-11 min-h-[44px] w-full min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-left text-[14px] focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${isRowSelected ? "bg-blue-50" : "bg-white"}`}
                       />
                     </td>
                   )}
@@ -2276,7 +2270,7 @@ function CustomerTable() {
                     <input
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
-                      className={`h-9 w-full rounded border border-slate-300 px-2 py-1 text-center ${isRowSelected ? "bg-blue-50" : "bg-white"}`}
+                      className={`h-11 min-h-[44px] w-full rounded-lg border border-slate-300 px-2 py-2 text-center text-[14px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${isRowSelected ? "bg-blue-50" : "bg-white"}`}
                     />
                     </td>
                   {row.days.map((value, dayIndex) => (
@@ -2293,7 +2287,10 @@ function CustomerTable() {
                     >
                       <input
                         type="text"
-                        inputMode="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        enterKeyHint="done"
+                        aria-label={`${row.customerName || "Customer"} Day ${dayIndex + 1}`}
                         value={
                           editingDayCell &&
                           editingDayCell.serialNumber === row.serialNumber &&
@@ -2328,7 +2325,7 @@ function CustomerTable() {
                           updateDayValue(row.serialNumber, dayIndex, event.target.value);
                           setEditingDayCell(null);
                         }}
-                        className={`h-9 w-full rounded border border-slate-300 px-2 py-1 text-center ${selectedDayIndices.includes(dayIndex) ? "bg-blue-100" : isRowSelected ? "bg-blue-50" : "bg-white"}`}
+                        className={`h-11 min-h-[44px] w-full rounded-lg border px-1 py-2 text-center text-[15px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${selectedDayIndices.includes(dayIndex) ? "border-blue-300 bg-blue-100" : isRowSelected ? "border-blue-200 bg-blue-50" : row.shift === "M" ? "border-amber-200 bg-amber-50/60" : row.shift === "E" ? "border-violet-200 bg-violet-50/60" : "border-slate-300 bg-white"}`}
                       />
                     </td>
                   ))}

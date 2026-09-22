@@ -77,13 +77,28 @@ function Dashboard() {
       <Chart data={chartData} />
 
       {activeUser?.role === "owner" ? (
-        <div className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
-          <h2 className="text-base md:text-lg font-semibold text-slate-900">User Profiles</h2>
-          <p className="mt-1 text-xs md:text-sm text-slate-600">Only owner can view user profile data.</p>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card md:p-6 dark:bg-[#212121] dark:border-[#333]">
+          <h2 className="text-base md:text-lg font-semibold text-slate-900 dark:text-white">User Profiles</h2>
+          <p className="mt-1 text-xs md:text-sm text-slate-600 dark:text-slate-400">Only owner can view user profile data.</p>
           {userProfiles.length === 0 ? (
             <p className="mt-4 text-xs md:text-sm text-slate-500">No user profiles found yet.</p>
           ) : (
-            <div className="mt-4 overflow-x-auto">
+            <>
+              <div className="mt-3 flex flex-col gap-2 md:hidden">
+                {userProfiles.map((profile) => (
+                  <div key={profile.email} className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-card dark:bg-white/5 dark:border-[#444]">
+                    <p className="truncate text-[15px] font-bold text-slate-900 dark:text-white">{profile.name || "-"}</p>
+                    <p className="selectable mt-0.5 truncate text-xs text-slate-500">{profile.email}</p>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="selectable text-xs font-medium text-slate-600 dark:text-slate-300">{profile.phone || "No phone"}</span>
+                      <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                        {new Date(profile.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 hidden overflow-x-auto md:block">
               <table className="min-w-full text-left text-xs md:text-sm">
                 <thead className="bg-slate-50 text-slate-600">
                   <tr>
@@ -107,6 +122,7 @@ function Dashboard() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       ) : null}
