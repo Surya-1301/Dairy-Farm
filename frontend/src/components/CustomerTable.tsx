@@ -1892,13 +1892,13 @@ function CustomerTable() {
   };
 
   return (
-    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-card dark:bg-[#212121] dark:border-[#333]">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible lg:flex-nowrap lg:items-center lg:gap-2">
+    <div className="relative left-1/2 w-full max-w-none -translate-x-1/2 space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-card dark:bg-[#212121] dark:border-[#333] md:-mt-8 md:w-screen md:space-y-2 md:rounded-none md:border-0 md:bg-white dark:md:bg-[#161616] md:pt-2 md:px-0 md:pb-0 md:shadow-none">
+      <div className="grid grid-cols-3 gap-2 lg:flex lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+        <div className="contents lg:flex lg:flex-wrap lg:overflow-visible lg:mx-0 lg:px-0 lg:items-center lg:gap-2">
           <button
             type="button"
             onClick={addRow}
-            className="shrink-0 w-auto min-h-[48px] rounded-full bg-brand-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
+            className="w-full min-w-0 min-h-[48px] rounded-full bg-brand-500 lg:w-auto px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
           >
             Add Row
           </button>
@@ -1906,7 +1906,7 @@ function CustomerTable() {
             type="button"
             onClick={removeRow}
             disabled={rows.length <= 1}
-            className="shrink-0 w-auto min-h-[48px] rounded-full border border-red-500 bg-red-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
+            className="w-full min-w-0 min-h-[48px] rounded-full border border-red-500 lg:w-auto bg-red-500 px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
           >
             Remove Row
           </button>
@@ -1914,14 +1914,14 @@ function CustomerTable() {
             type="button"
             onClick={removeSelectedRows}
             disabled={selectedRowIndices.length === 0 || rows.length - selectedRowIndices.length < 1}
-            className="shrink-0 w-auto min-h-[48px] rounded-full border border-rose-600 bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
+            className="w-full min-w-0 min-h-[48px] rounded-full border border-rose-600 lg:w-auto bg-rose-600 px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
           >
             Delete Row{selectedRowIndices.length ? ` (${selectedRowIndices.length})` : ""}
           </button>
           <button
             type="button"
             onClick={addColumn}
-            className="shrink-0 w-auto min-h-[48px] rounded-full bg-brand-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
+            className="w-full min-w-0 min-h-[48px] rounded-full bg-brand-500 lg:w-auto px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
           >
             Add Column
           </button>
@@ -1929,7 +1929,7 @@ function CustomerTable() {
             type="button"
             onClick={removeColumn}
             disabled={dayCount <= 1}
-            className="shrink-0 w-auto min-h-[48px] rounded-full border border-red-500 bg-red-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
+            className="w-full min-w-0 min-h-[48px] rounded-full border border-red-500 lg:w-auto bg-red-500 px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
           >
             Remove Column
           </button>
@@ -1937,42 +1937,44 @@ function CustomerTable() {
             type="button"
             onClick={removeSelectedColumns}
             disabled={selectedDayIndices.length === 0 || dayCount - selectedDayIndices.length < 1}
-            className="shrink-0 w-auto min-h-[48px] rounded-full border border-rose-600 bg-rose-600 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
+            className="w-full min-w-0 min-h-[48px] rounded-full border border-rose-600 lg:w-auto bg-rose-600 px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 disabled:opacity-50 touch-manipulation whitespace-nowrap"
           >
             Delete Column{selectedDayIndices.length ? ` (${selectedDayIndices.length})` : ""}
           </button>
           <button
             type="button"
             onClick={() => void archiveToHistory("")}
-            className="shrink-0 w-auto min-h-[48px] rounded-full border border-amber-500 bg-amber-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
+            className="w-full min-w-0 min-h-[48px] rounded-full border border-amber-500 lg:w-auto bg-amber-500 px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
           >
             Archive
           </button>
           <button
             type="button"
             onClick={openChangeSheetModal}
-            className="shrink-0 w-auto min-h-[48px] rounded-full border border-indigo-500 bg-indigo-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
+            className="w-full min-w-0 min-h-[48px] rounded-full border border-indigo-500 lg:w-auto bg-indigo-500 px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
           >
             Archived Sheets
           </button>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 lg:mx-0 lg:px-0 lg:overflow-visible lg:flex lg:items-center lg:gap-2">
+        <div className="contents lg:flex lg:items-center lg:gap-2">
+          <button
+            type="button"
+            onClick={openSaveNameModal}
+            className={`w-full min-w-0 min-h-[48px] rounded-full border border-emerald-500 bg-emerald-500 px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap lg:w-auto ${activeHistoryId ? "" : "lg:min-w-[180px]"}`}
+          >
+            Save to History
+          </button>
+
           {activeHistoryId ? (
             <button
               type="button"
               onClick={() => void backToCurrentSheet()}
-              className="shrink-0 w-auto min-h-[48px] rounded-full border border-sky-500 bg-sky-500 px-4 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap"
+              className="col-span-3 flex w-full min-h-[48px] items-center justify-center rounded-full border border-sky-500 bg-sky-500 px-2 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap lg:col-span-auto lg:w-auto"
             >
               Back to Current Sheet
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={openSaveNameModal}
-            className={`shrink-0 min-h-[48px] rounded-full border border-emerald-500 bg-emerald-500 px-5 py-2 text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap ${activeHistoryId ? "w-auto" : "flex-1 lg:flex-none"}`}
-          >
-            Save to History
-          </button>
+
           <span className="sr-only" aria-live="polite">
             {saveStatus === "saving" ? "Saving..." : "Saved"}
           </span>
@@ -1981,9 +1983,9 @@ function CustomerTable() {
 
       {showSaveNameModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-lg">
-            <h3 className="text-sm font-semibold text-slate-800">Name this sheet</h3>
-            <p className="mt-1 text-xs text-slate-500">Give this saved sheet a name so it's easy to find in History.</p>
+          <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-lg dark:bg-[#212121] dark:border dark:border-[#444]">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-white">Name this sheet</h3>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Give this saved sheet a name so it's easy to find in History.</p>
             <input
               type="text"
               autoFocus
@@ -2001,7 +2003,7 @@ function CustomerTable() {
               <button
                 type="button"
                 onClick={() => setShowSaveNameModal(false)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 dark:border-[#444] dark:text-slate-200 dark:hover:bg-[#2a2a2a]"
               >
                 Cancel
               </button>
@@ -2019,25 +2021,25 @@ function CustomerTable() {
 
       {showChangeSheetModal && (
         <div className="fixed inset-0 z-50 max-sm:z-[9999] flex items-center justify-center bg-black/40 p-2 sm:p-4">
-          <div className="w-[calc(100vw-1rem)] max-w-md max-h-[calc(100dvh-1rem)] overflow-hidden rounded-xl bg-white p-3 shadow-lg sm:p-4">
+          <div className="w-[calc(100vw-1rem)] max-w-md max-h-[calc(100dvh-1rem)] overflow-hidden rounded-xl bg-white p-3 shadow-lg sm:p-4 dark:bg-[#212121] dark:border dark:border-[#444]">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-semibold text-slate-800">Archived sheets</h3>
-                <p className="mt-1 truncate text-xs text-slate-500">Open a saved sheet to edit it.</p>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-white">Archived sheets</h3>
+                <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">Open a saved sheet to edit it.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowChangeSheetModal(false)}
-                className="rounded-lg px-2 py-1 text-lg leading-none text-slate-500 hover:bg-slate-100"
+                className="rounded-lg px-2 py-1 text-lg leading-none text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#2a2a2a]"
                 aria-label="Close change sheet dialog"
               >
                 ×
               </button>
             </div>
             {historyLoading ? (
-              <p className="mt-4 text-sm text-slate-500">Loading saved sheets...</p>
+              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Loading saved sheets...</p>
             ) : archivedEntries.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-500">No saved sheets found. Save a sheet to History first.</p>
+              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No saved sheets found. Save a sheet to History first.</p>
             ) : (
               <div className="mt-4 max-h-[58dvh] space-y-2 overflow-y-auto overscroll-contain pr-1">
                 {archivedEntries.map((entry, index) => (
@@ -2046,8 +2048,8 @@ function CustomerTable() {
                     className="flex min-h-[52px] w-full flex-col gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left sm:flex-row sm:items-center sm:justify-between"
                   >
                     <span>
-                      <span className="block text-sm font-semibold text-slate-800">{entry.name || `Sheet ${archivedEntries.length - index}`}</span>
-                      <span className="mt-1 block text-xs text-slate-500">Saved {new Date(entry.savedAt).toLocaleString()}</span>
+                      <span className="block text-sm font-semibold text-slate-800 dark:text-white">{entry.name || `Sheet ${archivedEntries.length - index}`}</span>
+                      <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Saved {new Date(entry.savedAt).toLocaleString()}</span>
                     </span>
                     <span className="flex w-full shrink-0 items-center justify-end gap-4 sm:ml-3 sm:w-auto">
                       <button
@@ -2086,14 +2088,14 @@ function CustomerTable() {
 
 
       <div
-        className="w-full min-w-0 max-w-full overflow-auto overscroll-contain rounded-md [scrollbar-width:thin] [-webkit-overflow-scrolling:touch] max-h-[70dvh] md:max-h-[72dvh] lg:h-[calc(100dvh-145px)] lg:max-h-none"
+        className="w-full min-w-0 max-w-full overflow-auto overscroll-contain rounded-md dark:bg-[#161616] [scrollbar-width:thin] [-webkit-overflow-scrolling:touch] max-h-[70dvh] md:h-[calc(100dvh-145px)] md:max-h-none"
         style={{
           touchAction: "pan-x pan-y",
           WebkitOverflowScrolling: "touch",
           scrollbarGutter: "stable"
         }}
       >
-        <table className="min-w-[1080px] table-fixed border-collapse border border-slate-400 text-center text-xs md:text-sm">
+        <table className="min-w-[1080px] table-fixed border-collapse border border-slate-400 text-center text-xs md:text-sm dark:bg-[#161616]">
           <colgroup>
             <col style={{ width: columnWidths.serial }} />
             <col style={{ width: columnWidths.customerName }} />
@@ -2103,11 +2105,11 @@ function CustomerTable() {
             ))}
             <col style={{ width: columnWidths.total }} />
           </colgroup>
-          <thead className="bg-slate-100 font-semibold text-slate-800">
+          <thead className="bg-slate-100 font-semibold text-slate-800 dark:bg-[#262626] dark:text-slate-100">
             <tr>
               <th
                 style={{ width: columnWidths.serial, position: "relative" }}
-                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5 dark:border-[#444] dark:bg-[#262626]"
               >
                 S No
                 <span
@@ -2118,7 +2120,7 @@ function CustomerTable() {
               </th>
               <th
                 style={{ width: columnWidths.customerName, position: "relative" }}
-                className="sticky top-0 left-0 z-30 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="sticky top-0 left-0 z-30 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5 dark:border-[#444] dark:bg-[#262626]"
               >
                 Customer Name
                 <span
@@ -2172,7 +2174,7 @@ function CustomerTable() {
               })}
               <th
                 style={{ width: columnWidths.total, position: "relative" }}
-                className="lg:sticky lg:top-0 z-20 border-l-2 border-r-2 border-t border-b border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="lg:sticky lg:top-0 z-20 border-l-2 border-r-2 border-t border-b border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5 dark:border-[#444] dark:bg-[#262626]"
               >
                 Total
                 <span
@@ -2206,7 +2208,7 @@ function CustomerTable() {
                 <tr
                   key={`${row.serialNumber}-${rowIndex}`}
                   style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT }}
-                  className={isRowSelected ? "bg-blue-50" : "bg-white"}
+                  className={isRowSelected ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-[#1c1c1c]"}
                 >
                   {nameSpan > 0 && (
                     <td
@@ -2257,20 +2259,20 @@ function CustomerTable() {
                       <input
                         value={row.customerName}
                         onChange={(event) => updateCustomerName(row.serialNumber, event.target.value)}
-                        className={`h-11 min-h-[44px] w-full min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-left text-[14px] focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${isRowSelected ? "bg-blue-50" : "bg-white"}`}
+                        className={`h-11 min-h-[44px] w-full min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-left text-[14px] focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white ${isRowSelected ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-[#1c1c1c]"}`}
                       />
                     </td>
                   )}
                   <td
                     onDoubleClick={(event) => selectSingleShiftRow(rowIndex, event)}
                     style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, position: "relative", verticalAlign: "middle" }}
-                    className={`border border-slate-300 px-1 py-1 md:px-2 ${isRowSelected ? "bg-blue-100" : "bg-white"}`}
+                    className={`border border-slate-300 px-1 py-1 md:px-2 dark:border-[#444] ${isRowSelected ? "bg-blue-100 dark:bg-blue-900/50" : "bg-white dark:bg-[#1c1c1c]"}`}
                     title="Double-click this Shift cell to select only this shift row for deletion. Single click edits normally."
                   >
                     <input
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
-                      className={`h-11 min-h-[44px] w-full rounded-lg border border-slate-300 px-2 py-2 text-center text-[14px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${isRowSelected ? "bg-blue-50" : "bg-white"}`}
+                      className={`h-11 min-h-[44px] w-full rounded-lg border border-slate-300 px-2 py-2 text-center text-[14px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white ${isRowSelected ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-[#1c1c1c]"}`}
                     />
                     </td>
                   {row.days.map((value, dayIndex) => (
@@ -2325,7 +2327,7 @@ function CustomerTable() {
                           updateDayValue(row.serialNumber, dayIndex, event.target.value);
                           setEditingDayCell(null);
                         }}
-                        className={`h-11 min-h-[44px] w-full rounded-lg border px-1 py-2 text-center text-[15px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${selectedDayIndices.includes(dayIndex) ? "border-blue-300 bg-blue-100" : isRowSelected ? "border-blue-200 bg-blue-50" : row.shift === "M" ? "border-amber-200 bg-amber-50/60" : row.shift === "E" ? "border-violet-200 bg-violet-50/60" : "border-slate-300 bg-white"}`}
+                        className={`h-11 min-h-[44px] w-full rounded-lg border px-1 py-2 text-center text-[15px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:text-white ${selectedDayIndices.includes(dayIndex) ? "border-blue-300 bg-blue-100 dark:border-blue-700 dark:bg-blue-900/50" : isRowSelected ? "border-blue-200 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/40" : row.shift === "M" ? "border-amber-200 bg-amber-50/60 dark:border-amber-700 dark:bg-amber-950/30" : row.shift === "E" ? "border-violet-200 bg-violet-50/60 dark:border-violet-700 dark:bg-violet-950/30" : "border-slate-300 bg-white dark:border-[#444] dark:bg-[#1c1c1c]"}`}
                       />
                     </td>
                   ))}
@@ -2345,14 +2347,11 @@ function CustomerTable() {
             });
             })()}
           </tbody>
-          <tfoot
-            className="sticky bottom-0 z-40 bg-slate-100"
-            style={{ position: "sticky", bottom: 0, zIndex: 40 }}
-          >
-            <tr className="bg-slate-100 font-bold text-slate-900">
+          <tfoot className="bg-slate-100 dark:bg-[#262626]">
+            <tr className="bg-slate-100 font-bold text-slate-900 dark:bg-[#262626] dark:text-white">
               <td
                 colSpan={3}
-                className="border-l-2 border-y border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5"
+                className="border-l-2 border-y border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
               >
                 Total
               </td>
@@ -2365,16 +2364,14 @@ function CustomerTable() {
                 return (
                   <td
                     key={`daily-total-${dayIndex}`}
-                    className="border-l-2 border-r-2 border-y border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5"
-                    style={{ position: "relative", zIndex: 41 }}
+                    className="border-l-2 border-r-2 border-y border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
                   >
                     {dayTotal}
                   </td>
                 );
               })}
               <td
-                className="border border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5"
-                style={{ position: "relative", zIndex: 41 }}
+                className="border border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
               >
                 {rows.reduce(
                   (grandTotal, row) =>

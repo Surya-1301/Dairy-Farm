@@ -64,7 +64,7 @@ function Dashboard() {
   return (
     <section className="space-y-4 md:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2 md:gap-3">
-        <h1 className="text-xl md:text-3xl font-bold text-slate-900">Dashboard</h1>
+        <h1 className="text-xl md:text-3xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
       </div>
 
       <SummaryTable
@@ -81,7 +81,7 @@ function Dashboard() {
           <h2 className="text-base md:text-lg font-semibold text-slate-900 dark:text-white">User Profiles</h2>
           <p className="mt-1 text-xs md:text-sm text-slate-600 dark:text-slate-400">Only owner can view user profile data.</p>
           {userProfiles.length === 0 ? (
-            <p className="mt-4 text-xs md:text-sm text-slate-500">No user profiles found yet.</p>
+            <p className="mt-4 text-xs md:text-sm text-slate-500 dark:text-slate-400">No user profiles found yet.</p>
           ) : (
             <>
               <div className="mt-3 flex flex-col gap-2 md:hidden">
@@ -98,9 +98,9 @@ function Dashboard() {
                   </div>
                 ))}
               </div>
-              <div className="mt-4 hidden overflow-x-auto md:block">
+              <div className="mt-4 hidden overflow-x-auto rounded-xl border border-slate-200 dark:border-[#333] md:block">
               <table className="min-w-full text-left text-xs md:text-sm">
-                <thead className="bg-slate-50 text-slate-600">
+                <thead className="bg-slate-50 text-slate-600 dark:bg-[#262626] dark:text-slate-300">
                   <tr>
                     <th className="rounded-l-lg px-2 md:px-3 py-2 font-semibold">Name</th>
                     <th className="px-2 md:px-3 py-2 font-semibold hidden md:table-cell">Email</th>
@@ -110,11 +110,11 @@ function Dashboard() {
                 </thead>
                 <tbody>
                   {userProfiles.map((profile) => (
-                    <tr key={profile.email} className="border-b border-slate-100">
+                    <tr key={profile.email} className="border-b border-slate-100 dark:border-[#333]">
                       <td className="px-2 md:px-3 py-2 text-slate-900 font-medium">{profile.name || "-"}</td>
-                      <td className="px-2 md:px-3 py-2 text-slate-700 hidden md:table-cell">{profile.email}</td>
-                      <td className="px-2 md:px-3 py-2 text-slate-700 hidden sm:table-cell">{profile.phone || "-"}</td>
-                      <td className="px-2 md:px-3 py-2 text-slate-700 text-right text-xs">
+                      <td className="px-2 md:px-3 py-2 text-slate-700 dark:text-slate-300 hidden md:table-cell">{profile.email}</td>
+                      <td className="px-2 md:px-3 py-2 text-slate-700 dark:text-slate-300 hidden sm:table-cell">{profile.phone || "-"}</td>
+                      <td className="px-2 md:px-3 py-2 text-slate-700 dark:text-slate-300 text-right text-xs">
                         {new Date(profile.updatedAt).toLocaleDateString()}
                       </td>
                     </tr>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   addCustomer,
   deleteCustomer,
@@ -67,6 +67,11 @@ function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [draggedSerial, setDraggedSerial] = useState<number | null>(null);
   const [dropSerial, setDropSerial] = useState<number | null>(null);
+  const [mobileDraggedSerial, setMobileDraggedSerial] = useState<number | null>(null);
+  const [mobileDropSerial, setMobileDropSerial] = useState<number | null>(null);
+  const mobileDragTimerRef = useRef<number | null>(null);
+  const mobilePointerIdRef = useRef<number | null>(null);
+  const mobileDraggingRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingIds, setEditingIds] = useState<number[]>([]);
@@ -417,6 +422,139 @@ function Customers() {
     setDropSerial(null);
   };
 
+  const clearMobileDragState = () => {
+    if (mobileDragTimerRef.current !== null) {
+      window.clearTimeout(mobileDragTimerRef.current);
+      mobileDragTimerRef.current = null;
+    }
+
+    mobilePointerIdRef.current = null;
+    mobileDraggingRef.current = false;
+    setMobileDraggedSerial(null);
+    setMobileDropSerial(null);
+  };
+
+  const handleMobilePointerDown =
+    (serialNumber: number) => (event: ReactPointerEvent<HTMLDivElement>) => {
+      // Do not start a drag when interacting with a button.
+      if ((event.target as HTMLElement).closest("button")) {
+        return;
+      }
+
+      mobilePointerIdRef.current = event.pointerId;
+      mobileDraggingRef.current = false;
+      setMobileDraggedSerial(null);
+      setMobileDropSerial(null);
+
+      mobileDragTimerRef.current = window.setTimeout(() => {
+        mobileDraggingRef.current = true;
+        setMobileDraggedSerial(serialNumber);
+
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is not available in every browser.
+        }
+      }, 260);
+    };
+
+  const handleMobilePointerMove =
+    (serialNumber: number) => (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (mobilePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      // Cancel a pending long-press drag if the user is scrolling.
+      if (!mobileDraggingRef.current) {
+        const movement =
+          Math.abs(event.movementX) + Math.abs(event.movementY);
+        if (movement > 8) {
+          clearMobileDragState();
+        }
+        return;
+      }
+
+      event.preventDefault();
+
+      const pointTarget = document.elementFromPoint(
+        event.clientX,
+        event.clientY,
+      ) as HTMLElement | null;
+
+      const targetCard = pointTarget?.closest<HTMLElement>(
+        "[data-mobile-customer-serial]",
+      );
+
+      if (!targetCard) {
+        setMobileDropSerial(null);
+        return;
+      }
+
+      const targetSerial = Number(
+        targetCard.dataset.mobileCustomerSerial ?? "",
+      );
+
+      if (!Number.isFinite(targetSerial) || targetSerial === serialNumber) {
+        setMobileDropSerial(null);
+        return;
+      }
+
+      setMobileDropSerial(targetSerial);
+    };
+
+  const handleMobilePointerUp =
+    (serialNumber: number) => async (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (mobilePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      if (mobileDragTimerRef.current !== null) {
+        window.clearTimeout(mobileDragTimerRef.current);
+        mobileDragTimerRef.current = null;
+      }
+
+      if (!mobileDraggingRef.current) {
+        mobilePointerIdRef.current = null;
+        return;
+      }
+
+      event.preventDefault();
+
+      const sourceGroup = groupedCustomers.find((group) =>
+        group.some((customer) => customer.serialNumber === serialNumber),
+      );
+      const targetSerial = mobileDropSerial;
+      const targetGroup = targetSerial
+        ? groupedCustomers.find((group) =>
+            group.some((customer) => customer.serialNumber === targetSerial),
+          )
+        : undefined;
+
+      if (
+        sourceGroup &&
+        targetGroup &&
+        sourceGroup[0].serialNumber !== targetGroup[0].serialNumber
+      ) {
+        const targetCard = cardRefs.current[targetSerial as number];
+        const rect = targetCard?.getBoundingClientRect();
+        const insertAfter = rect
+          ? event.clientY > rect.top + rect.height / 2
+          : false;
+
+        await moveCustomerGroupToPosition(
+          sourceGroup,
+          targetGroup,
+          insertAfter ? "after" : "before",
+        );
+      }
+
+      clearMobileDragState();
+    };
+
+  const handleMobilePointerCancel = () => {
+    clearMobileDragState();
+  };
+
   const handleCancel = () => {
     setShowForm(false);
     setFormData({ name: "", mobile: "", address: "", shift: "" });
@@ -605,50 +743,58 @@ function Customers() {
                     ref={(node) => {
                       cardRefs.current[primary.serialNumber] = node;
                     }}
-                    className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-card"
+                    data-mobile-customer-serial={primary.serialNumber}
+                    onPointerDown={handleMobilePointerDown(primary.serialNumber)}
+                    onPointerMove={handleMobilePointerMove(primary.serialNumber)}
+                    onPointerUp={handleMobilePointerUp(primary.serialNumber)}
+                    onPointerCancel={handleMobilePointerCancel}
+                    style={{
+                      touchAction: mobileDraggedSerial === primary.serialNumber ? "none" : "pan-y",
+                    }}
+                    className={`rounded-2xl border border-slate-200 bg-white p-3.5 shadow-card select-none ${
+                      mobileDraggedSerial === primary.serialNumber
+                        ? "opacity-60 ring-2 ring-brand-500 ring-inset"
+                        : ""
+                    } ${
+                      mobileDropSerial === primary.serialNumber
+                        ? "ring-2 ring-brand-500 ring-inset"
+                        : ""
+                    }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-base font-bold text-brand-700">
-                        {initial}
-                      </div>
+                      <span
+                        aria-hidden="true"
+                        className="shrink-0 text-slate-400 dark:text-slate-500"
+                        title="Long press and drag to reorder"
+                      >
+                        ⋮⋮
+                      </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <p className="truncate text-[15px] font-bold text-slate-900">{primary.name}</p>
                         </div>
-                        <p className="selectable mt-0.5 truncate text-xs text-slate-500">
-                          {primary.mobile || "No mobile"}{primary.address ? ` • ${primary.address}` : ""}
-                        </p>
+                        {(primary.mobile?.trim() || primary.address?.trim()) ? (
+                          <p className="selectable mt-0.5 truncate text-xs text-slate-500">
+                            {primary.mobile?.trim() ? primary.mobile.trim() : null}
+                            {primary.mobile?.trim() && primary.address?.trim() ? " • " : ""}
+                            {primary.address?.trim() ? primary.address.trim() : null}
+                          </p>
+                        ) : null}
                       </div>
                       <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${shiftBadgeStyle(label)}`}>
                         {label}
                       </span>
                     </div>
-                    <div className="mt-3 grid grid-cols-4 gap-2">
-                      <button
-                        onClick={() => handleMove(group, "up")}
-                        disabled={groupIndex === 0}
-                        aria-label="Move up"
-                        className="flex min-h-[44px] items-center justify-center rounded-xl border border-slate-200 text-base text-slate-600 active:scale-95 disabled:opacity-30"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        onClick={() => handleMove(group, "down")}
-                        disabled={groupIndex === filteredGroups.length - 1}
-                        aria-label="Move down"
-                        className="flex min-h-[44px] items-center justify-center rounded-xl border border-slate-200 text-base text-slate-600 active:scale-95 disabled:opacity-30"
-                      >
-                        ↓
-                      </button>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
                       <button
                         onClick={() => handleEditClick(group)}
-                        className="flex min-h-[44px] items-center justify-center rounded-xl bg-brand-50 text-[13px] font-bold text-brand-700 active:scale-95"
+                        className="flex min-h-[44px] items-center justify-center rounded-xl bg-brand-50 text-[13px] font-bold text-brand-700 active:scale-95 dark:bg-blue-950/40 dark:text-blue-300"
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => handleDelete(group.map((c) => c.serialNumber))}
-                        className="flex min-h-[44px] items-center justify-center rounded-xl bg-red-50 text-[13px] font-bold text-red-600 active:scale-95"
+                        className="flex min-h-[44px] items-center justify-center rounded-xl bg-red-50 text-[13px] font-bold text-red-600 active:scale-95 dark:bg-red-950/40 dark:text-red-300"
                       >
                         Delete
                       </button>
