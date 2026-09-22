@@ -2020,7 +2020,7 @@ function CustomerTable() {
       )}
 
       {showChangeSheetModal && (
-        <div className="fixed inset-0 z-50 max-sm:z-[9999] flex items-center justify-center bg-black/40 p-2 sm:p-4">
+        <div className="fixed inset-0 z-50 max-sm:z-[9999] flex items-center justify-center bg-transparent p-2 sm:p-4">
           <div className="w-[calc(100vw-1rem)] max-w-md max-h-[calc(100dvh-1rem)] overflow-hidden rounded-xl bg-white p-3 shadow-lg sm:p-4 dark:bg-[#212121] dark:border dark:border-[#444]">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -2159,8 +2159,7 @@ function CustomerTable() {
                       type="button"
                       onClick={(event) => selectDayColumn(index, event)}
                       aria-label={`Select Day ${index + 1} column`}
-                      title="Click to select. Drag this Day header to move the column left or right."
-                      className="flex min-h-10 w-full cursor-pointer select-none flex-col items-center justify-center rounded px-1 text-center hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="flex min-h-10 w-full cursor-pointer select-none flex-col items-center justify-center rounded px-1 text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <span>Day {index + 1}</span>
                     </button>

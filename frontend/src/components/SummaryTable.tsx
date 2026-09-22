@@ -54,7 +54,7 @@ function SummaryTable({
           <div className="text-[15px]">🌅</div>
           <div className="mt-2">
             <p className="text-[10px] uppercase tracking-wide text-amber-700 font-semibold dark:text-amber-300">Morning</p>
-            <p className="selectable text-xl md:text-2xl font-bold text-slate-800 leading-tight dark:text-white">{morningMilk} <span className="text-xs font-medium">₹</span></p>
+            <p className="selectable text-xl md:text-2xl font-bold text-slate-800 leading-tight dark:text-white">{morningMilk}</p>
           </div>
         </Link>
         <Link
@@ -64,7 +64,7 @@ function SummaryTable({
           <div className="text-[15px]">🌙</div>
           <div className="mt-2">
             <p className="text-[10px] uppercase tracking-wide text-violet-700 font-semibold dark:text-violet-300">Evening</p>
-            <p className="selectable text-xl md:text-2xl font-bold text-slate-800 leading-tight dark:text-white">{eveningMilk} <span className="text-xs font-medium">₹</span></p>
+            <p className="selectable text-xl md:text-2xl font-bold text-slate-800 leading-tight dark:text-white">{eveningMilk}</p>
           </div>
         </Link>
       </div>
