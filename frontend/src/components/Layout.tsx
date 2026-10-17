@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import BottomNav from "./BottomNav";
+import { BACK_TO_CURRENT_SHEET_EVENT } from "./CustomerTable";
 import { getCurrentUserProfile, subscribeAuthState } from "../firebase/auth";
 import { getTheme, subscribeTheme, toggleTheme } from "../utils/theme";
 import logoRound from "../assets/logo-round.png";
@@ -11,6 +12,7 @@ type LayoutProps = {
 
 function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [displayName, setDisplayName] = useState(() => getCurrentUserProfile()?.name || "Farmer");
   const [farmName, setFarmName] = useState(() => getCurrentUserProfile()?.farmName || "");
   const [theme, setThemeState] = useState(getTheme());
@@ -31,6 +33,10 @@ function Layout({ children }: LayoutProps) {
     return subscribeTheme(() => setThemeState(getTheme()));
   }, []);
 
+  const params = new URLSearchParams(location.search);
+  const isArchivedSheetOpen =
+    location.pathname === "/customer-details" && params.has("edit");
+
   return (
     <div
       className="min-h-screen bg-slate-50 dark:bg-[#161616]"
@@ -46,6 +52,17 @@ function Layout({ children }: LayoutProps) {
       >
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2.5 md:px-8 md:py-3">
           <div className="flex min-w-0 items-center gap-2.5">
+            {isArchivedSheetOpen ? (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event(BACK_TO_CURRENT_SHEET_EVENT))}
+                aria-label="Back to current sheet"
+                title="Back to current sheet"
+                className="flex h-11 w-11 shrink-0 -translate-x-2 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-bold text-slate-700 active:scale-95 md:-translate-x-20 dark:border-[#333333] dark:bg-[#212121] dark:text-slate-100"
+              >
+                ←
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => navigate("/dashboard")}

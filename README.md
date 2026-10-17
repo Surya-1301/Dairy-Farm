@@ -1,37 +1,13 @@
   # Dairy Farm Management System
+  [![Live Demo](https://img.shields.io/badge/Live_Demo-dairy--farm.tech-green?style=for-the-badge)](https://www.dairy-farm.tech)
+  [![Deployment Guide](https://img.shields.io/badge/Deployment-Guide-blue?style=for-the-badge)](DEPLOYMENT.md)
+
+</div>
 
   A modern web app for dairy businesses to manage **customers**, record **daily milk entries**,
   track **sheet history**, and monitor **earnings** — with a dedicated **owner console**
   for multi-user oversight.
-
-  [![Live Demo](https://img.shields.io/badge/Live_Demo-dairy--farm.tech-green?style=for-the-badge)](https://www.dairy-farm.tech)
-  [![Deployment Guide](https://img.shields.io/badge/Deployment-Guide-blue?style=for-the-badge)](DEPLOYMENT.md)
-
-  ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
-  ![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
-  ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
-  ![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
-  ![Firebase](https://img.shields.io/badge/Firebase-10-DD2C00?logo=firebase&logoColor=white)
-</div>
-
----
-
-## Table of Contents
-
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [Project Structure](#-project-structure)
-- [Tech Stack](#-tech-stack)
-- [Getting Started](#-getting-started)
-- [Environment Variables](#-environment-variables)
-- [App Routes](#-app-routes)
-- [Milk Sheet Workflow](#-milk-sheet-workflow)
-- [Authentication and Roles](#-authentication-and-roles)
-- [Data Model](#-data-model)
-- [Deployment](#-deployment)
-- [Security Notes](#-security-notes)
-- [Support](#-support)
-
+  
 ---
 
 ## Features

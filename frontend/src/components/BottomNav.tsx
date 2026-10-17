@@ -1,5 +1,5 @@
-import { NavLink } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
 import { getActiveUser, subscribeAuthState } from "../firebase/auth";
 
 type IconProps = {
@@ -71,7 +71,11 @@ const ownerLinks = [
 ] as const satisfies readonly NavItem[];
 
 function BottomNav() {
+  const location = useLocation();
   const [isOwner, setIsOwner] = useState(() => getActiveUser()?.role === "owner");
+  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia("(min-width: 768px)").matches);
+  const [navVisible, setNavVisible] = useState(false);
+  const hideTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const syncUserRole = () => {
@@ -83,12 +87,62 @@ function BottomNav() {
     return subscribeAuthState(syncUserRole);
   }, []);
 
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    const syncMedia = () => setIsDesktop(media.matches);
+    syncMedia();
+    media.addEventListener("change", syncMedia);
+    return () => media.removeEventListener("change", syncMedia);
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop || location.pathname !== "/customer-details") {
+      // Always visible: on mobile, and on every page except the milk sheet table.
+      setNavVisible(true);
+      return;
+    }
+    // Auto-hide on desktop/tablet: reveal when cursor moves near the bottom edge.
+    setNavVisible(false);
+    const showNav = () => {
+      setNavVisible(true);
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+      }
+      hideTimerRef.current = window.setTimeout(() => setNavVisible(false), 1800);
+    };
+    const handleMouseMove = (event: MouseEvent) => {
+      const distanceFromBottom = window.innerHeight - event.clientY;
+      if (distanceFromBottom < 140) {
+        showNav();
+      }
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      const distanceFromBottom = window.innerHeight - touch.clientY;
+      if (distanceFromBottom < 140) {
+        showNav();
+      }
+    };
+    window.addEventListener("mousemove", handleMouseMove, { passive: true });
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("touchstart", handleTouchStart);
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+      }
+    };
+  }, [isDesktop, location.pathname]);
+
   const links = isOwner ? ownerLinks : userLinks;
 
   // Mobile-first: 56px touch targets, safe-area padding, active pill + center FAB for Data entry
   return (
     <nav
-      className="bottom-nav fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-4px_20px_-8px_rgba(15,23,42,0.15)] backdrop-blur dark:border-[#333333] dark:bg-[#161616]/95"
+      className={`bottom-nav fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-4px_20px_-8px_rgba(15,23,42,0.15)] backdrop-blur transition-transform duration-300 ease-out will-change-transform dark:border-[#333333] dark:bg-[#161616]/95 ${
+        navVisible ? "translate-y-0" : "pointer-events-none translate-y-full"
+      }`}
       style={{
         paddingBottom: "var(--safe-area-inset-bottom)",
         paddingLeft: "var(--safe-area-inset-left)",

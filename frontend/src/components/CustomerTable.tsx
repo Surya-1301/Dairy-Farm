@@ -432,6 +432,8 @@ async function syncCustomersFromSheet(
 }
 
 
+export const BACK_TO_CURRENT_SHEET_EVENT = "dairy-farm:back-to-current-sheet";
+
 function CustomerTable() {
   const navigate = useNavigate();
   const [sheetState, setSheetState] = useState<SheetState>(createInitialState());
@@ -469,6 +471,7 @@ function CustomerTable() {
   const activeRowResizeRef = useRef<{ rowIndex: number; startY: number; startHeight: number } | null>(null);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [customerSearch, setCustomerSearch] = useState("");
   const undoStackRef = useRef<SheetState[]>([]);
   const redoStackRef = useRef<SheetState[]>([]);
 
@@ -1891,6 +1894,16 @@ function CustomerTable() {
     navigate("/customer-details", { replace: true });
   };
 
+  // Header back-arrow (shown only while an archived sheet is open) triggers
+  // this via a window event, since the header lives in Layout.
+  useEffect(() => {
+    const handleBackEvent = () => {
+      void backToCurrentSheet();
+    };
+    window.addEventListener(BACK_TO_CURRENT_SHEET_EVENT, handleBackEvent);
+    return () => window.removeEventListener(BACK_TO_CURRENT_SHEET_EVENT, handleBackEvent);
+  });
+
   return (
     <div className="relative left-1/2 w-full max-w-none -translate-x-1/2 space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-card dark:bg-[#212121] dark:border-[#333] md:-mt-8 md:w-screen md:space-y-2 md:rounded-none md:border-0 md:bg-white dark:md:bg-[#161616] md:pt-2 md:px-0 md:pb-0 md:shadow-none">
       <div className="grid grid-cols-3 gap-2 lg:flex lg:flex-row lg:items-start lg:justify-between lg:gap-4">
@@ -1957,6 +1970,32 @@ function CustomerTable() {
           </button>
         </div>
         <div className="contents lg:flex lg:items-center lg:gap-2">
+          <div className="relative col-span-3 w-full min-w-0 lg:col-span-auto lg:w-auto lg:min-w-[220px] lg:flex-1">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+                <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+                <path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <input
+              type="search"
+              value={customerSearch}
+              onChange={(event) => setCustomerSearch(event.target.value)}
+              placeholder="Search customer name..."
+              aria-label="Search customer name"
+              className="min-h-[48px] w-full rounded-full border border-slate-300 bg-white py-2 pl-9 pr-9 text-[10px] text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 sm:text-[11px] lg:text-[12px] dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white dark:placeholder:text-slate-500"
+            />
+            {customerSearch ? (
+              <button
+                type="button"
+                onClick={() => setCustomerSearch("")}
+                aria-label="Clear customer search"
+                className="absolute inset-y-0 right-2 flex items-center rounded-full px-2 text-lg leading-none text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={openSaveNameModal}
@@ -1964,16 +2003,6 @@ function CustomerTable() {
           >
             Save to History
           </button>
-
-          {activeHistoryId ? (
-            <button
-              type="button"
-              onClick={() => void backToCurrentSheet()}
-              className="col-span-3 flex w-full min-h-[48px] items-center justify-center rounded-full border border-sky-500 bg-sky-500 px-2 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap lg:col-span-auto lg:w-auto"
-            >
-              Back to Current Sheet
-            </button>
-          ) : null}
 
           <span className="sr-only" aria-live="polite">
             {saveStatus === "saving" ? "Saving..." : "Saved"}
@@ -2186,14 +2215,59 @@ function CustomerTable() {
           </thead>
           <tbody>
             {(() => {
+              const searchQuery = customerSearch.trim().toLowerCase();
+              const visibleRowIndices = rows
+                .map((_, rowIndex) => rowIndex)
+                .filter((rowIndex) =>
+                  searchQuery ? rows[rowIndex].customerName.toLowerCase().includes(searchQuery) : true
+                );
+              if (visibleRowIndices.length === 0) {
+                return (
+                  <tr>
+                    <td colSpan={3 + dayCount + 1} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                      No customers match “{customerSearch.trim()}”.
+                    </td>
+                  </tr>
+                );
+              }
+              // Rebuild group spans within the filtered view so merged name/total
+              // cells only span visible rows (a search can split a customer's
+              // Morning/Evening rows apart).
+              const visibleKeys = visibleRowIndices.map((rowIndex) =>
+                rows[rowIndex].customerName.trim().toLowerCase()
+              );
+              const visibleGroupStart: number[] = visibleRowIndices.map((_, position) => position);
+              for (let position = 1; position < visibleRowIndices.length; position++) {
+                const key = visibleKeys[position];
+                if (key && visibleKeys[position - 1] === key) {
+                  visibleGroupStart[position] = visibleGroupStart[position - 1];
+                }
+              }
+              const visibleGroupSizes = new Array(visibleRowIndices.length).fill(0);
+              visibleGroupStart.forEach((start) => {
+                visibleGroupSizes[start] += 1;
+              });
+              const visibleNameSpans = visibleGroupStart.map((start, position) =>
+                start === position ? visibleGroupSizes[start] : 0
+              );
               const displaySerialNumbers = buildDisplaySerialMap(rows);
               const groupStartIndices = buildGroupStartIndices(rows);
-              const nameCellSpans = buildNameCellSpans(groupStartIndices);
-              const combinedTotals = buildCombinedTotals(rows, groupStartIndices);
-              return rows.map((row, rowIndex) => {
+              return visibleRowIndices.map((rowIndex, position) => {
+                const row = rows[rowIndex];
+                const nameSpan = visibleNameSpans[position];
+                // Combined M+E total across the customer's visible rows only.
+                const groupPositions: number[] = [];
+                const groupStartPosition = visibleGroupStart[position];
+                for (let p = groupStartPosition; p < visibleRowIndices.length; p++) {
+                  if (visibleGroupStart[p] !== groupStartPosition) break;
+                  groupPositions.push(p);
+                }
+                const displayTotal = groupPositions.reduce(
+                  (sum, p) =>
+                    sum + rows[visibleRowIndices[p]].days.reduce((rowSum, value) => rowSum + value, 0),
+                  0
+                );
               const total = row.days.reduce((sum, value) => sum + value, 0);
-              const nameSpan = nameCellSpans[rowIndex];
-              const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : total;
 
               const isRowSelected = selectedRowIndices.includes(rowIndex);
               const groupStart = groupStartIndices[rowIndex] ?? rowIndex;
@@ -2347,10 +2421,10 @@ function CustomerTable() {
             })()}
           </tbody>
           <tfoot className="bg-slate-100 dark:bg-[#262626]">
-            <tr className="bg-slate-100 font-bold text-slate-900 dark:bg-[#262626] dark:text-white">
+            <tr className="bg-slate-100 text-[11px] font-bold leading-tight text-slate-900 dark:bg-[#262626] dark:text-white md:text-xs">
               <td
                 colSpan={3}
-                className="border-l-2 border-y border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
+                className="sticky bottom-0 z-20 border-l-2 border-y border-slate-400 bg-slate-100 px-1 py-1 text-center shadow-[0_-2px_6px_rgba(0,0,0,0.12)] sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
               >
                 Total
               </td>
@@ -2363,14 +2437,14 @@ function CustomerTable() {
                 return (
                   <td
                     key={`daily-total-${dayIndex}`}
-                    className="border-l-2 border-r-2 border-y border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
+                    className="sticky bottom-0 z-20 border-l-2 border-r-2 border-y border-slate-400 bg-slate-100 px-1 py-1 text-center shadow-[0_-2px_6px_rgba(0,0,0,0.12)] sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
                   >
                     {dayTotal}
                   </td>
                 );
               })}
               <td
-                className="border border-slate-400 bg-slate-100 px-1 py-2 text-center sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
+                className="sticky bottom-0 z-20 border border-slate-400 bg-slate-100 px-1 py-1 text-center shadow-[0_-2px_6px_rgba(0,0,0,0.12)] sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
               >
                 {rows.reduce(
                   (grandTotal, row) =>
