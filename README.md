@@ -1,10 +1,11 @@
 # Dairy Farm
 
+[![GitHub release](https://img.shields.io/github/v/release/Surya-1301/Dairy-Farm)](https://github.com/Surya-1301/Dairy-Farm/releases)
 [![Live site](https://img.shields.io/website?url=https%3A%2F%2Fwww.dairy-farm.tech&label=live%20site)](https://www.dairy-farm.tech)
 [![Android app](https://img.shields.io/badge/Android-APK_download-3DDC84?logo=android&logoColor=white)](https://github.com/Surya-1301/Dairy-Farm/releases)
 [![License](https://img.shields.io/github/license/Surya-1301/Dairy-Farm)](LICENSE)
 
-**Milk collection & customer management for dairy farms — web app + mobile app sharing one Firebase backend.**
+**Milk collection & customer management for dairy farms — web app + mobile app sharing.**
 
 Track customers, record daily milk entries on an editable sheet, keep sheet history, and get owner-level reporting — from the browser or the Android app.
 
