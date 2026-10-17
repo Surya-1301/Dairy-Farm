@@ -9,6 +9,10 @@
     "preview": "vite preview --host 0.0.0.0 --port ${PORT:-4173}"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
     "@emailjs/browser": "^4.4.1",
     "exceljs": "^4.4.0",
     "firebase": "^10.13.2",

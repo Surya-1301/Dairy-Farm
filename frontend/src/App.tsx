@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import Layout from "./components/Layout";
 import { getActiveUser, isAuthReady, isAuthenticated, subscribeAuthState } from "./firebase/auth";
 import Customers from "./pages/Customers";
@@ -14,6 +16,7 @@ import ResetPassword from "./pages/ResetPassword";
 function App() {
   const [authReady, setAuthReady] = useState(isAuthReady());
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
+  const navigate = useNavigate();
 
   useEffect(() => {
     return subscribeAuthState(() => {
@@ -21,6 +24,25 @@ function App() {
       setAuthenticated(isAuthenticated());
     });
   }, []);
+
+  // On native Android, map the hardware back button to router history.
+  // On the login page (no back history worth keeping), exit the app instead.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let listener: { remove: () => void } | undefined;
+    CapacitorApp.addListener("backButton", ({ canGoBack }) => {
+      if (window.location.pathname === "/login" || !canGoBack) {
+        void CapacitorApp.exitApp();
+      } else {
+        navigate(-1);
+      }
+    }).then((handle) => {
+      listener = handle;
+    });
+    return () => {
+      listener?.remove();
+    };
+  }, [navigate]);
 
   if (!authReady) {
     return (
