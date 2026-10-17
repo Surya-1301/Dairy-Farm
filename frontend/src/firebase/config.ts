@@ -2,7 +2,6 @@ import { initializeApp } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getFunctions } from "firebase/functions";
 
 const env = import.meta.env;
 
@@ -35,7 +34,6 @@ const firebaseConfig = {
 const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
 export const auth = app ? getAuth(app) : null;
 export const db = app ? getFirestore(app) : null;
-export const functions = app ? getFunctions(app, "us-central1") : null;
 
 export const analyticsPromise = isSupported().then((supported) => {
   if (!supported || !app) {

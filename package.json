@@ -5,14 +5,7 @@
     "dev": "npm --prefix 'frontend' run dev",
     "build": "npm --prefix 'frontend' ci --include=dev && npm --prefix 'frontend' run build",
     "postinstall": "npm run build",
-    "start": "npm --prefix 'frontend' run preview",
-    "android:prebuild": "npm --prefix 'backend' run android:prebuild",
-    "android:build": "npm --prefix 'backend' run android:build"
-  },
-  "dependencies": {
-    "@emailjs/nodejs": "^5.0.2",
-    "exceljs": "^4.4.0",
-    "firebase": "^12.12.1"
+    "start": "npm --prefix 'frontend' run preview"
   }
 }
 

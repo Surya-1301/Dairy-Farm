@@ -1,244 +1,295 @@
-# Dairy Farm
+<div align="center">
+  <img src="frontend/src/assets/logo-round.png" alt="Dairy Farm logo" width="120" />
 
-A web + mobile dairy management system for tracking customers, daily milk entries, sheet history, and owner-level reporting. Both apps share the same Firebase backend.
+  # Dairy Farm Management System
 
-- **Web app** — React + Vite PWA in `frontend/`
-- **Mobile app** — Expo / React Native in `backend/`
-  
- <p align="center">
-  <a href="https://www.dairy-farm.tech">
-    <img src="https://img.shields.io/badge/View Demo-0077B5?style=for-the-badge&logo=linkedin&logoColor=white"/>
-  </a>
-</p>
+  A modern web app for dairy businesses to manage **customers**, record **daily milk entries**,
+  track **sheet history**, and monitor **earnings** — with a dedicated **owner console**
+  for multi-user oversight.
 
----
+  [![Live Demo](https://img.shields.io/badge/Live_Demo-dairy--farm.tech-green?style=for-the-badge)](https://www.dairy-farm.tech)
+  [![Deployment Guide](https://img.shields.io/badge/Deployment-Guide-blue?style=for-the-badge)](DEPLOYMENT.md)
 
-## What The App Does
-
-- Email/password sign in, sign up, and custom password reset via EmailJS
-- Customer management — add, edit, delete; a customer with both Morning and Evening shifts is shown and edited as a single grouped entry (shift displayed as "M & E")
-- Editable milk data sheet (50 rows × 16 days default) with add/remove row and column; both-shift customers share one Customer Name field and a combined Morning + Evening total
-- Dashboard summary showing customer count and total milk amount
-- Sheet lifecycle — **Save to History** stores a snapshot without changing the current sheet; **Archive** stores the current sheet as an archived entry and starts a new sheet with the same customer structure; **Archived Sheets** opens archived entries for editing, and **History** provides export, rename, and delete actions
-- User profile management with avatar upload and in-profile password reset
-- Owner dashboard — view all registered users, milk totals, and earnings; edit any user's profile (name, phone, email); save/view/export/delete any user's sheet history; reset any user's password; delete accounts
+  ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
+  ![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
+  ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+  ![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
+  ![Firebase](https://img.shields.io/badge/Firebase-10-DD2C00?logo=firebase&logoColor=white)
+</div>
 
 ---
 
-## Repository Layout
+## Table of Contents
+
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Project Structure](#-project-structure)
+- [Tech Stack](#-tech-stack)
+- [Getting Started](#-getting-started)
+- [Environment Variables](#-environment-variables)
+- [App Routes](#-app-routes)
+- [Milk Sheet Workflow](#-milk-sheet-workflow)
+- [Authentication and Roles](#-authentication-and-roles)
+- [Data Model](#-data-model)
+- [Deployment](#-deployment)
+- [Security Notes](#-security-notes)
+- [Support](#-support)
+
+---
+
+## Features
+
+### Authentication
+- Email/password **sign up** with OTP verification and **sign in** via Firebase Auth
+- Custom **branded password-reset emails** (EmailJS) carrying real Firebase reset codes
+- In-profile password change plus owner-initiated resets for any user
+
+### Customer Management
+- Add, edit, and delete customers with Morning / Evening shift support
+- Dual-shift customers appear as a **single grouped entry** (shift shown as `M & E`)
+- Live search, validation, and per-user customer lists
+
+### Daily Milk Sheet
+- Editable grid (default **50 rows x 16 days**) with add/remove rows and columns
+- Dual-shift customers share one name field with a **combined Morning + Evening total**
+- Auto-save per user, with per-day totals and rate x liters amount calculation
+
+### Dashboards and Analytics
+- **User dashboard** — customer count, total milk volume, and amount summaries with charts
+- **Owner dashboard** — every registered user, aggregate milk totals, and earnings at a glance
+
+### History and Archiving
+- **Save to History** — snapshot the current sheet without interrupting live entry
+- **Archive** — close the current sheet and start fresh with the same customer structure
+- **Archived Sheets** — reopen and edit archived entries; **History** — rename, export, delete
+
+### Exports and Sharing
+- One-click **PDF** (jsPDF + autotable) and **Excel** (ExcelJS) export of any snapshot
+- WhatsApp-friendly 15-day summaries for sharing with customers
+
+### Profiles and Experience
+- Editable profile (name, phone, farm name) with **Cloudinary avatar uploads**
+- Dark/light theme, mobile-first responsive layout with bottom navigation
+
+### Owner Console
+- Inspect every user, their milk totals, and earnings
+- Edit any profile, view/export/delete any sheet history
+- Reset any password or delete accounts
+
+---
+
+## Architecture
+
+```
+Browser (React + Vite SPA)
+  |-- Firebase Auth        sign up / sign in / session
+  |-- Cloud Firestore      userProfiles, customerLists, sheetStates, sheetHistories
+  |-- Cloudinary (REST)    avatar image uploads (unsigned preset)
+  |-- EmailJS (browser)    signup OTP + branded password-reset emails
+  |-- reset-server (Render) mints real Firebase oobCodes via Admin SDK
+```
+
+Password reset needs a backend because Firebase Hosting is static-only: the
+frontend asks `reset-server/` for a genuine `oobCode`, builds a
+`/reset-password?oobCode=...` link, and sends it through EmailJS. No Firebase
+Blaze plan is required.
+
+---
+
+## Project Structure
 
 ```
 Dairy Farm/
-├── frontend/        Web app (React + Vite + Tailwind)
-├── backend/         Mobile app (Expo + React Native)
-│   └── functions/   Firebase Cloud Functions (password reset link generator)
-├── DEPLOYMENT.md    Firebase + hosting deployment guide
-└── README.md        This file
+├── frontend/        React + Vite + Tailwind web app (Firebase Hosting)
+│   ├── src/
+│   │   ├── components/  Layout, BottomNav, Chart, CustomerTable, SummaryTable
+│   │   ├── pages/       Login, Dashboard, Customers, CustomerDetails,
+│   │   │                History, Profile, OwnerDashboard, ResetPassword
+│   │   ├── firebase/    Auth, Firestore data layer, Firebase config
+│   │   ├── utils/       theme, customerData, milkData, cloudinary,
+│   │   │                emailOtp, generateBill, whatsapp
+│   │   └── assets/      logo-round.png, raipur-banner.png
+│   └── public/        reset-redirect.html (legacy Firebase action-URL handler)
+├── reset-server/    Standalone Node/Express reset-code service (Render)
+├── firebase.json    Hosting config (serves frontend/dist, SPA rewrites)
+├── .firebaserc      Firebase project binding (raipur-dairy-farmm)
+├── render.yaml      Render blueprint for dairy-farm-reset-server
+├── DEPLOYMENT.md    Full deployment guide (Hosting + Render + Firestore rules)
+└── .env.example     Template for all frontend VITE_* variables
 ```
 
 ---
 
-## Web App (`frontend/`)
+## Tech Stack
 
-### Tech Stack
+| Layer | Technology | Version |
+|---|---|---|
+| UI | React + React DOM | 18.3 |
+| Language | TypeScript | 5.6 |
+| Build | Vite | 5 |
+| Styling | Tailwind CSS + PostCSS + Autoprefixer | 3.4 |
+| Routing | React Router DOM | 6 |
+| Charts | Recharts | 2.12 |
+| Backend | Firebase Auth + Cloud Firestore | 10 |
+| PDF export | jsPDF + jspdf-autotable | 4 / 5 |
+| Excel export | ExcelJS | 4.4 |
+| Email | EmailJS (browser SDK) | 4.4 |
+| Avatars | Cloudinary unsigned-upload REST API | — |
+| Reset service | Node + Express + Firebase Admin SDK | Node 18+ |
 
-| Tool | Version |
-|---|---|
-| React | 18.3 |
-| TypeScript | 5.6 |
-| Vite | 5 |
-| Tailwind CSS | 3.4 |
-| React Router DOM | 6 |
-| Recharts | 2.12 |
-| Firebase | 10 |
-| jsPDF + jspdf-autotable | 4 / 5 |
-| Cloudinary | REST API |
+---
 
-### Setup
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+ and npm
+- A Firebase project (Auth with Email/Password sign-in + Firestore)
+- A Cloudinary account with an **unsigned** upload preset
+- An EmailJS account with OTP + reset templates
+- Firebase CLI (`npm install -g firebase-tools`) for Hosting deploys
+
+### 1. Install
 
 ```bash
 cd frontend
 npm install
 ```
 
-Create `frontend/.env`:
-
-```env
-VITE_FIREBASE_API_KEY=your_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
-VITE_OWNER_EMAIL=owner@example.com
-VITE_CLOUDINARY_CLOUD_NAME=your_cloud_name
-VITE_CLOUDINARY_UPLOAD_PRESET=your_unsigned_upload_preset
-VITE_EMAILJS_SERVICE_ID=your_emailjs_service_id
-VITE_EMAILJS_TEMPLATE_ID=your_emailjs_otp_template_id
-VITE_EMAILJS_RESET_TEMPLATE_ID=your_emailjs_reset_template_id
-VITE_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
-```
-
-`VITE_CLOUDINARY_CLOUD_NAME` is the cloud name shown on your Cloudinary dashboard. `VITE_CLOUDINARY_UPLOAD_PRESET` must be an **unsigned** upload preset (Settings → Upload → Upload presets). Avatar images are uploaded to Cloudinary on profile save; the returned `secure_url` is stored in Firestore.
-
-### Scripts
+### 2. Configure environment
 
 ```bash
-npm run dev       # start dev server (localhost:5173)
-npm run build     # production build → dist/
-npm run preview   # preview production build
+cp ../.env.example .env
 ```
 
-### Sheet workflow
+Fill in every value (see [Environment Variables](#-environment-variables)).
+Vite inlines `VITE_*` variables at **build time**, so rebuild after any change.
 
-- **Save to History** saves the current data as a History snapshot and keeps the current sheet open.
-- **Archive** saves the complete current sheet to Archived Sheets, then starts a new sheet with the same customer names, shifts, rows, and day columns with daily values cleared.
-- **Archived Sheets** opens an archived entry for editing without replacing the live current sheet.
-- **Save to History** while editing an archived entry saves the edits to History and returns to the live current sheet.
-- **History** contains saved snapshots and supports editing the sheet name, PDF/Excel export, and deletion.
-
-### Routes
-
-| Path | Description |
-|---|---|
-| `/login` | Sign in, sign up, password reset |
-| `/dashboard` | User summary — customers and total amount |
-| `/customers` | Customer list — add, edit, delete |
-| `/customer-details` | Editable milk data sheet |
-| `/history` | Saved sheet snapshots with export, rename, edit, and delete actions |
-| `/profile` | User profile, avatar, and password reset |
-| `/reset-password` | Password reset confirmation (via emailed link) |
-| `/owner-dashboard` | Owner-only — users, milk totals, earnings; view/edit any user's data, profile, and sheet history; reset passwords |
-
-### Deploy
+### 3. Run locally
 
 ```bash
-cd frontend && npm run build
+npm run dev      # dev server, usually http://localhost:5173
+npm run build    # production build into dist/
+npm run preview  # serve the production build locally (port 4173)
 ```
-
-Deploy `dist/` to Vercel, Netlify, Firebase Hosting, or any static host. See `DEPLOYMENT.md` for the full Render + Vercel setup used in production.
 
 ---
 
-## Mobile App (`backend/`)
+## Environment Variables
 
-### Tech Stack
+All frontend variables live in `frontend/.env` (never commit it — it is git-ignored).
 
-| Tool | Version |
+| Variable | Purpose |
 |---|---|
-| Expo SDK | 51 |
-| React Native | 0.74.5 |
-| React | 18.2 |
-| TypeScript | 5.3 |
-| Firebase | 10 |
-| React Navigation | 6 |
-| expo-print | 13 |
-| expo-sharing | 12 |
-| Cloudinary | REST API |
+| `VITE_FIREBASE_API_KEY` | Firebase web API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Firebase auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | Firebase project ID |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Firebase storage bucket |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Firebase sender ID |
+| `VITE_FIREBASE_APP_ID` | Firebase app ID |
+| `VITE_FIREBASE_MEASUREMENT_ID` | Analytics measurement ID (optional) |
+| `VITE_OWNER_EMAIL` | Account that unlocks the owner dashboard |
+| `VITE_APP_URL` | Canonical app URL used in reset links |
+| `VITE_CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name |
+| `VITE_CLOUDINARY_UPLOAD_PRESET` | Cloudinary **unsigned** preset |
+| `VITE_EMAILJS_SERVICE_ID` | EmailJS service ID |
+| `VITE_EMAILJS_TEMPLATE_ID` | EmailJS signup-OTP template |
+| `VITE_EMAILJS_RESET_TEMPLATE_ID` | EmailJS password-reset template |
+| `VITE_EMAILJS_PUBLIC_KEY` | EmailJS public key |
+| `VITE_RESET_SERVER_URL` | Public URL of `reset-server/` on Render |
 
-### Setup
-
-```bash
-cd backend
-npm install
-```
-
-Requires **Node.js 18+** and Expo CLI.
-
-Create `backend/.env`:
-
-```env
-EXPO_PUBLIC_FIREBASE_API_KEY=your_api_key
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
-EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
-EXPO_PUBLIC_OWNER_EMAIL=owner@example.com
-EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME=your_cloud_name
-EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET=your_unsigned_upload_preset
-EXPO_PUBLIC_EMAILJS_SERVICE_ID=your_emailjs_service_id
-EXPO_PUBLIC_EMAILJS_TEMPLATE_ID=your_emailjs_otp_template_id
-EXPO_PUBLIC_EMAILJS_RESET_TEMPLATE_ID=your_emailjs_reset_template_id
-EXPO_PUBLIC_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
-```
-
-Use the same Firebase project as the web app. Use the same Cloudinary cloud name and upload preset as the web app.
-
-### Scripts
-
-```bash
-npm run start       # start Expo dev server
-npm run android     # run on Android emulator / device
-npm run web         # run in browser (dev only)
-npm run typecheck   # TypeScript check
-```
-
-### Screens
-
-| Tab | Screen |
-|---|---|
-| Dashboard | Summary — customer count and total amount |
-| Customers | Customer list — add, edit, delete; both-shift customers shown as one grouped row |
-| Data | Editable milk sheet — synced customer names and combined totals for both-shift customers |
-| History | Archived sheets — view, export PDF, delete |
-| Settings | Profile edit, avatar, password reset, logout, delete account |
-| Owner Dashboard | Owner-only — registered users, analytics; edit any user's profile; save/view/export/delete any user's sheet history; reset passwords |
-
-### Build APK / AAB
-
-```bash
-npm install -g eas-cli
-eas login
-eas build:configure
-eas build -p android
-```
-
-Android package id: `com.raipurdairy.farm`
+The reset server itself needs `FIREBASE_SERVICE_ACCOUNT_KEY` (full
+service-account JSON on one line) and `ALLOWED_ORIGINS` (must include the
+Hosting URL). See `reset-server/.env.example` and `DEPLOYMENT.md`.
 
 ---
 
-## Cloud Functions (`backend/functions/`)
+## App Routes
 
-A Firebase Cloud Function generates the password reset `oobCode` server-side using the Firebase Admin SDK. EmailJS then sends a branded HTML email with the reset link to the user.
+| Path | Access | Description |
+|---|---|---|
+| `/login` | Public | Sign in, sign up, request password reset |
+| `/reset-password` | Public | Confirm a new password from an emailed link |
+| `/dashboard` | User | Customer count, milk totals, charts |
+| `/customers` | User | Add, edit, delete customers |
+| `/customer-details` | User | Editable daily milk sheet |
+| `/history` | User | Snapshots with rename, export, edit, delete |
+| `/profile` | User | Profile, avatar, password reset |
+| `/owner-dashboard` | Owner only | All users, totals, earnings, full admin controls |
 
-```
-backend/functions/
-├── index.js        generatePasswordResetLink — POST endpoint
-└── package.json
-```
-
-### Deploy
-
-```bash
-firebase deploy --only functions
-```
-
-The compute service account needs the **Firebase Authentication Admin** IAM role in Google Cloud Console.
+Unknown paths redirect to the dashboard (or login when signed out); owners
+are routed to `/owner-dashboard` after sign-in.
 
 ---
 
-## Shared Firebase Backend
+## Milk Sheet Workflow
 
-Both apps read and write to the same Firestore collections:
+1. **Live sheet** (`/customer-details`) — enter daily liters per customer; totals
+   and amounts update automatically and the sheet auto-saves.
+2. **Save to History** — store a snapshot; the live sheet stays open and editable.
+3. **Archive** — move the finished sheet to Archived Sheets and start a new sheet
+   with the same customers, shifts, rows, and day columns (values cleared).
+4. **Archived Sheets** — reopen an archived entry for corrections; saving while
+   editing an archive writes to History and returns to the live sheet.
+5. **History** (`/history`) — rename snapshots, export to **PDF/Excel**, or delete.
+
+---
+
+## Authentication and Roles
+
+- **Users** see only their own customers, sheets, and history.
+- **Owner** (email matching `VITE_OWNER_EMAIL`) gets `/owner-dashboard` with
+  cross-user visibility: profiles, sheet histories, totals, and earnings.
+- Password reset works signed-out (login page) and signed-in (profile page).
+- Firestore rules enforce per-user isolation with an owner override — set them in
+  Firebase Console under Firestore Database > Rules (see `DEPLOYMENT.md`).
+
+---
+
+## Data Model
+
+Firestore collections (documents keyed per user, typically by email):
 
 | Collection | Contents |
 |---|---|
-| `userProfiles` | Name, phone, role, avatar URL |
-| `customerLists` | Customer records per user |
-| `sheetStates` | Current milk data sheet per user |
-| `sheetHistories` | Archived sheet snapshots per user |
-
-Firestore rules and Firebase project setup are documented in `DEPLOYMENT.md`.
+| `userProfiles` | Name, phone, farm name, role, avatar URL |
+| `customerLists` | Customer records (name, shift, rate, phone) per user |
+| `sheetStates` | Current live milk sheet per user |
+| `sheetHistories` | Saved snapshots + archived entries per user |
 
 ---
 
-## Authentication
+## Deployment
 
-- Firebase Auth — email/password sign in and sign up
-- Password reset uses a Firebase Cloud Function + EmailJS to send a custom branded email
-- Unauthenticated users (login page) can request a reset; signed-in users can reset from their profile
-- The owner account has exclusive access to the owner dashboard, user management, and can reset any user's password
-- Regular users see only their own data
+- **Web app → Firebase Hosting.** Build `frontend/dist` and deploy:
+
+  ```bash
+  cd frontend && npm run build && cd ..
+  firebase deploy --only hosting
+  ```
+
+- **Reset service → Render.** `render.yaml` blueprints `dairy-farm-reset-server`
+  (free Web Service): root `reset-server`, build `npm install`, start `npm start`.
+- Full steps — Firestore rules, env vars, custom domains, SPA rewrites,
+  troubleshooting — are in **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+---
+
+## Security Notes
+
+- Never commit `frontend/.env` or service-account JSON; both are git-ignored.
+- Firestore rules deny cross-user reads/writes except for the owner override —
+  keep them tight and review before publishing.
+- `reset-server/` authorizes code issuance (owner or self-reset only) and restricts
+  callers via `ALLOWED_ORIGINS` CORS.
+- Rotate EmailJS keys, Cloudinary presets, and the Firebase service-account key
+  if any of them leak.
+
+---
+
+## Support
+
+- Live app: https://www.dairy-farm.tech
+- Deployment: [DEPLOYMENT.md](DEPLOYMENT.md)
+- Firebase Hosting docs: https://firebase.google.com/docs/hosting
+- Render docs: https://render.com/docs

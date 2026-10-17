@@ -1,48 +1,5 @@
 services:
-  - type: static_site
-    name: dairy-farm
-    plan: free
-
-    buildCommand: cd frontend && npm install && npm run build
-
-    # FIXED PATH
-    staticPublishPath: dist
-
-    headers:
-      - path: /
-        name: Cache-Control
-        value: "no-cache"
-
-      - path: /assets/*
-        name: Cache-Control
-        value: "max-age=31536000, immutable"
-
-    routes:
-      - path: /*
-        destination: /index.html
-
-    envVars:
-      - key: VITE_FIREBASE_API_KEY
-        scope: build
-      - key: VITE_FIREBASE_AUTH_DOMAIN
-        scope: build
-      - key: VITE_FIREBASE_PROJECT_ID
-        scope: build
-      - key: VITE_FIREBASE_STORAGE_BUCKET
-        scope: build
-      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
-        scope: build
-      - key: VITE_FIREBASE_APP_ID
-        scope: build
-      - key: VITE_FIREBASE_MEASUREMENT_ID
-        scope: build
-      - key: VITE_RESET_SERVER_URL
-        scope: build
-
-  # Standalone Node service (NOT a Firebase Cloud Function) that mints real
-  # password-reset codes via the Firebase Admin SDK. Runs on Render's free
-  # Web Service plan, so no Firebase Blaze billing upgrade is required.
-  - type: web_service
+ 
     name: dairy-farm-reset-server
     plan: free
     runtime: node
