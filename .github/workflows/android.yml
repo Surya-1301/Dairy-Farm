@@ -1,11 +1,6 @@
 name: Android APK
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/android.yml"
   workflow_dispatch:
 
 concurrency:
