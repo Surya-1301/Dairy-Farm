@@ -1,6 +1,3 @@
-<div align="center">
-  <img src="frontend/src/assets/logo-round.png" alt="Dairy Farm logo" width="120" />
-
   # Dairy Farm Management System
 
   A modern web app for dairy businesses to manage **customers**, record **daily milk entries**,
