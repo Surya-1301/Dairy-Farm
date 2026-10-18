@@ -383,25 +383,6 @@ function Login() {
             </button>
           </p>
         ) : null}
-        <p className="text-center text-xs leading-relaxed text-slate-500">
-          By continuing you agree to our{" "}
-          <button
-            type="button"
-            onClick={() => navigate("/terms")}
-            className="font-semibold text-brand-600 hover:underline"
-          >
-            Terms of Service
-          </button>{" "}
-          and{" "}
-          <button
-            type="button"
-            onClick={() => navigate("/privacy")}
-            className="font-semibold text-brand-600 hover:underline"
-          >
-            Privacy Policy
-          </button>{" "}
-          (DPDP Act, 2023).
-        </p>
       </form>
     </div>
   );
