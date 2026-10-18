@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0 --port ${PORT:-4173}"
   },
   "dependencies": {
+    "@capacitor-firebase/authentication": "^8.5.2",
     "@capacitor/android": "^8.5.3",
     "@capacitor/app": "^8.1.2",
     "@capacitor/cli": "^8.5.3",

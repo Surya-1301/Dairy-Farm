@@ -10,12 +10,12 @@ import {
   signInWithCredential,
   signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword,
   signInWithPopup,
-  signInWithRedirect,
   signOut as firebaseSignOut,
   type AuthCredential,
   type User
 } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
+import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { auth, db } from "./config";
 import { deleteUserDataByEmail } from "./data";
@@ -518,38 +518,56 @@ export async function signUpWithEmailPassword(email: string, password: string, n
 export type GoogleSignInResult =
   | { isNewUser: false }
   | { isNewUser: true; email: string; name: string; avatarUrl: string; credential: AuthCredential };
-
-// Works for both sign-in and sign-up. If a profile already exists for this
-// Google account, sign the user straight in. If it is a brand-new account,
-// capture their email & name from Google, then sign back out immediately --
-// the caller (Login page) should collect a password and phone number and
-// call completeGoogleSignup(...) to finish creating the account. This is
-// entirely client-side (Firebase Authentication's built-in Google provider)
-// — no backend, Cloud Function, or Blaze billing plan is required. It only
-// needs the Google provider turned on once in Firebase Console ->
-// Authentication -> Sign-in method.
 export async function signInWithGoogle(): Promise<GoogleSignInResult> {
   const firebaseAuth = requireFirebaseAuth();
-
-  // Suppress the global onAuthStateChanged listener for the duration of this
-  // call. Without this, Firebase fires that listener as soon as the Google
-  // popup succeeds -- before we have had a chance to check whether this is a
-  // brand-new account -- which would make the app think the user is fully
-  // logged in and redirect straight to the dashboard.
   suppressAuthStateSync = true;
 
-  // Inside the native APK WebView, signInWithPopup cannot open a browser
-  // popup, so it always fails. Use a full-page redirect instead: the login
-  // page resumes via consumeGoogleRedirectResult() after Firebase redirects
-  // back into the app. On web, keep the popup UX.
   if (Capacitor.isNativePlatform()) {
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithRedirect(firebaseAuth, provider);
-      // The page is now navigating away to Google; control never reaches here
-      // in practice. Throw a sentinel so callers show a "redirecting" state
-      // instead of an error if it ever does.
-      throw new Error("GOOGLE_REDIRECT_STARTED");
+      const nativeResult = await FirebaseAuthentication.signInWithGoogle();
+      const idToken = nativeResult.credential?.idToken;
+      if (!idToken) {
+        throw new Error("Could not complete Google sign-in. Please try again.");
+      }
+      const credential = GoogleAuthProvider.credential(idToken);
+      const result = await signInWithCredential(firebaseAuth, credential);
+      const user = result.user;
+      const normalizedEmail = normalizeEmail(user.email ?? "");
+
+      if (!normalizedEmail) {
+        await firebaseSignOut(firebaseAuth);
+        throw new Error("This Google account does not have an email address.");
+      }
+
+      const existingProfile = await getUserProfileFromCloud(normalizedEmail);
+
+      if (existingProfile) {
+        const profile = upsertUserProfile(existingProfile);
+        await saveUserProfileToCloud(profile);
+        suppressAuthStateSync = false;
+        syncFirebaseUser(user);
+        return { isNewUser: false };
+      }
+
+      const name = user.displayName ?? "";
+      const avatarUrl = user.photoURL ?? "";
+
+      return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential };
+    } catch (error) {
+      if (isConfigurationError(error)) throw toFriendlyAuthError(error);
+      const message = (error as { message?: string })?.message ?? "";
+      if (message === "GOOGLE_REDIRECT_STARTED") throw error;
+      if (/cancel|cancelled|dismissed/i.test(message)) {
+        throw new Error("Google sign-in was cancelled.");
+      }
+      if (/account-exists-with-different-credential/i.test(message)) {
+        throw new Error("An account already exists with this email using a different sign-in method. Sign in with your password instead.");
+      }
+      if (/operation-not-allowed/i.test(message)) {
+        throw new Error("Google sign-in is not enabled for this app yet.");
+      }
+      console.error("Google sign-in error:", error);
+      throw new Error(error instanceof Error ? error.message : "Google sign-in failed.");
     } finally {
       suppressAuthStateSync = false;
     }
@@ -610,10 +628,6 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
   }
 }
 
-// Called by the Login page on mount. After a native signInWithRedirect flow,
-// Firebase redirects back into the app — this consumes that pending redirect
-// result and runs the same new-vs-existing account logic as the web popup.
-// Returns null when there is no pending redirect (normal page load).
 export async function consumeGoogleRedirectResult(): Promise<GoogleSignInResult | null> {
   const firebaseAuth = requireFirebaseAuth();
   suppressAuthStateSync = true;
@@ -664,10 +678,6 @@ export async function consumeGoogleRedirectResult(): Promise<GoogleSignInResult 
   }
 }
 
-// Finishes setting up a brand-new Google account: re-establishes the
-// Firebase session from the retained Google credential, links a password to
-// it (so the user can also sign in with email + password later), then saves
-// the full profile (with phone number) and treats the user as logged in.
 export async function completeGoogleSignup(args: {
   credential: AuthCredential;
   email: string;
@@ -783,6 +793,15 @@ export async function confirmNewPassword(oobCode: string, newPassword: string): 
 }
 
 export async function logout(): Promise<void> {
+  // Sign out of the native layer too — otherwise the Google account stays
+  // cached and the next sign-in silently reuses it (or never completes).
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await FirebaseAuthentication.signOut();
+    } catch {
+      // Native sign-out is best-effort; still clear the JS session below.
+    }
+  }
   if (!auth) {
     syncFirebaseUser(null);
     return;
