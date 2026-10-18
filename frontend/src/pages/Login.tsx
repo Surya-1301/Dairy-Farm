@@ -1,8 +1,9 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { AuthCredential } from "firebase/auth";
 import {
   completeGoogleSignup,
+  consumeGoogleRedirectResult,
   getActiveUser,
   requestPasswordReset,
   signInWithEmailPassword,
@@ -40,6 +41,40 @@ function Login() {
   const goToDashboard = () => {
     navigate(getActiveUser()?.role === "owner" ? "/owner-dashboard" : "/dashboard", { replace: true });
   };
+
+  // After a native (APK) Google redirect flow, Firebase lands back on this
+  // page — consume the pending redirect result and continue sign-in/signup.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await consumeGoogleRedirectResult();
+        if (cancelled || !result) return;
+        if (result.isNewUser) {
+          setGoogleCredential(result.credential);
+          setGoogleAvatarUrl(result.avatarUrl);
+          setName(result.name);
+          setEmail(result.email);
+          setPassword("");
+          setConfirmPassword("");
+          setPhone("");
+          setMode("google-signup");
+          setInfoMessage("Almost done! Set a password and add your phone number to finish creating your account.");
+        } else {
+          goToDashboard();
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setErrorMessage(error instanceof Error ? error.message : "Google sign-in failed.");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Run once on mount — the redirect result can only be consumed once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -118,6 +153,11 @@ function Login() {
         goToDashboard();
       }
     } catch (error) {
+      if (error instanceof Error && error.message === "GOOGLE_REDIRECT_STARTED") {
+        // Native APK: the app is now navigating to Google in the same WebView.
+        setInfoMessage("Opening Google sign-in…");
+        return;
+      }
       setErrorMessage(error instanceof Error ? error.message : "Google sign-in failed.");
     } finally {
       setLoading(false);

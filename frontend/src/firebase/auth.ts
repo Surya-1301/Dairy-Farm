@@ -3,16 +3,19 @@ import {
   confirmPasswordReset,
   deleteUser,
   EmailAuthProvider,
+  getRedirectResult,
   GoogleAuthProvider,
   linkWithCredential,
   onAuthStateChanged,
   signInWithCredential,
   signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
   type AuthCredential,
   type User
 } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { auth, db } from "./config";
 import { deleteUserDataByEmail } from "./data";
@@ -41,11 +44,7 @@ export type UserProfile = {
 let activeFirebaseUser: User | null = auth?.currentUser ?? null;
 let authInitialized = !auth;
 let profileCache = new Map<string, UserProfile>();
-// While true, the global onAuthStateChanged listener below ignores auth
-// changes. Used during Google sign-in so a brand-new Google account is never
-// briefly treated as logged in (which would redirect to the dashboard)
-// before we've checked whether the account needs to finish signup (password
-// + phone number).
+
 let suppressAuthStateSync = false;
 
 function normalizeEmail(rawValue: string) {
@@ -539,6 +538,23 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
   // logged in and redirect straight to the dashboard.
   suppressAuthStateSync = true;
 
+  // Inside the native APK WebView, signInWithPopup cannot open a browser
+  // popup, so it always fails. Use a full-page redirect instead: the login
+  // page resumes via consumeGoogleRedirectResult() after Firebase redirects
+  // back into the app. On web, keep the popup UX.
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithRedirect(firebaseAuth, provider);
+      // The page is now navigating away to Google; control never reaches here
+      // in practice. Throw a sentinel so callers show a "redirecting" state
+      // instead of an error if it ever does.
+      throw new Error("GOOGLE_REDIRECT_STARTED");
+    } finally {
+      suppressAuthStateSync = false;
+    }
+  }
+
   try {
     const provider = new GoogleAuthProvider();
     const result = await signInWithPopup(firebaseAuth, provider);
@@ -590,6 +606,60 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
   } finally {
     // Always re-enable the listener, whether we succeeded, signed back out, or
     // threw an error, so normal auth changes are tracked again afterward.
+    suppressAuthStateSync = false;
+  }
+}
+
+// Called by the Login page on mount. After a native signInWithRedirect flow,
+// Firebase redirects back into the app — this consumes that pending redirect
+// result and runs the same new-vs-existing account logic as the web popup.
+// Returns null when there is no pending redirect (normal page load).
+export async function consumeGoogleRedirectResult(): Promise<GoogleSignInResult | null> {
+  const firebaseAuth = requireFirebaseAuth();
+  suppressAuthStateSync = true;
+  try {
+    const result = await getRedirectResult(firebaseAuth, undefined);
+    if (!result) return null;
+    const user = result.user;
+    const normalizedEmail = normalizeEmail(user.email ?? "");
+
+    if (!normalizedEmail) {
+      await firebaseSignOut(firebaseAuth);
+      throw new Error("This Google account does not have an email address.");
+    }
+
+    const existingProfile = await getUserProfileFromCloud(normalizedEmail);
+
+    if (existingProfile) {
+      const profile = upsertUserProfile(existingProfile);
+      await saveUserProfileToCloud(profile);
+      suppressAuthStateSync = false;
+      syncFirebaseUser(user);
+      return { isNewUser: false };
+    }
+
+    const name = user.displayName ?? "";
+    const avatarUrl = user.photoURL ?? "";
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+
+    await firebaseSignOut(firebaseAuth);
+
+    if (!credential) {
+      throw new Error("Could not complete Google sign-in. Please try again.");
+    }
+
+    return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential };
+  } catch (error) {
+    if (isConfigurationError(error)) throw toFriendlyAuthError(error);
+    const code = (error as { code?: string })?.code;
+    if (code === "auth/account-exists-with-different-credential") {
+      throw new Error("An account already exists with this email using a different sign-in method. Sign in with your password instead.");
+    }
+    if (code === "auth/operation-not-allowed") {
+      throw new Error("Google sign-in is not enabled for this app yet.");
+    }
+    throw error;
+  } finally {
     suppressAuthStateSync = false;
   }
 }
