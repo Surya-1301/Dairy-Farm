@@ -4,6 +4,7 @@ import logoRound from "../assets/logo-round.png";
 import { getCurrentUserProfile, subscribeAuthState } from "../firebase/auth";
 import { getTheme, subscribeTheme, toggleTheme } from "../utils/theme";
 import { APP_NAME } from "../utils/legal";
+import BottomNav from "./BottomNav";
 
 const LEGAL_MENU_LINKS = [
   { to: "/privacy", label: "Privacy Policy" },
@@ -142,7 +143,16 @@ function LegalShell({ title, subtitle, children }: LegalShellProps) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-3xl px-4 py-6 md:py-10">
+      <main
+        className="mx-auto w-full max-w-3xl px-4 py-6 md:py-10"
+        style={
+          loggedIn
+            ? {
+                paddingBottom: "calc(7rem + var(--safe-area-inset-bottom))",
+              }
+            : undefined
+        }
+      >
         <button
           type="button"
           onClick={goBack}
@@ -179,6 +189,8 @@ function LegalShell({ title, subtitle, children }: LegalShellProps) {
           © {new Date().getFullYear()} {APP_NAME}. Governed by the laws of India.
         </p>
       </main>
+
+      {loggedIn ? <BottomNav /> : null}
     </div>
   );
 }
