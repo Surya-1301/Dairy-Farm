@@ -845,11 +845,7 @@ export async function requestPasswordReset(email: string): Promise<"firebase"> {
   if (!normalizedEmail) throw new Error("Enter an email address.");
 
   try {
-    // Get a real Firebase-issued reset code from our own small Node server
-    // (reset-server/, deployed as a free Render Web Service — NOT a Firebase
-    // Cloud Function, so no Blaze plan is needed). Without a real oobCode the
-    // emailed link can never work, which is why it previously landed on an
-    // error page. The actual email is still sent by EmailJS, unchanged.
+  
     const oobCode = await fetchPasswordResetOobCode(normalizedEmail);
     const resetUrl = `${window.location.origin}/reset-password?oobCode=${encodeURIComponent(oobCode)}`;
     const { sendPasswordResetLinkEmail } = await import("../utils/emailOtp");

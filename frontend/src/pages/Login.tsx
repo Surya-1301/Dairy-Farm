@@ -1,7 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { AuthCredential } from "firebase/auth";
-import { Capacitor } from "@capacitor/core";
 import {
   completeGoogleSignup,
   consumeGoogleRedirectResult,
@@ -43,8 +42,6 @@ function Login() {
     navigate(getActiveUser()?.role === "owner" ? "/owner-dashboard" : "/dashboard", { replace: true });
   };
 
-  // After a native (APK) Google redirect flow, Firebase lands back on this
-  // page — consume the pending redirect result and continue sign-in/signup.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -73,8 +70,6 @@ function Login() {
     return () => {
       cancelled = true;
     };
-    // Run once on mount — the redirect result can only be consumed once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onSubmit = async (event: FormEvent) => {
@@ -139,23 +134,17 @@ function Login() {
     setInfoMessage("");
     setLoading(true);
     let browserOpened = false;
-    // On native the browser opens outside the app — show progress + reset the
-    // spinner when the user comes back without completing (cancel/timeout).
-    // Web popup resolves in-page, so no timer is needed there.
-    const nativeTimer = Capacitor.isNativePlatform()
-      ? setInterval(() => {
-          if (!browserOpened) {
-            setInfoMessage("Opening your browser for Google sign-in…");
-            browserOpened = true;
-          } else {
-            setLoading(false);
-            clearInterval(nativeTimer);
-          }
-        }, 2500)
-      : undefined;
-    const clearNativeTimer = () => {
-      if (nativeTimer) clearInterval(nativeTimer);
-    };
+
+    const nativeTimer = setInterval(() => {
+      if (!browserOpened) {
+        setInfoMessage("Opening your browser for Google sign-in…");
+        browserOpened = true;
+      } else {
+        setLoading(false);
+        clearInterval(nativeTimer);
+      }
+    }, 2500);
+    const clearNativeTimer = () => clearInterval(nativeTimer);
     try {
       const result = await signInWithGoogle();
       clearNativeTimer();
@@ -173,7 +162,6 @@ function Login() {
         goToDashboard();
       }
     } catch (error) {
-      clearNativeTimer();
       setErrorMessage(error instanceof Error ? error.message : "Google sign-in failed.");
     } finally {
       setLoading(false);
