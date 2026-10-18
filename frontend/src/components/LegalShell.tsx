@@ -94,6 +94,15 @@ function LegalShell({ title, subtitle, children }: LegalShellProps) {
               </p>
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => toggleTheme()}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg active:scale-95 dark:border-[#333333] dark:bg-[#212121]"
+          >
+            <span aria-hidden="true">{theme === "dark" ? "☀️" : "🌙"}</span>
+          </button>
           <div ref={menuRef} className="relative shrink-0">
             <button
               type="button"
@@ -111,18 +120,6 @@ function LegalShell({ title, subtitle, children }: LegalShellProps) {
                 aria-label="App menu"
                 className="absolute right-0 top-full z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-[#333333] dark:bg-[#212121]"
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    toggleTheme();
-                    setMenuOpen(false);
-                  }}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 active:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/5 dark:active:bg-white/10"
-                >
-                  <span>{theme === "dark" ? "☀️ Switch to light mode" : "🌙 Switch to dark mode"}</span>
-                </button>
-                <div className="h-px bg-slate-100 dark:bg-[#333333]" />
                 {LEGAL_MENU_LINKS.map((link) => (
                   <button
                     key={link.to}
