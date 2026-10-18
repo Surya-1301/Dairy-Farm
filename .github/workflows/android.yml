@@ -60,7 +60,27 @@ jobs:
             npx cap add android
           fi
           npx @capacitor/assets generate --android --iconBackgroundColor '#ffffff' --splashBackgroundColor '#ffffff'
+          # Native Google sign-in (@capacitor-firebase/authentication) needs the
+          # real google-services.json from Firebase Console at android/app/.
+          # Upload it once as a repo secret (Settings → Secrets → Actions):
+          #   GOOGLE_SERVICES_JSON = full contents of google-services.json
+          # for the Android app with package com.dairyfarm.app.
+          if [ -n "${GOOGLE_SERVICES_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            echo "google-services.json written from secret."
+          else
+            echo "::warning::GOOGLE_SERVICES_JSON secret not set — native Google sign-in will fail until it is added. Email/password sign-in still works."
+          fi
+          # Apply the Google Services Gradle plugin (idempotent markers).
+          grep -q "google-services" android/build.gradle || sed -i "s|classpath 'com.android.tools.build:gradle:[^']*'|classpath 'com.android.tools.build:gradle:8.5.2'\n        classpath 'com.google.gms:google-services:4.4.2'|" android/build.gradle
+          grep -q "com.google.gms.google-services" android/app/build.gradle || sed -i "s|^apply plugin: 'com.android.application'|apply plugin: 'com.android.application'\napply plugin: 'com.google.gms.google-services'|" android/app/build.gradle
+          # variables.gradle: include the Google provider deps for the plugin.
+          if [ -f android/variables.gradle ]; then
+            grep -q "rgcfaIncludeGoogle" android/variables.gradle || printf '\next {\n    rgcfaIncludeGoogle = true\n    androidxCredentialsVersion = "1.3.0"\n}\n' >> android/variables.gradle
+          fi
           npx cap sync android
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
 
       - name: Build debug APK
         working-directory: frontend/android
