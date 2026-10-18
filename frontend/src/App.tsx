@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
+import { StatusBar } from "@capacitor/status-bar";
 import Layout from "./components/Layout";
 import { getActiveUser, isAuthReady, isAuthenticated, subscribeAuthState } from "./firebase/auth";
 import Customers from "./pages/Customers";
@@ -28,11 +29,20 @@ function App() {
     });
   }, []);
 
-  // On native Android, map the hardware back button to router history.
+  // On native Android, go edge-to-edge: hide the system status bar and keep it
+  // hidden across resume, and map the hardware back button to router history.
   // On the login page (no back history worth keeping), exit the app instead.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
+    // Hide the top status bar (time / battery strip) so only the app header shows.
+    void StatusBar.hide().catch(() => {});
+    let resumeListener: { remove: () => void } | undefined;
     let listener: { remove: () => void } | undefined;
+    CapacitorApp.addListener("resume", () => {
+      void StatusBar.hide().catch(() => {});
+    }).then((handle) => {
+      resumeListener = handle;
+    });
     CapacitorApp.addListener("backButton", ({ canGoBack }) => {
       if (window.location.pathname === "/login" || !canGoBack) {
         void CapacitorApp.exitApp();
@@ -43,6 +53,7 @@ function App() {
       listener = handle;
     });
     return () => {
+      resumeListener?.remove();
       listener?.remove();
     };
   }, [navigate]);

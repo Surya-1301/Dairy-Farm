@@ -165,7 +165,7 @@ function BottomNav() {
                 {({ isActive }) => (
                   <>
                     <link.Icon className="mb-0.5 h-6 w-6" />
-                    <span className={`max-w-full truncate rounded-full px-3 py-0.5 ${isActive ? "bg-brand-50 dark:bg-white/10" : ""}`}>
+                    <span className={`max-w-full rounded-full px-2 py-0.5 text-center text-[10px] leading-tight [overflow-wrap:anywhere] sm:truncate sm:px-3 sm:text-[11px] ${isActive ? "bg-brand-50 dark:bg-white/10" : ""}`}>
                       {link.label}
                     </span>
                   </>
@@ -206,7 +206,7 @@ function BottomNav() {
                   {({ isActive }) => (
                     <>
                       <link.Icon className="mb-0.5 h-6 w-6" />
-                      <span className={`max-w-full truncate rounded-full px-2.5 py-0.5 ${isActive ? "bg-brand-50 dark:bg-white/10" : ""}`}>
+                      <span className={`max-w-full rounded-full px-1 py-0.5 text-center text-[9px] font-semibold leading-tight [overflow-wrap:anywhere] sm:truncate sm:px-2.5 sm:text-[10px] ${isActive ? "bg-brand-50 dark:bg-white/10" : ""}`}>
                         {link.label}
                       </span>
                     </>
