@@ -166,7 +166,7 @@ function toFriendlyAuthError(error: unknown) {
   }
 
   if (error.message.includes("auth/argument-error")) {
-    return new Error("Google sign-in could not start. Please update the app and try again.");
+    return new Error("Could not complete the Google sign-in. Please try again.");
   }
 
   if (error.message.includes("auth/popup-blocked")) {
@@ -197,7 +197,19 @@ function toFriendlyAuthError(error: unknown) {
     return new Error("Too many requests. Please wait a few minutes and try again.");
   }
 
+  // Last resort: never surface raw Firebase strings like
+  // "Firebase: Error (auth/argument-error)." in the UI.
+  if (error.message.includes("auth/") || error.message.startsWith("Firebase:")) {
+    return new Error("Authentication failed. Please try again.");
+  }
+
   return error;
+}
+
+/** User-facing message for any error — never leaks raw Firebase text. */
+export function friendlyAuthMessage(error: unknown): string {
+  if (!(error instanceof Error)) return "Authentication failed. Please try again.";
+  return toFriendlyAuthError(error).message;
 }
 
 function upsertUserProfile(profile: Omit<UserProfile, "updatedAt">) {
@@ -529,14 +541,6 @@ export type GoogleSignInResult =
   | { isNewUser: false }
   | { isNewUser: true; email: string; name: string; avatarUrl: string; credential: AuthCredential | null };
 
-// ---------------------------------------------------------------------------
-// Native (APK) Google sign-in via the phone's DEFAULT BROWSER + deep link.
-// Flow: APK opens hosted /auth/bridge in the default browser (normal web
-// Google popup there) -> bridge mints a Firebase custom token via the
-// reset-server -> redirects to dairyfarm://auth?token=... -> APK catches the
-// deep link (appUrlOpen) and signs in with signInWithCustomToken.
-// Web keeps the popup UX further below.
-// ---------------------------------------------------------------------------
 const NATIVE_AUTH_SCHEME = "dairyfarm://auth";
 const BRIDGE_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -616,7 +620,10 @@ async function signInWithBrowserBridge(): Promise<string> {
 
 async function finishBrowserSignIn(customToken: string): Promise<GoogleSignInResult> {
   const firebaseAuth = requireFirebaseAuth();
-  const result = await signInWithCustomToken(firebaseAuth, customToken);
+  const result = await signInWithCustomToken(firebaseAuth, customToken).catch((error) => {
+    console.error("signInWithCustomToken failed:", error);
+    throw toFriendlyAuthError(error);
+  });
   const user = result.user;
   const normalizedEmail = normalizeEmail(user.email ?? "");
 
@@ -638,10 +645,6 @@ async function finishBrowserSignIn(customToken: string): Promise<GoogleSignInRes
   const name = user.displayName ?? "";
   const avatarUrl = user.photoURL ?? "";
 
-  // Custom-token sessions have no OAuth credential object — signal that with
-  // null so "finish setup" signs back in via the current user, not a stale
-  // GoogleAuthProvider.credential(idToken || null) (which throws
-  // auth/argument-error and produced the red banner).
   return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential: null };
 }
 export async function signInWithGoogle(): Promise<GoogleSignInResult> {
@@ -665,7 +668,7 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
         throw new Error("Google sign-in is not enabled for this app yet.");
       }
       console.error("Google sign-in error:", error);
-      throw new Error(error instanceof Error ? error.message : "Google sign-in failed.");
+      throw toFriendlyAuthError(error);
     } finally {
       suppressAuthStateSync = false;
     }
@@ -718,7 +721,7 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
       throw new Error("Google sign-in is not enabled for this app yet.");
     }
     console.error("Google sign-in error:", error);
-    throw new Error(error instanceof Error ? error.message : "Google sign-in failed.");
+    throw toFriendlyAuthError(error);
   } finally {
     // Always re-enable the listener, whether we succeeded, signed back out, or
     // threw an error, so normal auth changes are tracked again afterward.
@@ -770,7 +773,8 @@ export async function consumeGoogleRedirectResult(): Promise<GoogleSignInResult 
     if (code === "auth/operation-not-allowed") {
       throw new Error("Google sign-in is not enabled for this app yet.");
     }
-    throw error;
+    console.error("Google redirect sign-in error:", error);
+    throw toFriendlyAuthError(error);
   } finally {
     suppressAuthStateSync = false;
   }
@@ -871,7 +875,9 @@ export async function requestPasswordReset(email: string): Promise<"firebase"> {
   } catch (error) {
     if (isConfigurationError(error)) throw toFriendlyAuthError(error);
     console.error("Password reset email error:", error);
-    throw new Error(error instanceof Error ? error.message : "We could not send a reset email for this account.");
+    throw error instanceof Error && (error.message.includes("auth/") || error.message.startsWith("Firebase:"))
+      ? toFriendlyAuthError(error)
+      : new Error(error instanceof Error ? error.message : "We could not send a reset email for this account.");
   }
 }
 

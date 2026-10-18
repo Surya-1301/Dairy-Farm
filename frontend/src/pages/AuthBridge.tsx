@@ -51,7 +51,14 @@ function AuthBridge() {
         await signOut(auth).catch(() => {});
       } catch (error) {
         if (cancelled) return;
-        const failure = error instanceof Error ? error.message : "Google sign-in failed.";
+        const raw = error instanceof Error ? error.message : "Google sign-in failed.";
+        console.error("Auth bridge error:", error);
+        // Never hand raw Firebase strings ("Firebase: Error (auth/…)") to the
+        // app — the APK would display them verbatim in its error banner.
+        const failure =
+          raw.includes("auth/") || raw.startsWith("Firebase:")
+            ? "Could not complete Google sign-in. Please try again."
+            : raw;
         setMessage(failure);
         if (mode === "signin") {
           window.location.href = `${NATIVE_AUTH_SCHEME}?error=${encodeURIComponent(failure)}`;

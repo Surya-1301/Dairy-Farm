@@ -4,6 +4,7 @@ import type { AuthCredential } from "firebase/auth";
 import {
   completeGoogleSignup,
   consumeGoogleRedirectResult,
+  friendlyAuthMessage,
   getActiveUser,
   requestPasswordReset,
   signInWithEmailPassword,
@@ -63,7 +64,7 @@ function Login() {
         }
       } catch (error) {
         if (!cancelled) {
-          setErrorMessage(error instanceof Error ? error.message : "Google sign-in failed.");
+          setErrorMessage(friendlyAuthMessage(error));
         }
       }
     })();
@@ -122,7 +123,7 @@ function Login() {
         goToDashboard();
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Authentication failed.";
+      const message = friendlyAuthMessage(error);
       setErrorMessage(message);
     } finally {
       setLoading(false);
@@ -162,7 +163,7 @@ function Login() {
         goToDashboard();
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Google sign-in failed.");
+      setErrorMessage(friendlyAuthMessage(error));
     } finally {
       setLoading(false);
     }
