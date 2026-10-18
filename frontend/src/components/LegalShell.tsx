@@ -5,7 +5,7 @@ import { APP_NAME } from "../utils/legal";
 
 type LegalShellProps = {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   children: ReactNode;
 };
 
@@ -42,7 +42,9 @@ function LegalShell({ title, subtitle, children }: LegalShellProps) {
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl dark:text-slate-100">
             {title}
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{subtitle}</p>
+          {subtitle ? (
+            <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{subtitle}</p>
+          ) : null}
           <div className="mt-2">{children}</div>
         </article>
 

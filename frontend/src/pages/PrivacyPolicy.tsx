@@ -1,7 +1,6 @@
 import LegalShell from "../components/LegalShell";
 import {
   APP_NAME,
-  EFFECTIVE_DATE,
   FIDUCIARY_NAME,
   GRIEVANCE_EMAIL,
   GRIEVANCE_OFFICER,
@@ -19,18 +18,11 @@ function Section({ heading, children }: { heading: string; children: React.React
 
 function PrivacyPolicy() {
   return (
-    <LegalShell
-      title="Privacy Policy"
-      subtitle={`Effective date: ${EFFECTIVE_DATE} · Data Fiduciary: ${FIDUCIARY_NAME}. Framed under the Digital Personal Data Protection Act, 2023 and the DPDP Rules, 2025.`}
-    >
+    <LegalShell title="Privacy Policy">
       <Section heading="1. Who we are (Data Fiduciary)">
         <p>
           {FIDUCIARY_NAME} (“we”, “us”, “our”) operates {APP_NAME}, which helps dairy farmers
-          record customers, daily milk quantities and payment sheets. Contact:{" "}
-          <a className="font-semibold text-brand-600 hover:underline dark:text-blue-300" href={`mailto:${GRIEVANCE_EMAIL}`}>
-            {GRIEVANCE_EMAIL}
-          </a>
-          .
+          record customers, daily milk quantities and payment sheets.
         </p>
       </Section>
 
