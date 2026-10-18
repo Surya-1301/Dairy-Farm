@@ -161,6 +161,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
-          name: dairy-farm-debug-1.0+${{ env.SHORT_SHA }}
-          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          name: dairy-farm-1.0+${{ env.SHORT_SHA }}
+          path: frontend/android/app/build/outputs/apk/debug/DairyFarm.apk
           retention-days: 30
