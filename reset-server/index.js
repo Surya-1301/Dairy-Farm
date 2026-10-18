@@ -1,9 +1,3 @@
-// Standalone Node/Express server (NOT a Firebase Cloud Function).
-// Deploy on Render's free "Web Service" plan (or any free Node host).
-// Only job: use the Firebase Admin SDK to mint a real password-reset
-// oobCode. The frontend still sends the actual email through EmailJS,
-// exactly as before — this server only supplies a working link.
-
 const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");

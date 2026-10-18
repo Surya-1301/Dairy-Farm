@@ -8,10 +8,10 @@ import { getSheetSearch, setSheetSearch, subscribeSheetSearch } from "../utils/s
 import logoRound from "../assets/logo-round.png";
 
 const HEADER_MENU_LINKS = [
-  { to: "/privacy", label: "Privacy Policy", hint: "DPDP Act, 2023" },
-  { to: "/terms", label: "Terms of Service", hint: "Rules of use" },
-  { to: "/report", label: "Report Abuse / Grievance", hint: "DPDP grievance redressal" },
-  { to: "/profile", label: "Settings & Profile", hint: "Account, privacy controls" },
+  { to: "/privacy", label: "Privacy Policy", hint: "" },
+  { to: "/terms", label: "Terms of Service", hint: "" },
+  { to: "/report", label: "Report Abuse / Grievance", hint: "" },
+  { to: "/profile", label: "Settings & Profile", hint: "" },
 ] as const;
 
 type LayoutProps = {
