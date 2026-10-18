@@ -42,6 +42,7 @@ jobs:
           if [ ! -d android ]; then
             npx cap add android
           fi
+          npx @capacitor/assets generate --android --iconBackgroundColor '#ffffff' --splashBackgroundColor '#ffffff'
           npx cap sync android
 
       - name: Build debug APK
