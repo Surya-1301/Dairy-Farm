@@ -93,6 +93,25 @@ jobs:
           EOF
           npx cap sync android
 
+      - name: Pin debug signing + stamp version
+        run: |
+          # Same debug keystore on every build => new APKs upgrade-install
+          # cleanly over the previously installed one (random runner keys
+          # caused signature mismatches / "App not installed" silently).
+          cp frontend/ci/debug.keystore frontend/android/app/debug.keystore
+          PYTHON_BIN=$(command -v python3 || command -v python)
+          "$PYTHON_BIN" - <<'EOF'
+          import os, re, subprocess
+          path = "frontend/android/app/build.gradle"
+          src = open(path).read()
+          sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
+          run = os.environ.get("GITHUB_RUN_NUMBER", "1")
+          src = re.sub(r"versionCode\s+\d+", "versionCode " + run, src)
+          src = re.sub(r'versionName\s+"[^"]*"', 'versionName "1.0+' + sha + '"', src)
+          open(path, "w").write(src)
+          print("Stamped versionCode " + run + ", versionName 1.0+" + sha)
+          EOF
+
       - name: Build debug APK
         working-directory: frontend/android
         run: ./gradlew assembleDebug --no-daemon
