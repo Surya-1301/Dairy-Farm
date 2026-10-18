@@ -1,6 +1,3 @@
-// Central constants for DPDP Act 2023 / DPDP Rules 2025 compliance pages.
-// Grievance contact defaults to the owner email; override via env where needed.
-
 export const APP_NAME = "Raipur Dairy Farm";
 export const FIDUCIARY_NAME = "Raipur Dugdh Utpadan Association";
 export const EFFECTIVE_DATE = "18 October 2026";
@@ -14,9 +11,6 @@ export const GRIEVANCE_OFFICER = {
   name: "Grievance Officer, Raipur Dugdh Utpadan Association",
   designation: "Data Protection & Grievance Officer",
   email: GRIEVANCE_EMAIL,
-  // Replace with real address / phone before Play Store submission.
-  address: "Raipur, Chhattisgarh, India",
-  phone: "+91-XXXXXXXXXX",
 };
 
 // Timelines stated in the DPDP Rules, 2025 (as notified).
