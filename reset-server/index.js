@@ -2,7 +2,13 @@ const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
 
-const OWNER_EMAIL = (process.env.OWNER_EMAIL || "dairyfarrmm@gmail.com").toLowerCase().trim();
+// Owner/grievance contact — configured via environment, never hardcoded,
+// so no personal address lives in the source tree. If unset, owner-only
+// checks simply deny (no email can match an empty value).
+const OWNER_EMAIL = (process.env.OWNER_EMAIL || "").toLowerCase().trim();
+if (!OWNER_EMAIL) {
+  console.warn("OWNER_EMAIL is not set — owner-only operations will be denied.");
+}
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5173",
