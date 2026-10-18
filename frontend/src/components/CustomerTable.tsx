@@ -4,6 +4,7 @@ import { getCustomers, subscribeCustomersChanged, notifyCustomersChanged } from 
 import { notifyMilkDataChanged } from "../utils/milkData";
 
 import { getActiveUser } from "../firebase/auth";
+import { getSheetSearch, setSheetSearch, subscribeSheetSearch } from "../utils/sheetSearch";
 import {
   archiveSheetByEmail,
   createInitialSheet,
@@ -471,7 +472,7 @@ function CustomerTable() {
   const activeRowResizeRef = useRef<{ rowIndex: number; startY: number; startHeight: number } | null>(null);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerSearch, setCustomerSearch] = useState(getSheetSearch);
   const undoStackRef = useRef<SheetState[]>([]);
   const redoStackRef = useRef<SheetState[]>([]);
 
@@ -1896,6 +1897,10 @@ function CustomerTable() {
 
   // Header back-arrow (shown only while an archived sheet is open) triggers
   // this via a window event, since the header lives in Layout.
+  // The header search input (tablet/mobile) also writes to this shared store.
+  useEffect(() => {
+    return subscribeSheetSearch(() => setCustomerSearch(getSheetSearch()));
+  }, []);
   useEffect(() => {
     const handleBackEvent = () => {
       void backToCurrentSheet();
@@ -1970,7 +1975,7 @@ function CustomerTable() {
           </button>
         </div>
         <div className="contents lg:flex lg:items-center lg:gap-2">
-          <div className="relative col-span-3 w-full min-w-0 lg:col-span-auto lg:w-auto lg:min-w-[220px] lg:flex-1">
+          <div className="relative order-10 col-span-3 md:hidden">
             <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
                 <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
@@ -1980,15 +1985,15 @@ function CustomerTable() {
             <input
               type="search"
               value={customerSearch}
-              onChange={(event) => setCustomerSearch(event.target.value)}
+              onChange={(event) => setSheetSearch(event.target.value)}
               placeholder="Search customer name..."
               aria-label="Search customer name"
-              className="min-h-[48px] w-full rounded-full border border-slate-300 bg-white py-2 pl-9 pr-9 text-[10px] text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 sm:text-[11px] lg:text-[12px] dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white dark:placeholder:text-slate-500"
+              className="min-h-[48px] w-full flex-1 rounded-full border border-slate-300 bg-white py-2 pl-9 pr-9 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 sm:text-[11px] lg:text-[12px] dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white dark:placeholder:text-slate-500"
             />
             {customerSearch ? (
               <button
                 type="button"
-                onClick={() => setCustomerSearch("")}
+                onClick={() => setSheetSearch("")}
                 aria-label="Clear customer search"
                 className="absolute inset-y-0 right-2 flex items-center rounded-full px-2 text-lg leading-none text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
               >
@@ -1999,14 +2004,36 @@ function CustomerTable() {
           <button
             type="button"
             onClick={openSaveNameModal}
-            className={`w-full min-w-0 min-h-[48px] rounded-full border border-emerald-500 bg-emerald-500 px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap lg:w-auto ${activeHistoryId ? "" : "lg:min-w-[180px]"}`}
+            className={`order-9 w-full min-w-0 min-h-[48px] rounded-full border border-emerald-500 bg-emerald-500 px-1.5 py-2 text-[10px] sm:text-[11px] lg:text-[12px] font-semibold text-white active:scale-95 touch-manipulation whitespace-nowrap lg:order-2 lg:w-auto ${activeHistoryId ? "" : "lg:min-w-[180px]"}`}
           >
             Save to History
           </button>
-
-          <span className="sr-only" aria-live="polite">
-            {saveStatus === "saving" ? "Saving..." : "Saved"}
-          </span>
+          <div className="relative hidden order-8 lg:order-1 lg:flex w-full min-w-0 flex-1 lg:min-w-[220px]">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+                <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+                <path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <input
+              type="search"
+              value={customerSearch}
+              onChange={(event) => setSheetSearch(event.target.value)}
+              placeholder="Search customer name..."
+              aria-label="Search customer name"
+              className="min-h-[48px] w-full flex-1 rounded-full border border-slate-300 bg-white py-2 pl-9 pr-9 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 sm:text-[11px] lg:text-[12px] dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white dark:placeholder:text-slate-500"
+            />
+            {customerSearch ? (
+              <button
+                type="button"
+                onClick={() => setSheetSearch("")}
+                aria-label="Clear customer search"
+                className="absolute inset-y-0 right-2 flex items-center rounded-full px-2 text-lg leading-none text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
