@@ -12,7 +12,6 @@ import {
 } from "../firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { uploadImageToCloudinary } from "../utils/cloudinary";
-import { BUILD_VERSION_LABEL } from "../utils/buildInfo";
 
 function Profile() {
   const navigate = useNavigate();
@@ -410,9 +409,6 @@ function Profile() {
         >
           Logout
         </button>
-        {BUILD_VERSION_LABEL ? (
-          <p className="pt-3 text-center text-xs text-slate-400 dark:text-slate-500">App version {BUILD_VERSION_LABEL}</p>
-        ) : null}
       </div>
     </section>
   );
