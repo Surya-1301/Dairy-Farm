@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import BottomNav from "./BottomNav";
 import { BACK_TO_CURRENT_SHEET_EVENT } from "./CustomerTable";
@@ -6,6 +6,13 @@ import { getCurrentUserProfile, subscribeAuthState } from "../firebase/auth";
 import { getTheme, subscribeTheme, toggleTheme } from "../utils/theme";
 import { getSheetSearch, setSheetSearch, subscribeSheetSearch } from "../utils/sheetSearch";
 import logoRound from "../assets/logo-round.png";
+
+const HEADER_MENU_LINKS = [
+  { to: "/privacy", label: "Privacy Policy", hint: "DPDP Act, 2023" },
+  { to: "/terms", label: "Terms of Service", hint: "Rules of use" },
+  { to: "/report", label: "Report Abuse / Grievance", hint: "DPDP grievance redressal" },
+  { to: "/profile", label: "Settings & Profile", hint: "Account, privacy controls" },
+] as const;
 
 type LayoutProps = {
   children: ReactNode;
@@ -18,6 +25,8 @@ function Layout({ children }: LayoutProps) {
   const [farmName, setFarmName] = useState(() => getCurrentUserProfile()?.farmName || "");
   const [theme, setThemeState] = useState(getTheme());
   const [sheetSearch, setSheetSearchState] = useState(getSheetSearch());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const syncProfile = () => {
@@ -38,6 +47,29 @@ function Layout({ children }: LayoutProps) {
   useEffect(() => {
     return subscribeSheetSearch(() => setSheetSearchState(getSheetSearch()));
   }, []);
+
+  // Close the header menu on route change, outside click, or Escape.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
 
   const params = new URLSearchParams(location.search);
   const isArchivedSheetOpen =
@@ -133,14 +165,53 @@ function Layout({ children }: LayoutProps) {
               </div>
             </div>
           ) : null}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-base text-slate-700 active:scale-95 md:h-11 md:w-11 dark:border-[#333333] dark:bg-[#212121] dark:text-slate-100"
-          >
-            {theme === "dark" ? "☀️" : "🌙"}
-          </button>
+          <div ref={menuRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((open) => !open)}
+              aria-label="Open menu"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-bold tracking-widest text-slate-700 active:scale-95 md:h-11 md:w-11 dark:border-[#333333] dark:bg-[#212121] dark:text-slate-100"
+            >
+              ⋮
+            </button>
+            {menuOpen ? (
+              <div
+                role="menu"
+                aria-label="App menu"
+                className="absolute right-0 top-full z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-[#333333] dark:bg-[#212121]"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    toggleTheme();
+                    setMenuOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 active:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/5 dark:active:bg-white/10"
+                >
+                  <span>{theme === "dark" ? "☀️ Switch to light mode" : "🌙 Switch to dark mode"}</span>
+                </button>
+                <div className="h-px bg-slate-100 dark:bg-[#333333]" />
+                {HEADER_MENU_LINKS.map((link) => (
+                  <button
+                    key={link.to}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      navigate(link.to);
+                    }}
+                    className="flex w-full flex-col px-4 py-2.5 text-left transition hover:bg-slate-50 active:bg-slate-100 dark:hover:bg-white/5 dark:active:bg-white/10"
+                  >
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{link.label}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{link.hint}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 

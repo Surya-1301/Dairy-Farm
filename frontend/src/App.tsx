@@ -11,7 +11,10 @@ import History from "./pages/History";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import OwnerDashboard from "./pages/OwnerDashboard";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import ReportAbuse from "./pages/ReportAbuse";
 import ResetPassword from "./pages/ResetPassword";
+import TermsOfService from "./pages/TermsOfService";
 
 function App() {
   const [authReady, setAuthReady] = useState(isAuthReady());
@@ -58,6 +61,9 @@ function App() {
     <>
       <Routes>
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/terms" element={<TermsOfService />} />
+      <Route path="/report" element={<ReportAbuse />} />
       <Route
         path="/login"
         element={authenticated ? <Navigate to={isOwner ? "/owner-dashboard" : "/dashboard"} replace /> : <Login />}
