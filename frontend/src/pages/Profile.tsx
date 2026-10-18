@@ -273,7 +273,7 @@ function Profile() {
       </div>
 
       <div className="relative rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div className="flex flex-row items-center gap-4">
           <div className="flex h-14 w-14 md:h-16 md:w-16 items-center justify-center flex-shrink-0 overflow-hidden rounded-full bg-brand-500 text-lg md:text-xl font-bold text-white">
             {displayAvatarUrl ? (
               <img src={displayAvatarUrl} alt="Profile avatar" className="h-full w-full object-cover" />
