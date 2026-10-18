@@ -38,13 +38,12 @@ function LegalShell({ title, subtitle, children }: LegalShellProps) {
         >
           <span aria-hidden="true">←</span> Back
         </button>
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl dark:text-slate-100">
-          {title}
-        </h1>
-        <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{subtitle}</p>
-
         <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 dark:border-[#333333] dark:bg-[#212121]">
-          {children}
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl dark:text-slate-100">
+            {title}
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{subtitle}</p>
+          <div className="mt-2">{children}</div>
         </article>
 
         <nav
