@@ -11,6 +11,7 @@ import {
   signUpWithEmailPassword,
 } from "../firebase/auth";
 import { generateOtp, OTP_VALIDITY_MS, sendEmailOtp } from "../utils/emailOtp";
+import { BUILD_VERSION_LABEL } from "../utils/buildInfo";
 import raipurBanner from "../assets/raipur-banner.png";
 
 type AuthMode = "signin" | "signup" | "reset" | "google-signup";
@@ -428,6 +429,9 @@ function Login() {
           </p>
         ) : null}
       </form>
+      {BUILD_VERSION_LABEL ? (
+        <p className="pt-3 text-center text-xs text-slate-400 dark:text-slate-500">{BUILD_VERSION_LABEL}</p>
+      ) : null}
     </div>
   );
 }

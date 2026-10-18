@@ -18,6 +18,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Export build version
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
@@ -53,6 +56,7 @@ jobs:
           VITE_EMAILJS_RESET_TEMPLATE_ID: template_th02oar
           VITE_EMAILJS_PUBLIC_KEY: zU3lG0MNPbyxfBUzg
           VITE_RESET_SERVER_URL: https://dairy-farm-1-a3vw.onrender.com
+          VITE_BUILD_VERSION: ${{ env.SHORT_SHA }}
 
       - name: Sync Capacitor Android platform
         run: |
