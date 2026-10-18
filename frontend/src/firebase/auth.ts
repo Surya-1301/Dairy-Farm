@@ -169,6 +169,10 @@ function toFriendlyAuthError(error: unknown) {
     return new Error("Google sign-in could not start. Please update the app and try again.");
   }
 
+  if (error.message.includes("auth/popup-blocked")) {
+    return new Error("Your browser blocked the Google sign-in window. Please allow popups and try again.");
+  }
+
   if (error.message.includes("auth/user-not-found")) {
     return new Error("This account does not exist. Please create a new account.");
   }

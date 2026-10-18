@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import { GoogleAuthProvider, getRedirectResult, signInWithRedirect, signOut } from "firebase/auth";
 import { auth } from "../firebase/config";
 
 const RESET_SERVER_URL = (import.meta.env.VITE_RESET_SERVER_URL as string) || "";
@@ -17,10 +17,21 @@ function AuthBridge() {
       try {
         if (!auth) throw new Error("Firebase is not configured.");
         if (!RESET_SERVER_URL) throw new Error("Reset server is not configured.");
-        await signOut(auth).catch(() => {});
         const provider = new GoogleAuthProvider();
-        const result = await signInWithPopup(auth, provider);
-        const idToken = await result.user.getIdToken();
+        // Redirects (not popups) are used here on purpose: this bridge runs
+        // inside the phone's in-app browser tab, which blocks OAuth popups
+        // (auth/popup-blocked). First check whether we just returned from
+        // Google; if not, start the redirect to the account chooser.
+        const redirectResult = await getRedirectResult(auth, undefined).catch(() => null);
+        const googleUser = redirectResult?.user ?? auth.currentUser ?? null;
+        if (!googleUser) {
+          if (cancelled) return;
+          setMessage("Choose your Google account…");
+          await signOut(auth).catch(() => {});
+          await signInWithRedirect(auth, provider);
+          return; // Browser navigates to Google and back here.
+        }
+        const idToken = await googleUser.getIdToken();
         if (cancelled) return;
         setMessage("Almost done — returning you to the app…");
         const response = await fetch(`${RESET_SERVER_URL.replace(/\/$/, "")}/mintCustomToken`, {
