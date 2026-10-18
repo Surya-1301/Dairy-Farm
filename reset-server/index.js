@@ -2,8 +2,6 @@ const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
 
-// Owner/grievance contact — env override wins; falls back to the project's
-// public contact address so owner-only checks work out of the box.
 const OWNER_EMAIL = (process.env.OWNER_EMAIL || "dairyfarrmm@gmail.com").toLowerCase().trim();
 
 const DEFAULT_ALLOWED_ORIGINS = [
