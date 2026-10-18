@@ -35,34 +35,24 @@ jobs:
         run: npm ci
 
       - name: Build web app
-        run: |
-          missing=""
-          for v in VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_STORAGE_BUCKET VITE_FIREBASE_MESSAGING_SENDER_ID VITE_FIREBASE_APP_ID; do
-            if [ -z "${!v}" ]; then missing="$missing $v"; fi
-          done
-          if [ -n "$missing" ]; then
-            echo "::error::Missing required GitHub Secrets:$missing"
-            echo "Add them under repo Settings → Secrets and variables → Actions, then re-run."
-            exit 1
-          fi
-          npm run build
+        run: npm run build
         env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-          VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
-          VITE_OWNER_EMAIL: ${{ secrets.VITE_OWNER_EMAIL }}
-          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
-          VITE_CLOUDINARY_CLOUD_NAME: ${{ secrets.VITE_CLOUDINARY_CLOUD_NAME }}
-          VITE_CLOUDINARY_UPLOAD_PRESET: ${{ secrets.VITE_CLOUDINARY_UPLOAD_PRESET }}
-          VITE_EMAILJS_SERVICE_ID: ${{ secrets.VITE_EMAILJS_SERVICE_ID }}
-          VITE_EMAILJS_TEMPLATE_ID: ${{ secrets.VITE_EMAILJS_TEMPLATE_ID }}
-          VITE_EMAILJS_RESET_TEMPLATE_ID: ${{ secrets.VITE_EMAILJS_RESET_TEMPLATE_ID }}
-          VITE_EMAILJS_PUBLIC_KEY: ${{ secrets.VITE_EMAILJS_PUBLIC_KEY }}
-          VITE_RESET_SERVER_URL: ${{ secrets.VITE_RESET_SERVER_URL }}
+          VITE_FIREBASE_API_KEY: AIzaSyA8MOLox28ROHuz280s_DUSNbrqbfe9tHU
+          VITE_FIREBASE_AUTH_DOMAIN: dairy-farm.tech
+          VITE_FIREBASE_PROJECT_ID: raipur-dairy-farmm
+          VITE_FIREBASE_STORAGE_BUCKET: raipur-dairy-farmm.firebasestorage.app
+          VITE_FIREBASE_MESSAGING_SENDER_ID: 863738451406
+          VITE_FIREBASE_APP_ID: 1:863738451406:web:1ee394f2d413877fe1479f
+          VITE_FIREBASE_MEASUREMENT_ID: G-7HF9VYZM9E
+          VITE_OWNER_EMAIL: ss058012@gmail.com
+          VITE_APP_URL: https://dairy-farm-qlw1.onrender.com
+          VITE_CLOUDINARY_CLOUD_NAME: dbdl4pjd9
+          VITE_CLOUDINARY_UPLOAD_PRESET: default
+          VITE_EMAILJS_SERVICE_ID: service_ymyr4jt
+          VITE_EMAILJS_TEMPLATE_ID: template_8p790np
+          VITE_EMAILJS_RESET_TEMPLATE_ID: template_th02oar
+          VITE_EMAILJS_PUBLIC_KEY: zU3lG0MNPbyxfBUzg
+          VITE_RESET_SERVER_URL: https://dairy-farm-1-a3vw.onrender.com
 
       - name: Sync Capacitor Android platform
         run: |
