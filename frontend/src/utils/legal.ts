@@ -6,7 +6,7 @@ export const FIDUCIARY_NAME = "Raipur Dugdh Utpadan Association";
 export const EFFECTIVE_DATE = "18 October 2026";
 
 export const GRIEVANCE_EMAIL =
-  ((import.meta.env.VITE_OWNER_EMAIL as string) || "ss058012@gmail.com").trim();
+  ((import.meta.env.VITE_OWNER_EMAIL as string) || "dairyfarrmm@gmail.com").trim();
 
 // Grievance Officer details (Rule 9, DPDP Rules 2025 requires publishing these).
 // TODO(owner): replace placeholders with the officially designated officer.

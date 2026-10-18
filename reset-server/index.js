@@ -8,7 +8,7 @@ const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
 
-const OWNER_EMAIL = "ss058012@gmail.com";
+const OWNER_EMAIL = (process.env.OWNER_EMAIL || "dairyfarrmm@gmail.com").toLowerCase().trim();
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5173",

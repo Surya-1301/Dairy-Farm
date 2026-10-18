@@ -44,7 +44,7 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: 863738451406
           VITE_FIREBASE_APP_ID: 1:863738451406:web:1ee394f2d413877fe1479f
           VITE_FIREBASE_MEASUREMENT_ID: G-7HF9VYZM9E
-          VITE_OWNER_EMAIL: ss058012@gmail.com
+          VITE_OWNER_EMAIL: dairyfarrmm@gmail.com
           VITE_APP_URL: https://dairy-farm-qlw1.onrender.com
           VITE_CLOUDINARY_CLOUD_NAME: dbdl4pjd9
           VITE_CLOUDINARY_UPLOAD_PRESET: default
