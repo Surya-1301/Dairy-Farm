@@ -7,15 +7,18 @@ const config: CapacitorConfig = {
   android: {
     backgroundColor: "#ffffff",
   },
+  
+  server: {
+    androidScheme: "https",
+  },
   plugins: {
     StatusBar: {
       overlaysWebView: false,
       style: "DARK",
       backgroundColor: "#ffffff00",
     },
-    FirebaseAuthentication: {
-      skipNativeAuth: false,
-      providers: ["google.com"],
+    App: {
+      androidLaunchMode: "singleTask",
     },
   },
 };

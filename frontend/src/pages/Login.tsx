@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { AuthCredential } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
 import {
   completeGoogleSignup,
   consumeGoogleRedirectResult,
@@ -137,8 +138,27 @@ function Login() {
     setErrorMessage("");
     setInfoMessage("");
     setLoading(true);
+    let browserOpened = false;
+    // On native the browser opens outside the app — show progress + reset the
+    // spinner when the user comes back without completing (cancel/timeout).
+    // Web popup resolves in-page, so no timer is needed there.
+    const nativeTimer = Capacitor.isNativePlatform()
+      ? setInterval(() => {
+          if (!browserOpened) {
+            setInfoMessage("Opening your browser for Google sign-in…");
+            browserOpened = true;
+          } else {
+            setLoading(false);
+            clearInterval(nativeTimer);
+          }
+        }, 2500)
+      : undefined;
+    const clearNativeTimer = () => {
+      if (nativeTimer) clearInterval(nativeTimer);
+    };
     try {
       const result = await signInWithGoogle();
+      clearNativeTimer();
       if (result.isNewUser) {
         setGoogleCredential(result.credential);
         setGoogleAvatarUrl(result.avatarUrl);
@@ -153,11 +173,7 @@ function Login() {
         goToDashboard();
       }
     } catch (error) {
-      if (error instanceof Error && error.message === "GOOGLE_REDIRECT_STARTED") {
-        // Native APK: the app is now navigating to Google in the same WebView.
-        setInfoMessage("Opening Google sign-in…");
-        return;
-      }
+      clearNativeTimer();
       setErrorMessage(error instanceof Error ? error.message : "Google sign-in failed.");
     } finally {
       setLoading(false);

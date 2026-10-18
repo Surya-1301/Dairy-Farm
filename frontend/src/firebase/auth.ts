@@ -8,14 +8,16 @@ import {
   linkWithCredential,
   onAuthStateChanged,
   signInWithCredential,
+  signInWithCustomToken,
   signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
   type AuthCredential,
   type User
 } from "firebase/auth";
+import { App as CapacitorApp } from "@capacitor/app";
+import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
-import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { auth, db } from "./config";
 import { deleteUserDataByEmail } from "./data";
@@ -518,45 +520,131 @@ export async function signUpWithEmailPassword(email: string, password: string, n
 export type GoogleSignInResult =
   | { isNewUser: false }
   | { isNewUser: true; email: string; name: string; avatarUrl: string; credential: AuthCredential };
+
+// ---------------------------------------------------------------------------
+// Native (APK) Google sign-in via the phone's DEFAULT BROWSER + deep link.
+// Flow: APK opens hosted /auth/bridge in the default browser (normal web
+// Google popup there) -> bridge mints a Firebase custom token via the
+// reset-server -> redirects to dairyfarm://auth?token=... -> APK catches the
+// deep link (appUrlOpen) and signs in with signInWithCustomToken.
+// Web keeps the popup UX further below.
+// ---------------------------------------------------------------------------
+const NATIVE_AUTH_SCHEME = "dairyfarm://auth";
+const BRIDGE_TIMEOUT_MS = 5 * 60 * 1000;
+
+type PendingBrowserSignIn = {
+  resolve: (token: string) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+let pendingBrowserSignIn: PendingBrowserSignIn | null = null;
+let browserSignInListenerReady = false;
+
+function bridgePageUrl(): string {
+  const appUrl = ((import.meta.env.VITE_APP_URL as string) || "").replace(/\/$/, "");
+  if (!appUrl) {
+    throw new Error("Google sign-in is not configured. Add VITE_APP_URL to your build first.");
+  }
+  return `${appUrl}/auth/bridge?mode=signin`;
+}
+
+function settleBrowserSignIn(error: Error | null, token?: string) {
+  const pending = pendingBrowserSignIn;
+  pendingBrowserSignIn = null;
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  if (error || !token) {
+    pending.reject(error ?? new Error("Google sign-in was cancelled."));
+  } else {
+    pending.resolve(token);
+  }
+}
+
+async function ensureBrowserSignInListener() {
+  if (browserSignInListenerReady) return;
+  browserSignInListenerReady = true;
+  await CapacitorApp.addListener("appUrlOpen", (event) => {
+    const url = event.url ?? "";
+    if (!url.startsWith(NATIVE_AUTH_SCHEME)) return;
+    const query = url.includes("?") ? url.split("?")[1] : "";
+    const params = new URLSearchParams(query);
+    const token = params.get("token");
+    const errorMessage = params.get("error");
+    if (token) {
+      settleBrowserSignIn(null, token);
+    } else {
+      settleBrowserSignIn(new Error(errorMessage || "Google sign-in was cancelled."));
+    }
+    void Browser.close().catch(() => {});
+  });
+}
+
+async function signInWithBrowserBridge(): Promise<string> {
+  const firebaseAuth = requireFirebaseAuth();
+  await firebaseSignOut(firebaseAuth).catch(() => {});
+  await ensureBrowserSignInListener();
+
+  if (pendingBrowserSignIn) {
+    throw new Error("A Google sign-in is already in progress.");
+  }
+
+  const tokenPromise = new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      settleBrowserSignIn(new Error("Google sign-in timed out. Please try again."));
+    }, BRIDGE_TIMEOUT_MS);
+    pendingBrowserSignIn = { resolve, reject, timer };
+  });
+
+  try {
+    await Browser.open({ url: bridgePageUrl(), presentationStyle: "popover" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not open the browser for Google sign-in.";
+    settleBrowserSignIn(new Error(message));
+  }
+
+  return tokenPromise;
+}
+
+async function finishBrowserSignIn(customToken: string): Promise<GoogleSignInResult> {
+  const firebaseAuth = requireFirebaseAuth();
+  const result = await signInWithCustomToken(firebaseAuth, customToken);
+  const user = result.user;
+  const normalizedEmail = normalizeEmail(user.email ?? "");
+
+  if (!normalizedEmail) {
+    await firebaseSignOut(firebaseAuth);
+    throw new Error("This Google account does not have an email address.");
+  }
+
+  const existingProfile = await getUserProfileFromCloud(normalizedEmail);
+
+  if (existingProfile) {
+    const profile = upsertUserProfile(existingProfile);
+    await saveUserProfileToCloud(profile);
+    suppressAuthStateSync = false;
+    syncFirebaseUser(user);
+    return { isNewUser: false };
+  }
+
+  const name = user.displayName ?? "";
+  const avatarUrl = user.photoURL ?? "";
+  const idToken = await user.getIdToken().catch(() => "");
+  const credential = GoogleAuthProvider.credential(idToken || null);
+
+  return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential };
+}
 export async function signInWithGoogle(): Promise<GoogleSignInResult> {
   const firebaseAuth = requireFirebaseAuth();
   suppressAuthStateSync = true;
 
   if (Capacitor.isNativePlatform()) {
     try {
-      const nativeResult = await FirebaseAuthentication.signInWithGoogle();
-      const idToken = nativeResult.credential?.idToken;
-      if (!idToken) {
-        throw new Error("Could not complete Google sign-in. Please try again.");
-      }
-      const credential = GoogleAuthProvider.credential(idToken);
-      const result = await signInWithCredential(firebaseAuth, credential);
-      const user = result.user;
-      const normalizedEmail = normalizeEmail(user.email ?? "");
-
-      if (!normalizedEmail) {
-        await firebaseSignOut(firebaseAuth);
-        throw new Error("This Google account does not have an email address.");
-      }
-
-      const existingProfile = await getUserProfileFromCloud(normalizedEmail);
-
-      if (existingProfile) {
-        const profile = upsertUserProfile(existingProfile);
-        await saveUserProfileToCloud(profile);
-        suppressAuthStateSync = false;
-        syncFirebaseUser(user);
-        return { isNewUser: false };
-      }
-
-      const name = user.displayName ?? "";
-      const avatarUrl = user.photoURL ?? "";
-
-      return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential };
+      const customToken = await signInWithBrowserBridge();
+      return await finishBrowserSignIn(customToken);
     } catch (error) {
       if (isConfigurationError(error)) throw toFriendlyAuthError(error);
       const message = (error as { message?: string })?.message ?? "";
-      if (message === "GOOGLE_REDIRECT_STARTED") throw error;
       if (/cancel|cancelled|dismissed/i.test(message)) {
         throw new Error("Google sign-in was cancelled.");
       }
@@ -793,15 +881,6 @@ export async function confirmNewPassword(oobCode: string, newPassword: string): 
 }
 
 export async function logout(): Promise<void> {
-  // Sign out of the native layer too — otherwise the Google account stays
-  // cached and the next sign-in silently reuses it (or never completes).
-  if (Capacitor.isNativePlatform()) {
-    try {
-      await FirebaseAuthentication.signOut();
-    } catch {
-      // Native sign-out is best-effort; still clear the JS session below.
-    }
-  }
   if (!auth) {
     syncFirebaseUser(null);
     return;

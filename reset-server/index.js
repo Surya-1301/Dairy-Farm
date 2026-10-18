@@ -90,6 +90,27 @@ app.post("/generatePasswordResetLink", async (req, res) => {
     res.status(500).json({ error: "Failed to generate reset code" });
   }
 });
+app.post("/mintCustomToken", async (req, res) => {
+  const authHeader = req.headers.authorization || "";
+  if (!authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Sign-in required" });
+    return;
+  }
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(authHeader.slice("Bearer ".length));
+    if (!decoded.uid) {
+      res.status(401).json({ error: "Sign-in required" });
+      return;
+    }
+    const customToken = await admin.auth().createCustomToken(decoded.uid);
+    res.json({ customToken });
+  } catch (error) {
+    console.error("mintCustomToken error:", error);
+    res.status(401).json({ error: "Could not complete sign-in. Please try again." });
+  }
+});
+
 
 const PORT = process.env.PORT || 8787;
 app.listen(PORT, () => {

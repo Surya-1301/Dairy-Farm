@@ -5,8 +5,9 @@ import { Capacitor } from "@capacitor/core";
 import { StatusBar } from "@capacitor/status-bar";
 import Layout from "./components/Layout";
 import { getActiveUser, isAuthReady, isAuthenticated, subscribeAuthState } from "./firebase/auth";
-import Customers from "./pages/Customers";
 import CustomerDetails from "./pages/CustomerDetails";
+import AuthBridge from "./pages/AuthBridge";
+import Customers from "./pages/Customers";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
 import Login from "./pages/Login";
@@ -72,6 +73,7 @@ function App() {
     <>
       <Routes>
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/auth/bridge" element={<AuthBridge />} />
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/terms" element={<TermsOfService />} />
       <Route path="/report" element={<ReportAbuse />} />
