@@ -170,16 +170,8 @@ function ReportAbuse() {
           type="submit"
           className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-700"
         >
-          Submit via Gmail
+          Submit
         </button>
-
-        <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-          Opens Gmail with your grievance prefilled to{" "}
-          <a className="font-semibold text-brand-600 hover:underline dark:text-blue-300" href={mailtoLink()}>
-            {GRIEVANCE_EMAIL}
-          </a>
-          . Unresolved grievances may be appealed to the Data Protection Board of India.
-        </p>
       </form>
     </LegalShell>
   );
