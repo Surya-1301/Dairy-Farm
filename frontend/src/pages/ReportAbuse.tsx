@@ -1,5 +1,4 @@
 import { FormEvent, useState } from "react";
-import emailjs from "@emailjs/browser";
 import LegalShell from "../components/LegalShell";
 import { getActiveUser, getCurrentUserProfile } from "../firebase/auth";
 import {
@@ -9,10 +8,6 @@ import {
   GRIEVANCE_OFFICER,
   GRIEVANCE_RESOLUTION_DAYS,
 } from "../utils/legal";
-
-const SERVICE_ID = (import.meta.env.VITE_EMAILJS_SERVICE_ID as string) || "";
-const PUBLIC_KEY = (import.meta.env.VITE_EMAILJS_PUBLIC_KEY as string) || "";
-const NOTIFY_TEMPLATE_ID = (import.meta.env.VITE_EMAILJS_RESET_TEMPLATE_ID as string) || "";
 
 const CATEGORIES = [
   "Data privacy / DPDP grievance",
@@ -32,55 +27,49 @@ function ReportAbuse() {
   const [details, setDetails] = useState("");
   const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState<{ kind: string; text: string } | null>(null);
-  const [sending, setSending] = useState(false);
 
-  const mailtoLink = () => {
-    const subject = encodeURIComponent(`[${APP_NAME} Grievance] ${category}`);
-    const body = encodeURIComponent(
-      `Name: ${name}\nEmail: ${email}\nCategory: ${category}\n\nDetails:\n${details}\n\n(I consent to processing this grievance under the DPDP Act, 2023.)`
-    );
-    return `mailto:${GRIEVANCE_EMAIL}?subject=${subject}&body=${body}`;
-  };
+  // The exact grievance format the user typed — reused for both Gmail + mailto.
+  const grievanceSubject = `[${APP_NAME} Grievance] ${category}`;
+  const grievanceBody =
+    `Name: ${name.trim()}\n` +
+    `Email: ${email.trim()}\n` +
+    `Category: ${category}\n\n` +
+    `Details:\n${details.trim()}\n\n` +
+    `(I consent to processing this grievance under the DPDP Act, 2023.)`;
 
-  const onSubmit = async (event: FormEvent) => {
+  // Gmail compose with To / Subject / Body prefilled from the form above.
+  const gmailLink = () =>
+    `https://mail.google.com/mail/?view=cm&fs=1` +
+    `&to=${encodeURIComponent(GRIEVANCE_EMAIL)}` +
+    `&su=${encodeURIComponent(grievanceSubject)}` +
+    `&body=${encodeURIComponent(grievanceBody)}`;
+
+  const mailtoLink = () =>
+    `mailto:${GRIEVANCE_EMAIL}?subject=${encodeURIComponent(grievanceSubject)}&body=${encodeURIComponent(grievanceBody)}`;
+
+  const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     setStatus(null);
     if (!name.trim() || !email.trim() || !details.trim()) {
       setStatus({ kind: "error", text: "Please fill your name, email and a description." });
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setStatus({ kind: "error", text: "Please enter a valid email address." });
+      return;
+    }
     if (!consent) {
       setStatus({ kind: "error", text: "Please tick the consent checkbox so we can process your grievance." });
       return;
     }
-    if (!SERVICE_ID || !NOTIFY_TEMPLATE_ID || !PUBLIC_KEY) {
-      window.location.href = mailtoLink();
-      setStatus({ kind: "info", text: "Opening your email app with the grievance prefilled — just press Send." });
-      return;
-    }
-    setSending(true);
-    try {
-      await emailjs.send(
-        SERVICE_ID,
-        NOTIFY_TEMPLATE_ID,
-        {
-          email: GRIEVANCE_EMAIL,
-          to_name: GRIEVANCE_OFFICER.name,
-          link: `Grievance from ${name.trim()} <${email.trim()}> [${category}]: ${details.trim()}`,
-        },
-        { publicKey: PUBLIC_KEY }
-      );
-      setStatus({
-        kind: "success",
-        text: `Submitted. We acknowledge within ${GRIEVANCE_ACKNOWLEDGEMENT_DAYS} days and resolve within ${GRIEVANCE_RESOLUTION_DAYS} days.`,
-      });
-      setDetails("");
-    } catch {
-      window.location.href = mailtoLink();
-      setStatus({ kind: "info", text: "Email service hiccup — opened your mail app instead. Just press Send." });
-    } finally {
-      setSending(false);
-    }
+    // Open Gmail (new tab) with the grievance prefilled — user presses Send.
+    // Popup blockers can swallow window.open, so fall back to same-tab mailto.
+    const opened = window.open(gmailLink(), "_blank", "noopener,noreferrer");
+    if (!opened) window.location.href = mailtoLink();
+    setStatus({
+      kind: "success",
+      text: `Opening Gmail with your grievance prefilled — just press Send. We acknowledge within ${GRIEVANCE_ACKNOWLEDGEMENT_DAYS} days and resolve within ${GRIEVANCE_RESOLUTION_DAYS} days.`,
+    });
   };
 
 
@@ -164,17 +153,29 @@ function ReportAbuse() {
           I consent to {APP_NAME} processing these details to resolve my grievance under the DPDP Act, 2023.
         </label>
 
+        {status && (
+          <p
+            role="status"
+            className={`rounded-lg px-4 py-3 text-sm ${
+              status.kind === "error"
+                ? "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300"
+                : "bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-300"
+            }`}
+          >
+            {status.text}
+          </p>
+        )}
+
         <button
           type="submit"
-          disabled={sending}
-          className="flex min-h-[48px] w-full items-center justify-center rounded-lg bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+          className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-700"
         >
-          {sending ? "Submitting…" : "Submit grievance"}
+          Submit via Gmail
         </button>
 
         <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-          Prefer email? Write to{" "}
-          <a className="font-semibold text-brand-600 hover:underline dark:text-blue-300" href={`mailto:${GRIEVANCE_EMAIL}`}>
+          Opens Gmail with your grievance prefilled to{" "}
+          <a className="font-semibold text-brand-600 hover:underline dark:text-blue-300" href={mailtoLink()}>
             {GRIEVANCE_EMAIL}
           </a>
           . Unresolved grievances may be appealed to the Data Protection Board of India.
