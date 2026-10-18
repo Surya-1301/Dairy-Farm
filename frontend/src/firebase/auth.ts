@@ -165,6 +165,10 @@ function toFriendlyAuthError(error: unknown) {
     return new Error("Firebase auth is not configured correctly for this app.");
   }
 
+  if (error.message.includes("auth/argument-error")) {
+    return new Error("Google sign-in could not start. Please update the app and try again.");
+  }
+
   if (error.message.includes("auth/user-not-found")) {
     return new Error("This account does not exist. Please create a new account.");
   }
@@ -519,7 +523,7 @@ export async function signUpWithEmailPassword(email: string, password: string, n
 
 export type GoogleSignInResult =
   | { isNewUser: false }
-  | { isNewUser: true; email: string; name: string; avatarUrl: string; credential: AuthCredential };
+  | { isNewUser: true; email: string; name: string; avatarUrl: string; credential: AuthCredential | null };
 
 // ---------------------------------------------------------------------------
 // Native (APK) Google sign-in via the phone's DEFAULT BROWSER + deep link.
@@ -629,10 +633,12 @@ async function finishBrowserSignIn(customToken: string): Promise<GoogleSignInRes
 
   const name = user.displayName ?? "";
   const avatarUrl = user.photoURL ?? "";
-  const idToken = await user.getIdToken().catch(() => "");
-  const credential = GoogleAuthProvider.credential(idToken || null);
 
-  return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential };
+  // Custom-token sessions have no OAuth credential object — signal that with
+  // null so "finish setup" signs back in via the current user, not a stale
+  // GoogleAuthProvider.credential(idToken || null) (which throws
+  // auth/argument-error and produced the red banner).
+  return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential: null };
 }
 export async function signInWithGoogle(): Promise<GoogleSignInResult> {
   const firebaseAuth = requireFirebaseAuth();
@@ -767,7 +773,7 @@ export async function consumeGoogleRedirectResult(): Promise<GoogleSignInResult 
 }
 
 export async function completeGoogleSignup(args: {
-  credential: AuthCredential;
+  credential: AuthCredential | null;
   email: string;
   name: string;
   phone: string;
@@ -788,8 +794,15 @@ export async function completeGoogleSignup(args: {
   }
 
   try {
-    const credentialResult = await signInWithCredential(firebaseAuth, args.credential);
-    const user = credentialResult.user;
+    // Browser-bridge (native APK) sessions arrive via custom token, so there
+    // is no OAuth credential to replay — reuse the already-signed-in user.
+    // Web popup sessions replay the credential to get a fresh user handle.
+    const user = args.credential
+      ? (await signInWithCredential(firebaseAuth, args.credential)).user
+      : firebaseAuth.currentUser;
+    if (!user) {
+      throw new Error("Your Google sign-in session expired. Please click Continue with Google again.");
+    }
 
     try {
       await linkWithCredential(user, EmailAuthProvider.credential(normalizedEmail, trimmedPassword));
