@@ -1,5 +1,5 @@
 import LegalShell from "../components/LegalShell";
-import { APP_NAME, EFFECTIVE_DATE, FIDUCIARY_NAME, GRIEVANCE_EMAIL } from "../utils/legal";
+import { APP_NAME, FIDUCIARY_NAME, GRIEVANCE_EMAIL } from "../utils/legal";
 
 function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
   return (
@@ -12,10 +12,7 @@ function Section({ heading, children }: { heading: string; children: React.React
 
 function TermsOfService() {
   return (
-    <LegalShell
-      title="Terms of Service"
-      subtitle={`Effective date: ${EFFECTIVE_DATE} · Operated by ${FIDUCIARY_NAME}. By creating an account or using the app you agree to these terms, which are governed by the laws of India.`}
-    >
+    <LegalShell title="Terms of Service">
       <Section heading="1. The service">
         <p>
           {APP_NAME} is a record-keeping tool for dairy businesses: manage customers, record daily
