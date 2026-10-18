@@ -19,15 +19,10 @@ function Section({ heading, children }: { heading: string; children: React.React
 
 function PrivacyPolicy() {
   return (
-    <LegalShell title="Privacy Policy" subtitle={APP_NAME}>
-      <h1 className="text-xl font-bold text-slate-900 sm:text-2xl dark:text-slate-100">
-        Privacy Policy — {APP_NAME}
-      </h1>
-      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-        Effective date: {EFFECTIVE_DATE} · Data Fiduciary: {FIDUCIARY_NAME}. Framed under the
-        Digital Personal Data Protection Act, 2023 and the DPDP Rules, 2025.
-      </p>
-
+    <LegalShell
+      title="Privacy Policy"
+      subtitle={`Effective date: ${EFFECTIVE_DATE} · Data Fiduciary: ${FIDUCIARY_NAME}. Framed under the Digital Personal Data Protection Act, 2023 and the DPDP Rules, 2025.`}
+    >
       <Section heading="1. Who we are (Data Fiduciary)">
         <p>
           {FIDUCIARY_NAME} (“we”, “us”, “our”) operates {APP_NAME}, which helps dairy farmers
@@ -111,8 +106,6 @@ function PrivacyPolicy() {
               {GRIEVANCE_OFFICER.email}
             </a>
           </li>
-          <li>Address: {GRIEVANCE_OFFICER.address}</li>
-          <li>Phone: {GRIEVANCE_OFFICER.phone}</li>
         </ul>
         <p>Or raise it from the in-app Report Abuse / Grievance page.</p>
       </Section>

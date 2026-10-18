@@ -12,15 +12,10 @@ function Section({ heading, children }: { heading: string; children: React.React
 
 function TermsOfService() {
   return (
-    <LegalShell title="Terms of Service" subtitle={APP_NAME}>
-      <h1 className="text-xl font-bold text-slate-900 sm:text-2xl dark:text-slate-100">
-        Terms of Service — {APP_NAME}
-      </h1>
-      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-        Effective date: {EFFECTIVE_DATE} · Operated by {FIDUCIARY_NAME}. By creating an account or
-        using the app you agree to these terms, which are governed by the laws of India.
-      </p>
-
+    <LegalShell
+      title="Terms of Service"
+      subtitle={`Effective date: ${EFFECTIVE_DATE} · Operated by ${FIDUCIARY_NAME}. By creating an account or using the app you agree to these terms, which are governed by the laws of India.`}
+    >
       <Section heading="1. The service">
         <p>
           {APP_NAME} is a record-keeping tool for dairy businesses: manage customers, record daily

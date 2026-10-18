@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import logoRound from "../assets/logo-round.png";
-import { APP_NAME, EFFECTIVE_DATE } from "../utils/legal";
+import { APP_NAME } from "../utils/legal";
 
 type LegalShellProps = {
   title: string;
@@ -12,30 +12,38 @@ type LegalShellProps = {
 function LegalShell({ title, subtitle, children }: LegalShellProps) {
   const navigate = useNavigate();
 
+  const goBack = () => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate("/");
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#161616]">
       <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/90 backdrop-blur dark:border-[#333333] dark:bg-[#161616]/90">
-        <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            aria-label="Go back"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-bold text-slate-700 active:scale-95 dark:border-[#333333] dark:bg-[#212121] dark:text-slate-100"
-          >
-            ←
-          </button>
-          <img src={logoRound} alt={`${APP_NAME} logo`} className="h-10 w-10 rounded-full object-cover" />
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-2.5 px-4 py-3">
+          <img src={logoRound} alt={`${APP_NAME} logo`} className="h-9 w-9 rounded-full object-cover" />
           <div className="min-w-0">
-            <p className="truncate text-[15px] font-bold text-slate-900 dark:text-slate-100">{title}</p>
-            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-              {subtitle} · Effective {EFFECTIVE_DATE}
-            </p>
+            <p className="truncate text-[15px] font-bold text-slate-900 dark:text-slate-100">{APP_NAME}</p>
+            <p className="truncate text-xs text-slate-500 dark:text-slate-400">Legal &amp; Grievance Centre</p>
           </div>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-3xl px-4 py-6 md:py-10">
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 dark:border-[#333333] dark:bg-[#212121]">
+        <button
+          type="button"
+          onClick={goBack}
+          aria-label="Go back"
+          className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-700 shadow-sm transition active:scale-95 hover:bg-slate-100 dark:border-[#333333] dark:bg-[#212121] dark:text-slate-100 dark:hover:bg-[#2a2a2a]"
+        >
+          <span aria-hidden="true">←</span> Back
+        </button>
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl dark:text-slate-100">
+          {title}
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{subtitle}</p>
+
+        <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 dark:border-[#333333] dark:bg-[#212121]">
           {children}
         </article>
 

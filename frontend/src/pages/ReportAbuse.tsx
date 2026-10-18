@@ -85,15 +85,10 @@ function ReportAbuse() {
 
 
   return (
-    <LegalShell title="Report Abuse / Grievance" subtitle={APP_NAME}>
-      <h1 className="text-xl font-bold text-slate-900 sm:text-2xl dark:text-slate-100">
-        Report Abuse or Raise a Grievance
-      </h1>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-        Report misuse or raise a data-privacy grievance under the DPDP Act, 2023. We acknowledge
-        within {GRIEVANCE_ACKNOWLEDGEMENT_DAYS} days and resolve within {GRIEVANCE_RESOLUTION_DAYS} days.
-      </p>
-
+    <LegalShell
+      title="Report Abuse or Raise a Grievance"
+      subtitle={`Report misuse or raise a data-privacy grievance under the DPDP Act, 2023. Grievance Officer: ${GRIEVANCE_OFFICER.name} (${GRIEVANCE_OFFICER.email}). We acknowledge within ${GRIEVANCE_ACKNOWLEDGEMENT_DAYS} days and resolve within ${GRIEVANCE_RESOLUTION_DAYS} days.`}
+    >
       {status ? (
         <p
           role="status"
