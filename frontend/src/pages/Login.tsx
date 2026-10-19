@@ -48,7 +48,13 @@ function Login() {
     (async () => {
       try {
         const result = await consumeGoogleRedirectResult();
-        if (cancelled || !result) return;
+        if (cancelled) return;
+        if (!result) {
+          if (initialMode === "signin") {
+            await handleGoogleSignIn();
+          }
+          return;
+        }
         if (result.isNewUser) {
           setGoogleCredential(result.credential);
           setGoogleAvatarUrl(result.avatarUrl);
@@ -130,7 +136,7 @@ function Login() {
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  async function handleGoogleSignIn() {
     setErrorMessage("");
     setInfoMessage("");
     setLoading(true);
@@ -167,7 +173,7 @@ function Login() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const handleResendOtp = async () => {
     setLoading(true);
