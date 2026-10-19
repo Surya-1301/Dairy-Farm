@@ -1,4 +1,6 @@
 import { FormEvent, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 import LegalShell from "../components/LegalShell";
 import { getActiveUser, getCurrentUserProfile } from "../firebase/auth";
 import {
@@ -47,7 +49,7 @@ function ReportAbuse() {
   const mailtoLink = () =>
     `mailto:${GRIEVANCE_EMAIL}?subject=${encodeURIComponent(grievanceSubject)}&body=${encodeURIComponent(grievanceBody)}`;
 
-  const onSubmit = (event: FormEvent) => {
+  const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setStatus(null);
     if (!name.trim() || !email.trim() || !details.trim()) {
@@ -64,8 +66,12 @@ function ReportAbuse() {
     }
     // Open Gmail (new tab) with the grievance prefilled — user presses Send.
     // Popup blockers can swallow window.open, so fall back to same-tab mailto.
-    const opened = window.open(gmailLink(), "_blank", "noopener,noreferrer");
-    if (!opened) window.location.href = mailtoLink();
+    if (Capacitor.isNativePlatform()) {
+      await Browser.open({ url: gmailLink(), presentationStyle: "popover" });
+    } else {
+      const opened = window.open(gmailLink(), "_blank", "noopener,noreferrer");
+      if (!opened) window.location.href = mailtoLink();
+    }
     setStatus({
       kind: "success",
       text: `Opening Gmail with your grievance prefilled — just press Send. We acknowledge within ${GRIEVANCE_ACKNOWLEDGEMENT_DAYS} days and resolve within ${GRIEVANCE_RESOLUTION_DAYS} days.`,

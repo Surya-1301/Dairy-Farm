@@ -461,8 +461,11 @@ export function getAllUserProfiles(): UserProfile[] {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function fetchAllUserProfiles(): Promise<UserProfile[]> {
+export async function fetchAllUserProfiles(strict = false): Promise<UserProfile[]> {
   if (!db) {
+    if (strict) {
+      throw new Error("Firebase Firestore is not configured. Add your VITE_FIREBASE_* values first.");
+    }
     return getAllUserProfiles();
   }
 
@@ -475,6 +478,11 @@ export async function fetchAllUserProfiles(): Promise<UserProfile[]> {
     cloudProfiles.forEach((profile) => upsertProfileCache(profile));
   } catch (error) {
     console.error("Error loading user profiles from Firestore:", error);
+    if (strict) {
+      throw new Error(
+        "Could not load users from Firestore. Publish owner read access for userProfiles and sign in again."
+      );
+    }
   }
 
   return getAllUserProfiles();

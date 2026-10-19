@@ -213,7 +213,7 @@ function Layout({ children }: LayoutProps) {
       </header>
 
       <main
-        className={`mx-auto w-full max-w-6xl px-4 py-3 pb-[calc(7rem+var(--safe-area-inset-bottom))] md:px-8 md:py-8 ${
+        className={`mx-auto w-full max-w-6xl px-4 py-3 pb-[calc(10rem+var(--safe-area-inset-bottom))] md:px-8 md:py-8 md:pb-24 ${
           isMilkSheetPage ? "md:pb-0" : ""
         }`}
       >

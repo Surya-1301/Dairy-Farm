@@ -37,6 +37,23 @@ See `.env.example` at the repo root for the full template.
 
 See `reset-server/.env.example` for the template.
 
+## Android App
+
+The Capacitor Android app uses native file storage and the Android share
+sheet for PDF and Excel exports. Keep the native project synchronized after
+frontend changes:
+
+```bash
+cd frontend
+npm install
+npm run build
+npx cap sync android
+npx cap open android
+```
+
+The web fallback remains active in browsers. Avatar selection continues to
+use the Android file picker and uploads the selected image to Cloudinary.
+
 ## Firestore Setup
 
 Registered user profiles are shared through Firestore so the owner dashboard
@@ -44,10 +61,51 @@ can see users who signed up from other devices or browsers.
 
 1. In Firebase Console, open **Firestore Database** and create a database if
    none exists.
-2. Open **Firestore Database → Rules** and publish rules granting per-user
-   access to `customerLists/{email}`, `sheetStates/{email}`,
-   `sheetHistories/{email}` and `userProfiles`, plus an owner override for
-   admin workflows (match the owner email in your rules to `VITE_OWNER_EMAIL`).
+2. Open **Firestore Database → Rules** and publish rules like the following.
+   Replace `owner@example.com` with the exact value of `VITE_OWNER_EMAIL`
+   before publishing. The owner override is required for the owner dashboard
+   to list users from other devices.
+
+   ```text
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       function signedIn() {
+         return request.auth != null;
+       }
+
+       function isOwner() {
+         return signedIn() && request.auth.token.email == 'owner@example.com';
+       }
+
+       function owns(email) {
+         return signedIn() && request.auth.token.email == email;
+       }
+
+       match /userProfiles/{email} {
+         allow read, write: if isOwner() || owns(email);
+       }
+
+       match /customerLists/{email} {
+         allow read, write: if isOwner() || owns(email);
+       }
+
+       match /sheetStates/{email} {
+         allow read, write: if isOwner() || owns(email);
+       }
+
+       match /sheetHistories/{email} {
+         allow read, write: if isOwner() || owns(email);
+       }
+
+       match /passwordResets/{email} {
+         allow read, write: if owns(email);
+       }
+     }
+   }
+   ```
+
+   Do not leave the placeholder owner email in production rules.
 3. The console is the source of truth for rules — no rules file is committed
    to this repo.
 

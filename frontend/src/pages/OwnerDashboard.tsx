@@ -3,6 +3,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import ExcelJS from "exceljs";
 import Layout from "../components/Layout";
+import { saveFile } from "../utils/nativeFiles";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { deleteUserByEmail, fetchAllUserProfiles, isOwnerLoggedIn, requestPasswordReset, subscribeAuthState, updateUserProfileByEmail } from "../firebase/auth";
 import {
@@ -20,7 +21,7 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
-function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
+async function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
   const doc = new jsPDF({ orientation: "landscape" });
   const effectiveDayCount = getEffectiveDayCount(entry);
   const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
@@ -117,7 +118,10 @@ function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, owner
     },
   });
 
-  doc.save(`${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.pdf`);
+  await saveFile(
+    doc.output("blob"),
+    `${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.pdf`
+  );
 }
 
 function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
@@ -233,14 +237,10 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, own
     const blob = new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.xlsx`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    await saveFile(
+      blob,
+      `${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.xlsx`
+    );
   })();
 }
 
@@ -262,7 +262,6 @@ type UserSnapshot = UserProfile & {
   sheetTotal: number;
 };
 
-
 function UpdatedCard({ updatedAt }: { updatedAt?: string }) {
   return (
     <div className="text-right text-xs font-medium text-slate-500">
@@ -274,12 +273,14 @@ function UpdatedCard({ updatedAt }: { updatedAt?: string }) {
   );
 }
 
-function StatCard({ title, value, tone, description }: { title: string; value: string; tone: string; description: string }) {
+function OwnerSummaryCard({ icon, title, value, className = "" }: { icon: string; title: string; value: string; className?: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</div>
-      <div className={`mt-2 text-3xl font-bold md:text-4xl ${tone}`}>{value}</div>
-      <p className="mt-2 text-sm text-slate-500">{description}</p>
+    <div className={`min-h-[96px] rounded-2xl border p-3 shadow-sm md:p-4 ${className}`}>
+      <div className="text-[15px]">{icon}</div>
+      <div className="mt-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</p>
+        <p className="selectable text-xl font-bold leading-tight text-slate-800 dark:text-white md:text-2xl">{value}</p>
+      </div>
     </div>
   );
 }
@@ -374,6 +375,7 @@ export default function OwnerDashboard() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleteInfo, setDeleteInfo] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [archiveMsg, setArchiveMsg] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(() => searchParams.get("history") === "1");
@@ -421,9 +423,10 @@ export default function OwnerDashboard() {
   const loadDashboardData = async () => {
     setLoading(true);
     setDeleteInfo("");
+    setLoadError(null);
 
     try {
-      const userProfiles = await fetchAllUserProfiles();
+      const userProfiles = await fetchAllUserProfiles(true);
       const snapshots = await Promise.all(
         userProfiles.map(async (profile) => {
           const [customers, sheet] = await Promise.all([
@@ -456,6 +459,7 @@ export default function OwnerDashboard() {
       setTotalEarnings(snapshots.reduce((sum, snapshot) => sum + snapshot.sheetTotal, 0));
     } catch (error) {
       console.error("Error loading dashboard data:", error);
+      setLoadError(error instanceof Error ? error.message : "Could not load dashboard data.");
       setUsers([]);
       setUserSnapshots([]);
       setTotalEarnings(0);
@@ -599,48 +603,43 @@ export default function OwnerDashboard() {
   return (
     <Layout>
       <div className="min-h-screen p-4 md:p-6">
-        <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur sm:p-5 md:mb-8 md:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-2">
-              
-              <h1 className="text-2xl font-bold text-slate-900 md:text-3xl">Owner Dashboard</h1>
-            
-            </div>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-2 md:mb-8 md:gap-3">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white md:text-3xl">Dashboard</h1>
+          <div className="flex flex-col gap-2">
             {deleteInfo ? (
               <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 lg:max-w-md">
                 {deleteInfo}
               </p>
             ) : null}
+            {loadError ? (
+              <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 lg:max-w-md">
+                {loadError}
+              </p>
+            ) : null}
           </div>
         </div>
 
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <StatCard
-            title="Total Users"
-            value={`${users.length}`}
-            tone="text-blue-600"
-            description="Registered accounts in your system."
-          />
-          <StatCard
-            title="Customer Records"
-            value={`${userSnapshots.reduce((sum, snapshot) => sum + snapshot.customerCount, 0)}`}
-            tone="text-emerald-600"
-            description="All customer entries stored across every user."
-          />
-          <StatCard
-            title="Total Earnings"
-            value={`₹${totalEarnings.toLocaleString()}`}
-            tone="text-violet-600"
-            description="Calculated from your system data."
-          />
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-[#333] dark:bg-[#212121] md:mb-8 md:p-6">
+          <div className="mb-3 flex items-center justify-between md:mb-4">
+            <h2 className="text-base font-semibold text-slate-800 dark:text-white md:text-lg">System summary</h2>
+            <span className="text-[11px] font-medium text-slate-400">
+              {new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 md:gap-3 xl:grid-cols-4">
+            <OwnerSummaryCard icon="👥" title="Users" value={`${users.length}`} className="border-slate-200 bg-white dark:border-[#333] dark:bg-[#1c1c1c]" />
+            <OwnerSummaryCard icon="🧑‍🌾" title="Customers" value={`${userSnapshots.reduce((sum, snapshot) => sum + snapshot.customerCount, 0)}`} className="border-emerald-100 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30" />
+            <OwnerSummaryCard icon="₹" title="Total" value={`₹${totalEarnings.toLocaleString("en-IN")}`} className="border-violet-100 bg-violet-50 dark:border-violet-900/60 dark:bg-violet-950/30" />
+            <OwnerSummaryCard icon="📊" title="Active sheets" value={`${userSnapshots.filter((snapshot) => snapshot.sheetRowCount > 0).length}`} className="border-amber-100 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30" />
+          </div>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card dark:border-[#333] dark:bg-[#212121]">
           <div className="p-4 md:p-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-slate-800 md:text-xl">All User Data</h2>
-                <div className="text-xs font-medium text-slate-500">{users.length} total</div>
+                <h2 className="text-base font-semibold text-slate-800 dark:text-white md:text-lg">All User Data</h2>
+                <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{users.length} total</div>
               </div>
 
                 {loading && users.length === 0 ? (
@@ -657,13 +656,13 @@ export default function OwnerDashboard() {
 
                 <div className="grid gap-3 md:hidden">
                   {userSnapshots.map((user, userIndex) => (
-                    <div key={user.email} className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                    <div key={user.email} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-[#444] dark:bg-white/5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-base font-semibold text-slate-900">{user.name}</div>
+                          <div className="truncate text-base font-semibold text-slate-900 dark:text-white">{user.name}</div>
                         </div>
                       </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-600">
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-600 dark:text-slate-300">
                         <p>Customers: {user.customerCount}</p>
                         <p>Sheet total: {user.sheetTotal}</p>
                       </div>
@@ -688,22 +687,22 @@ export default function OwnerDashboard() {
 
                 <div className="hidden overflow-x-auto md:block">
                   <table className="w-full table-fixed text-sm">
-                    <thead className="bg-slate-100 border-b border-slate-200">
+                    <thead className="border-b border-slate-200 bg-slate-50 dark:border-[#333] dark:bg-[#262626]">
                       <tr>
-                        <th className="w-[10%] px-4 py-3 text-left font-semibold text-slate-700">S No</th>
-                        <th className="w-[25%] px-4 py-3 text-left font-semibold text-slate-700">Name</th>
-                        <th className="w-[20%] px-4 py-3 text-left font-semibold text-slate-700">Customers</th>
-                        <th className="w-[20%] px-4 py-3 text-left font-semibold text-slate-700">Sheet Total</th>
-                        <th className="w-[25%] px-4 py-3 text-left font-semibold text-slate-700">Action</th>
+                        <th className="w-[10%] px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-300">S No</th>
+                        <th className="w-[25%] px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-300">Name</th>
+                        <th className="w-[20%] px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-300">Customers</th>
+                        <th className="w-[20%] px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-300">Sheet Total</th>
+                        <th className="w-[25%] px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-300">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {userSnapshots.map((user, userIndex) => (
-                        <tr key={user.email} className="border-b border-slate-100 hover:bg-slate-50">
-                          <td className="w-[10%] px-4 py-4 font-medium text-slate-900">{userIndex + 1}</td>
-                          <td className="w-[25%] px-4 py-4 font-medium text-slate-900">{user.name}</td>
-                          <td className="w-[20%] px-4 py-4 text-slate-600">{user.customerCount}</td>
-                          <td className="w-[20%] px-4 py-4 text-slate-600">{user.sheetTotal}</td>
+                        <tr key={user.email} className="border-b border-slate-100 hover:bg-slate-50 dark:border-[#333] dark:hover:bg-[#262626]">
+                          <td className="w-[10%] px-4 py-4 font-medium text-slate-900 dark:text-white">{userIndex + 1}</td>
+                          <td className="w-[25%] px-4 py-4 font-medium text-slate-900 dark:text-white">{user.name}</td>
+                          <td className="w-[20%] px-4 py-4 text-slate-600 dark:text-slate-300">{user.customerCount}</td>
+                          <td className="w-[20%] px-4 py-4 text-slate-600 dark:text-slate-300">{user.sheetTotal}</td>
                           <td className="w-[25%] px-4 py-4">
                             <div className="flex flex-wrap gap-2">
                               <button

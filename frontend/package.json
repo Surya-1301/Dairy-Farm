@@ -14,6 +14,8 @@
     "@capacitor/browser": "^8.0.5",
     "@capacitor/cli": "^8.5.3",
     "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
     "@capacitor/status-bar": "^8.0.4",
     "@emailjs/browser": "^4.4.1",
     "exceljs": "^4.4.0",

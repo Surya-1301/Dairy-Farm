@@ -5,6 +5,7 @@ import autoTable from "jspdf-autotable";
 import ExcelJS from "exceljs";
 import { getActiveUser } from "../firebase/auth";
 import { getHistoryByEmail, saveHistoryByEmail, type SheetHistoryEntry } from "../firebase/data";
+import { saveFile, shareFile } from "../utils/nativeFiles";
 
 function buildDisplaySerialMap(rows: { customerName: string; serialNumber: number }[]): string[] {
   const serialByCustomer = new Map<string, number>();
@@ -294,37 +295,14 @@ function getSheetPdfFileName(entry: SheetHistoryEntry, sheetNumber: number): str
   return `${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.pdf`;
 }
 
-function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
+async function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
   const blob = buildSheetPdfBlob(entry, sheetNumber);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = getSheetPdfFileName(entry, sheetNumber);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  await saveFile(blob, getSheetPdfFileName(entry, sheetNumber));
 }
 
 async function shareSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number) {
   const blob = buildSheetPdfBlob(entry, sheetNumber);
-  const file = new File([blob], getSheetPdfFileName(entry, sheetNumber), {
-    type: "application/pdf"
-  });
-
-  if (navigator.share && navigator.canShare?.({ files: [file] })) {
-    await navigator.share({
-      title: entry.name || `Sheet ${sheetNumber}`,
-      text: "Dairy Farm sheet PDF",
-      files: [file]
-    });
-    return;
-  }
-
-  // Browsers without file-sharing support cannot attach the generated PDF to
-  // the native share sheet. Download the same PDF so the user can share it
-  // through the device's Files/Share UI without generating any other format.
-  downloadSheetAsPdf(entry, sheetNumber);
+  await shareFile(blob, getSheetPdfFileName(entry, sheetNumber), entry.name || `Sheet ${sheetNumber}`);
 }
 
 
@@ -443,14 +421,10 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number) {
     const blob = new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.xlsx`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    await saveFile(
+      blob,
+      `${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.xlsx`
+    );
   })();
 }
 
