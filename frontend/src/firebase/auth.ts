@@ -644,16 +644,7 @@ async function finishBrowserSignIn(customToken: string): Promise<GoogleSignInRes
 
   const name = user.displayName ?? "";
   const avatarUrl = user.photoURL ?? "";
-  const profile = upsertUserProfile(
-    buildProfileForEmail(normalizedEmail, getRoleForEmail(normalizedEmail), {
-      name,
-      avatarUrl
-    })
-  );
-  await saveUserProfileToCloud(profile);
-  suppressAuthStateSync = false;
-  syncFirebaseUser(user);
-  return { isNewUser: false };
+  return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential: null };
 }
 export async function signInWithGoogle(): Promise<GoogleSignInResult> {
   const firebaseAuth = requireFirebaseAuth();
@@ -705,16 +696,15 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
 
     const name = user.displayName ?? "";
     const avatarUrl = user.photoURL ?? "";
-    const profile = upsertUserProfile(
-      buildProfileForEmail(normalizedEmail, getRoleForEmail(normalizedEmail), {
-        name,
-        avatarUrl
-      })
-    );
-    await saveUserProfileToCloud(profile);
-    suppressAuthStateSync = false;
-    syncFirebaseUser(user);
-    return { isNewUser: false };
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+
+    await firebaseSignOut(firebaseAuth);
+
+    if (!credential) {
+      throw new Error("Could not complete Google sign-in. Please try again.");
+    }
+
+    return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential };
   } catch (error) {
     if (isConfigurationError(error)) throw toFriendlyAuthError(error);
     const code = (error as { code?: string })?.code;
@@ -762,16 +752,15 @@ export async function consumeGoogleRedirectResult(): Promise<GoogleSignInResult 
 
     const name = user.displayName ?? "";
     const avatarUrl = user.photoURL ?? "";
-    const profile = upsertUserProfile(
-      buildProfileForEmail(normalizedEmail, getRoleForEmail(normalizedEmail), {
-        name,
-        avatarUrl
-      })
-    );
-    await saveUserProfileToCloud(profile);
-    suppressAuthStateSync = false;
-    syncFirebaseUser(user);
-    return { isNewUser: false };
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+
+    await firebaseSignOut(firebaseAuth);
+
+    if (!credential) {
+      throw new Error("Could not complete Google sign-in. Please try again.");
+    }
+
+    return { isNewUser: true, email: normalizedEmail, name, avatarUrl, credential };
   } catch (error) {
     if (isConfigurationError(error)) throw toFriendlyAuthError(error);
     const code = (error as { code?: string })?.code;

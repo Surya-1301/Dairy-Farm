@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { AuthCredential } from "firebase/auth";
 import {
@@ -38,6 +38,7 @@ function Login() {
   const [errorMessage, setErrorMessage] = useState("");
   const [googleCredential, setGoogleCredential] = useState<AuthCredential | null>(null);
   const [googleAvatarUrl, setGoogleAvatarUrl] = useState("");
+  const googleSignInAttempted = useRef(false);
 
   const goToDashboard = () => {
     navigate(getActiveUser()?.role === "owner" ? "/owner-dashboard" : "/dashboard", { replace: true });
@@ -50,9 +51,6 @@ function Login() {
         const result = await consumeGoogleRedirectResult();
         if (cancelled) return;
         if (!result) {
-          if (initialMode === "signin") {
-            await handleGoogleSignIn();
-          }
           return;
         }
         if (result.isNewUser) {
@@ -69,7 +67,7 @@ function Login() {
           goToDashboard();
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && googleSignInAttempted.current) {
           setErrorMessage(friendlyAuthMessage(error));
         }
       }
@@ -137,6 +135,7 @@ function Login() {
   };
 
   async function handleGoogleSignIn() {
+    googleSignInAttempted.current = true;
     setErrorMessage("");
     setInfoMessage("");
     setLoading(true);
