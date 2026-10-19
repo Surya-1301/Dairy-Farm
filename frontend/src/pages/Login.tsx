@@ -62,7 +62,6 @@ function Login() {
           setConfirmPassword("");
           setPhone("");
           setMode("google-signup");
-          setInfoMessage("Almost done! Set a password and add your phone number to finish creating your account.");
         } else {
           goToDashboard();
         }
@@ -163,7 +162,6 @@ function Login() {
         setConfirmPassword("");
         setPhone("");
         setMode("google-signup");
-        setInfoMessage("Almost done! Set a password and add your phone number to finish creating your account.");
       } else {
         goToDashboard();
       }
@@ -232,7 +230,7 @@ function Login() {
             : mode === "signup"
             ? "Create Account"
             : mode === "google-signup"
-            ? "Finish creating your account"
+            ? "Create Account"
             : "Reset password"}
         </h1>
         {errorMessage ? (
@@ -271,11 +269,6 @@ function Login() {
               autoComplete="name"
             />
           </label>
-        ) : null}
-        {mode === "google-signup" ? (
-          <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Signing up as <strong>{name || email}</strong> ({email}). Just set a password and add your phone number to finish.
-          </p>
         ) : null}
         {!otpSent && mode !== "google-signup" ? (
           <label className="block text-sm font-medium text-slate-700">
