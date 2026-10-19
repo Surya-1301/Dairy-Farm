@@ -1910,7 +1910,7 @@ function CustomerTable() {
   });
 
   return (
-    <div className="relative left-1/2 w-full max-w-none -translate-x-1/2 space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-card dark:bg-[#212121] dark:border-[#333] md:-mt-8 md:w-screen md:space-y-2 md:rounded-none md:border-0 md:bg-white dark:md:bg-[#161616] md:pt-2 md:px-0 md:pb-0 md:shadow-none">
+    <div className="relative left-1/2 flex h-auto w-full max-w-none -translate-x-1/2 flex-col space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-card dark:bg-[#212121] dark:border-[#333] md:-mt-8 md:h-[calc(100dvh-4.5rem)] md:w-screen md:space-y-2 md:rounded-none md:border-0 md:bg-white dark:md:bg-[#161616] md:pt-2 md:px-0 md:pb-0 md:shadow-none">
       <div className="grid grid-cols-3 gap-2 lg:flex lg:flex-row lg:items-start lg:justify-between lg:gap-4">
         <div className="contents lg:flex lg:flex-wrap lg:overflow-visible lg:mx-0 lg:px-0 lg:items-center lg:gap-2">
           <button
@@ -2144,7 +2144,7 @@ function CustomerTable() {
 
 
       <div
-        className="w-full min-w-0 max-w-full overflow-auto overscroll-contain rounded-md dark:bg-[#161616] [scrollbar-width:thin] [-webkit-overflow-scrolling:touch] max-h-[70dvh] md:h-[calc(100dvh-145px)] md:max-h-none"
+        className="w-full min-h-0 min-w-0 max-w-full flex-1 overflow-auto overscroll-contain rounded-md dark:bg-[#161616] [scrollbar-width:thin] [-webkit-overflow-scrolling:touch] max-h-[70dvh] md:max-h-none"
         style={{
           touchAction: "pan-x pan-y",
           WebkitOverflowScrolling: "touch",
