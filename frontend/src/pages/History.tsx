@@ -84,6 +84,14 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
+function displayText(value: string): string {
+  return value.trim() || "-";
+}
+
+function displayDayValue(value: number): string | number {
+  return value === 0 ? "-" : value;
+}
+
 function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob {
   const doc = new jsPDF({
     orientation: "landscape",
@@ -184,11 +192,11 @@ function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob 
           rowSpan: 2
         },
         {
-          content: row.customerName,
+          content: displayText(row.customerName),
           rowSpan: 2
         },
-        row.shift || "-",
-        ...row.days.slice(0, effectiveDayCount).map((value) => String(value)),
+        displayText(row.shift),
+        ...row.days.slice(0, effectiveDayCount).map(displayDayValue),
         {
           content: String(combinedTotal),
           rowSpan: 2
@@ -202,8 +210,8 @@ function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob 
     // Do NOT add placeholders for the row-spanned columns.
     if (sameCustomerAsPrevious) {
       body.push([
-        row.shift || "-",
-        ...row.days.slice(0, effectiveDayCount).map((value) => String(value))
+        displayText(row.shift),
+        ...row.days.slice(0, effectiveDayCount).map(displayDayValue)
       ]);
 
       continue;
@@ -212,9 +220,9 @@ function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob 
     // Single-shift customer.
     body.push([
       String(displaySerialNumbers[index] ?? row.serialNumber),
-      row.customerName || "",
-      row.shift || "-",
-      ...row.days.slice(0, effectiveDayCount).map((value) => String(value)),
+      displayText(row.customerName),
+      displayText(row.shift),
+      ...row.days.slice(0, effectiveDayCount).map(displayDayValue),
       String(rowTotal)
     ]);
   }
@@ -374,9 +382,9 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number) {
 
       const values = [
         nameSpan > 0 ? displaySerialNumbers[index] ?? String(row.serialNumber) : "",
-        nameSpan > 0 ? row.customerName : "",
-        row.shift || "-",
-        ...row.days.slice(0, effectiveDayCount),
+        nameSpan > 0 ? displayText(row.customerName) : "",
+        displayText(row.shift),
+        ...row.days.slice(0, effectiveDayCount).map(displayDayValue),
         nameSpan > 0 ? displayTotal : "",
       ];
 
