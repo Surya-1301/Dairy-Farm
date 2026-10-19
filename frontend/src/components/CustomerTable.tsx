@@ -2038,9 +2038,9 @@ function CustomerTable() {
       </div>
 
       {showSaveNameModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-lg dark:bg-[#212121] dark:border dark:border-[#444]">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-white">Name this sheet</h3>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="save-sheet-title">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl dark:border dark:border-[#444] dark:bg-[#212121] sm:p-5">
+            <h3 id="save-sheet-title" className="text-base font-semibold text-slate-800 dark:text-white">Name this sheet</h3>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Give this saved sheet a name so it's easy to find in History.</p>
             <input
               type="text"
@@ -2053,20 +2053,20 @@ function CustomerTable() {
                 }
               }}
               placeholder="e.g. Sheet 1"
-              className="mt-3 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+              className="mt-3 h-12 w-full rounded-xl border border-slate-300 px-3 text-base dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white"
             />
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setShowSaveNameModal(false)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 dark:border-[#444] dark:text-slate-200 dark:hover:bg-[#2a2a2a]"
+                className="min-h-12 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-[#444] dark:text-slate-200 dark:hover:bg-[#2a2a2a]"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={confirmSaveToHistory}
-                className="rounded-lg border border-emerald-300 px-3 py-2 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50"
+                className="min-h-12 rounded-xl border border-emerald-400 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
               >
                 Save
               </button>
@@ -2076,11 +2076,11 @@ function CustomerTable() {
       )}
 
       {showChangeSheetModal && (
-        <div className="fixed inset-0 z-50 max-sm:z-[9999] flex items-center justify-center bg-transparent p-2 sm:p-4">
-          <div className="w-[calc(100vw-1rem)] max-w-md max-h-[calc(100dvh-1rem)] overflow-hidden rounded-xl bg-white p-3 shadow-lg sm:p-4 dark:bg-[#212121] dark:border dark:border-[#444]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/60 p-2 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="archived-sheets-title">
+          <div className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-md flex-col overflow-hidden rounded-2xl bg-white p-3 shadow-2xl dark:border dark:border-[#444] dark:bg-[#212121] sm:p-4">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-semibold text-slate-800 dark:text-white">Archived sheets</h3>
+                <h3 id="archived-sheets-title" className="text-base font-semibold text-slate-800 dark:text-white">Archived sheets</h3>
                 <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">Open a saved sheet to edit it.</p>
               </div>
               <button
@@ -2097,22 +2097,23 @@ function CustomerTable() {
             ) : archivedEntries.length === 0 ? (
               <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No saved sheets found. Save a sheet to History first.</p>
             ) : (
-              <div className="mt-4 max-h-[58dvh] space-y-2 overflow-y-auto overscroll-contain pr-1">
+              <div className="mt-4 min-h-0 max-h-[calc(100dvh-10rem)] space-y-2 overflow-y-auto overscroll-contain pr-1">
                 {archivedEntries.map((entry, index) => (
                   <div
                     key={entry.id}
-                    className="flex min-h-[52px] w-full flex-col gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left sm:flex-row sm:items-center sm:justify-between"
+                    className="min-h-[64px] w-full rounded-xl border border-slate-200 px-3 py-3 text-left dark:border-[#444]"
                   >
-                    <span>
-                      <span className="block text-sm font-semibold text-slate-800 dark:text-white">{entry.name || `Sheet ${archivedEntries.length - index}`}</span>
-                      <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Saved {new Date(entry.savedAt).toLocaleString()}</span>
-                    </span>
-                    <span className="flex w-full shrink-0 items-center justify-end gap-4 sm:ml-3 sm:w-auto">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-slate-800 dark:text-white">{entry.name || `Sheet ${archivedEntries.length - index}`}</span>
+                        <span className="mt-1 block truncate text-xs text-slate-500 dark:text-slate-400">Saved {new Date(entry.savedAt).toLocaleString()}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
                         onClick={() => void changeSheet(entry)}
                         disabled={changingSheet}
-                        className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="min-h-10 rounded-lg px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-blue-300 dark:hover:bg-blue-950/30"
                       >
                         Open
                       </button>
@@ -2120,11 +2121,12 @@ function CustomerTable() {
                         type="button"
                         onClick={() => void deleteArchivedSheet(entry)}
                         disabled={changingSheet}
-                        className="text-[11px] font-semibold text-red-700 hover:text-red-900 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="min-h-10 rounded-lg px-3 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-300 dark:hover:bg-red-950/30"
                       >
                         Delete
                       </button>
-                    </span>
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2133,7 +2135,7 @@ function CustomerTable() {
               <button
                 type="button"
                 onClick={() => setShowChangeSheetModal(false)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-[#444] dark:text-slate-200 dark:hover:bg-[#2a2a2a]"
               >
                 Cancel
               </button>
@@ -2359,6 +2361,7 @@ function CustomerTable() {
                       <input
                         value={row.customerName}
                         onChange={(event) => updateCustomerName(row.serialNumber, event.target.value)}
+                        placeholder={activeHistoryId ? "-" : undefined}
                         className={`h-11 min-h-[44px] w-full min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-left text-[14px] focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white ${isRowSelected ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-[#1c1c1c]"}`}
                       />
                     </td>
@@ -2372,6 +2375,7 @@ function CustomerTable() {
                     <input
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
+                      placeholder={activeHistoryId ? "-" : undefined}
                       className={`h-11 min-h-[44px] w-full rounded-lg border border-slate-300 px-2 py-2 text-center text-[14px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white ${isRowSelected ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-[#1c1c1c]"}`}
                     />
                     </td>
@@ -2392,6 +2396,7 @@ function CustomerTable() {
                         inputMode="decimal"
                         autoComplete="off"
                         enterKeyHint="done"
+                        placeholder={activeHistoryId ? "-" : undefined}
                         aria-label={`${row.customerName || "Customer"} Day ${dayIndex + 1}`}
                         value={
                           editingDayCell &&

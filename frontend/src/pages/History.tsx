@@ -673,12 +673,12 @@ function History() {
                               <td rowSpan={nameSpan} className="border border-slate-200 px-1 md:px-2 py-1 md:py-1 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerialNumbers[index]}</td>
                             )}
                             {nameSpan > 0 && (
-                              <td rowSpan={nameSpan} className="border border-slate-200 px-1 md:px-2 py-1 md:py-1 text-left align-middle">{row.customerName}</td>
+                              <td rowSpan={nameSpan} className="border border-slate-200 px-1 md:px-2 py-1 md:py-1 text-left align-middle">{row.customerName.trim() || "-"}</td>
                             )}
-                            <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">{row.shift || "—"}</td>
+                            <td className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">{row.shift.trim() || "-"}</td>
                             {row.days.slice(0, effectiveDayCount).map((dayValue, dayIndex) => (
                               <td key={`${row.serialNumber}-${dayIndex}`} className="border border-slate-200 px-1 md:px-2 py-1 md:py-1">
-                                {dayValue}
+                                {dayValue === 0 ? "-" : dayValue}
                               </td>
                             ))}
                             {nameSpan > 0 && (
