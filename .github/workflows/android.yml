@@ -158,9 +158,12 @@ jobs:
         working-directory: frontend/android
         run: ./gradlew assembleDebug --no-daemon
 
+      - name: Rename APK
+        run: mv frontend/android/app/build/outputs/apk/debug/app-debug.apk "frontend/android/app/build/outputs/apk/debug/DairyFarm-v1.0+${SHORT_SHA}.apk"
+
       - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
-          name: dairy-farm-debug-1.0+${{ env.SHORT_SHA }}
-          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          name: DairyFarm-v1.0+${{ env.SHORT_SHA }}
+          path: frontend/android/app/build/outputs/apk/debug/DairyFarm-v1.0+${{ env.SHORT_SHA }}.apk
           retention-days: 30
