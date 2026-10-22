@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.dairyfarm.app",
-  appName: "Dairy Farm",
+  appName: "Dairy Farm |Raipur Duggdh Utapadan Association",
   webDir: "dist",
   android: {
     backgroundColor: "#ffffff",
