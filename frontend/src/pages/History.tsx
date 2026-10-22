@@ -245,7 +245,7 @@ function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob 
 
     styles: {
       font: "helvetica",
-      fontSize: 6.4,
+      fontSize: 8,
       cellPadding: 1.15,
       overflow: "hidden",
       halign: "center",
@@ -260,7 +260,7 @@ function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob 
       fillColor: [241, 245, 249],
       textColor: [30, 41, 59],
       fontStyle: "bold",
-      fontSize: 6.4,
+      fontSize: 8,
       halign: "center",
       valign: "middle",
       lineColor: [203, 213, 225],
