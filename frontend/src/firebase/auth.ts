@@ -255,6 +255,7 @@ async function getUserProfileFromCloud(email: string): Promise<UserProfile | nul
     }
 
     upsertProfileCache(profile);
+    saveUserProfileToStorage(profile);
     return profile;
   } catch (error) {
     console.error("Error loading user profile from Firestore:", error);
@@ -905,7 +906,12 @@ export async function confirmNewPassword(oobCode: string, newPassword: string): 
 }
 
 export async function logout(): Promise<void> {
+  const email = normalizeEmail(activeFirebaseUser?.email ?? "");
+
   if (!auth) {
+    if (email) {
+      profileCache.delete(email);
+    }
     syncFirebaseUser(null);
     return;
   }
@@ -913,6 +919,9 @@ export async function logout(): Promise<void> {
   try {
     await firebaseSignOut(auth);
   } finally {
+    if (email) {
+      profileCache.delete(email);
+    }
     syncFirebaseUser(null);
   }
 }

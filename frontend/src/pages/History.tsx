@@ -143,20 +143,6 @@ function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob 
     "Total"
   ]];
 
-  /*
-   * IMPORTANT FOR THE HISTORY LAYOUT:
-   *
-   * When a customer has both M and E:
-   *   S No       -> one merged cell across M + E
-   *   Name       -> one merged cell across M + E
-   *   Shift      -> M and E are separate rows
-   *   Day values -> separate M and E rows
-   *   Total      -> one merged cell containing M + E combined total
-   *
-   * AutoTable rowSpan cells must NOT be repeated as empty cells on the
-   * second row. The second row starts at the Shift column. This prevents
-   * the Day columns from being shifted.
-   */
   const body: any[][] = [];
 
   for (let index = 0; index < entry.rows.length; index += 1) {
@@ -245,7 +231,7 @@ function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob 
 
     styles: {
       font: "helvetica",
-      fontSize: 8,
+      fontSize: 8.5,
       cellPadding: 1.15,
       overflow: "hidden",
       halign: "center",
@@ -260,7 +246,7 @@ function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob 
       fillColor: [241, 245, 249],
       textColor: [30, 41, 59],
       fontStyle: "bold",
-      fontSize: 8,
+      fontSize: 8.5,
       halign: "center",
       valign: "middle",
       lineColor: [203, 213, 225],
