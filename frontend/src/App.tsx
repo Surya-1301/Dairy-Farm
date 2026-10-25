@@ -30,12 +30,8 @@ function App() {
     });
   }, []);
 
-  // On native Android, go edge-to-edge: hide the system status bar and keep it
-  // hidden across resume, and map the hardware back button to router history.
-  // On the login page (no back history worth keeping), exit the app instead.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    // Hide the top status bar (time / battery strip) so only the app header shows.
     void StatusBar.hide().catch(() => {});
     let resumeListener: { remove: () => void } | undefined;
     let listener: { remove: () => void } | undefined;
