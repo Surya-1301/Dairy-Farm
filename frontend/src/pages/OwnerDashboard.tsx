@@ -1919,7 +1919,7 @@ export default function OwnerDashboard() {
                                   <span>·</span>
                                   <span>{effectiveDayCount} days</span>
                                   <span>·</span>
-                                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">Total {entryTotal.toLocaleString("en-IN")}</span>
+                                  Total {entryTotal.toLocaleString("en-IN")}
                                 </div>
 
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">

