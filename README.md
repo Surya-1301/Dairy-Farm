@@ -1,11 +1,11 @@
-# Dairy Farm — Raipur Dugdh Utpadan Association
+# Dairy Farm 
 
 [![GitHub release](https://img.shields.io/github/v/release/Surya-1301/Dairy-Farm)](https://github.com/Surya-1301/Dairy-Farm/releases)
 [![Live site](https://img.shields.io/website?url=https%3A%2F%2Fwww.dairy-farm.tech&label=live%20site)](https://www.dairy-farm.tech)
 [![Android app](https://img.shields.io/badge/Android-APK_download-3DDC84?logo=android&logoColor=white)](https://github.com/Surya-1301/Dairy-Farm/releases)
 [![License](https://img.shields.io/github/license/Surya-1301/Dairy-Farm)](LICENSE)
 
-**Complete milk collection, customer directory, and accounting management system for Raipur Dugdh Utpadan Association.** Available as both a modern responsive Web App and a native Android App with real-time cloud synchronization.
+**Complete milk collection, customer directory, and accounting management system.** Available as both a modern responsive Web App and a native Android App with real-time cloud synchronization.
 
 <div align="center">
 
