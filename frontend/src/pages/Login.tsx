@@ -12,7 +12,6 @@ import {
   signUpWithEmailPassword,
 } from "../firebase/auth";
 import { generateOtp, OTP_VALIDITY_MS, sendEmailOtp } from "../utils/emailOtp";
-import { getTheme, subscribeTheme, toggleTheme } from "../utils/theme";
 import raipurBanner from "../assets/raipur-banner.png";
 
 type AuthMode = "signin" | "signup" | "reset" | "google-signup";
@@ -39,12 +38,7 @@ function Login() {
   const [errorMessage, setErrorMessage] = useState("");
   const [googleCredential, setGoogleCredential] = useState<AuthCredential | null>(null);
   const [googleAvatarUrl, setGoogleAvatarUrl] = useState("");
-  const [theme, setThemeState] = useState(getTheme());
   const googleSignInAttempted = useRef(false);
-
-  useEffect(() => {
-    return subscribeTheme(() => setThemeState(getTheme()));
-  }, []);
 
   const goToDashboard = () => {
     navigate(getActiveUser()?.role === "owner" ? "/owner-dashboard" : "/dashboard", { replace: true });
@@ -221,19 +215,6 @@ function Login() {
         paddingBottom: 'max(0px, var(--safe-area-inset-bottom))',
       }}
     >
-      {/* Top right theme toggle */}
-      <div className="absolute right-4 top-4 z-10">
-        <button
-          type="button"
-          onClick={() => toggleTheme()}
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-lg shadow-xs active:scale-95 transition dark:border-[#333] dark:bg-[#212121]"
-        >
-          <span aria-hidden="true">{theme === "dark" ? "☀️" : "🌙"}</span>
-        </button>
-      </div>
-
       <form
         onSubmit={onSubmit}
         className="w-full max-w-md space-y-5 bg-white p-4 sm:rounded-2xl sm:p-8 sm:shadow-card dark:border dark:border-[#333] dark:bg-[#212121]"

@@ -562,21 +562,25 @@ function History() {
                   onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
                   className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-3 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition select-none"
                 >
-                  <div className="space-y-0.5 sm:space-y-1 min-w-0 flex-1">
+                  <div className="space-y-1 min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
                         <span>📑</span> {sheetTitle}
                       </span>
 
-                      {/* Mobile only: customer stats & arrow on the same row as sheet name */}
-                      <div className="flex sm:hidden items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 shrink-0 font-medium">
-                        <span>
-                          {getCustomerCount(entry.rows)} Customers · {effectiveDayCount} days · Total {total.toLocaleString("en-IN")}
-                        </span>
-                        <span className={`text-[10px] text-slate-400 transition-transform duration-200 ${isExpanded ? "rotate-180" : "rotate-0"}`}>
-                          ▼
-                        </span>
-                      </div>
+                      {/* Mobile only: arrow at the top right */}
+                      <span className={`sm:hidden text-[10px] text-slate-400 transition-transform duration-200 shrink-0 ${isExpanded ? "rotate-180" : "rotate-0"}`}>
+                        ▼
+                      </span>
+                    </div>
+
+                    {/* Mobile only: customer stats on its own dedicated row to prevent overlapping */}
+                    <div className="flex sm:hidden items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 font-medium flex-wrap">
+                      <span>{getCustomerCount(entry.rows)} Customers</span>
+                      <span>·</span>
+                      <span>{effectiveDayCount} days</span>
+                      <span>·</span>
+                      Total {total.toLocaleString("en-IN")}
                     </div>
 
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">

@@ -1839,12 +1839,12 @@ export default function OwnerDashboard() {
                 {/* TAB 3: SHEET HISTORY */}
                 {activeTab === "history" && (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3.5 dark:border-[#333] dark:bg-[#212121]">
-                      <div>
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3.5 dark:border-[#333] dark:bg-[#212121]">
+                      <div className="min-w-0 flex-1 pr-2">
                         <h4 className="text-sm font-bold text-slate-900 dark:text-white">Archived Sheet History</h4>
                         <p className="text-xs text-slate-500 dark:text-slate-400">Previously closed periods with downloadable reports</p>
                       </div>
-                      <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-bold text-brand-600 dark:bg-blue-500/20 dark:text-blue-400">
+                      <span className="shrink-0 whitespace-nowrap rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-bold text-brand-600 dark:bg-blue-500/20 dark:text-blue-400">
                         {historyEntries.length} Saved
                       </span>
                     </div>
@@ -1907,15 +1907,19 @@ export default function OwnerDashboard() {
                                     </h5>
                                   )}
 
-                                  {/* Mobile only: customer stats & arrow on the same row as sheet name */}
-                                  <div className="flex sm:hidden items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 shrink-0 font-medium">
-                                    <span>
-                                      {getCustomerCount(activeEntry.rows)} Customer · {effectiveDayCount} days · Total {entryTotal.toLocaleString("en-IN")}
-                                    </span>
-                                    <span className={`text-[10px] text-slate-400 transition-transform duration-200 ${isExpanded ? "rotate-180" : "rotate-0"}`}>
-                                      ▼
-                                    </span>
-                                  </div>
+                                  {/* Mobile only: arrow at the top right */}
+                                  <span className={`sm:hidden text-[10px] text-slate-400 transition-transform duration-200 shrink-0 ${isExpanded ? "rotate-180" : "rotate-0"}`}>
+                                    ▼
+                                  </span>
+                                </div>
+
+                                {/* Mobile only: customer stats on its own dedicated row to prevent overlapping */}
+                                <div className="flex sm:hidden items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 font-medium flex-wrap mt-0.5">
+                                  <span>{getCustomerCount(activeEntry.rows)} Customer</span>
+                                  <span>·</span>
+                                  <span>{effectiveDayCount} days</span>
+                                  <span>·</span>
+                                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">Total {entryTotal.toLocaleString("en-IN")}</span>
                                 </div>
 
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
@@ -1946,9 +1950,9 @@ export default function OwnerDashboard() {
                                         <button
                                           type="button"
                                           onClick={() => setOpenSaveMenuId(openSaveMenuId === entry.id ? null : entry.id)}
-                                          className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-[#444] dark:bg-[#222] dark:text-slate-200 cursor-pointer shadow-xs transition flex items-center gap-1 shrink-0"
+                                          className="rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[10.5px] sm:text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-[#444] dark:bg-[#222] dark:text-slate-200 cursor-pointer shadow-xs transition flex items-center gap-1 shrink-0 whitespace-nowrap"
                                         >
-                                          <span>📥</span> Download Sheet <span className="text-[9px] text-slate-400">▼</span>
+                                          <span>📥</span> <span>Download Sheet</span> <span className="text-[9px] text-slate-400">▼</span>
                                         </button>
 
                                         {openSaveMenuId === entry.id && (
@@ -2022,7 +2026,7 @@ export default function OwnerDashboard() {
                                           setHistorySaveMsg(null);
                                         }
                                       }}
-                                      className={`rounded-xl px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 ${
+                                      className={`rounded-xl px-2 sm:px-2.5 py-1.5 text-[10.5px] sm:text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
                                         isEditing
                                           ? "border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-300"
                                           : "border border-blue-200 bg-blue-50 text-brand-700 hover:bg-blue-100 dark:border-blue-800/50 dark:bg-blue-950/40 dark:text-blue-300"
@@ -2037,7 +2041,7 @@ export default function OwnerDashboard() {
                                         type="button"
                                         onClick={() => void handleSaveHistorySheet(entry.id)}
                                         disabled={isSavingHistory}
-                                        className="rounded-xl border border-emerald-500 bg-emerald-600 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 transition cursor-pointer shrink-0 ml-auto sm:ml-0"
+                                        className="rounded-xl border border-emerald-500 bg-emerald-600 px-2 sm:px-2.5 py-1.5 text-[10.5px] sm:text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 transition cursor-pointer shrink-0 whitespace-nowrap ml-auto sm:ml-0"
                                       >
                                         {isSavingHistory ? "Saving..." : "💾 Save Sheet"}
                                       </button>
@@ -2047,7 +2051,7 @@ export default function OwnerDashboard() {
                                       <button
                                         type="button"
                                         onClick={() => { void handleDeleteHistoryEntry(selectedUser.email, entry.id); }}
-                                        className="rounded-xl border border-rose-200 bg-rose-50 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 shrink-0"
+                                        className="rounded-xl border border-rose-200 bg-rose-50 px-2 sm:px-2.5 py-1.5 text-[10.5px] sm:text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 shrink-0 whitespace-nowrap"
                                         title="Delete sheet"
                                       >
                                         <span>🗑️</span> Delete Sheet
