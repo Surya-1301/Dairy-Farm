@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { getCustomers, subscribeCustomersChanged, notifyCustomersChanged } from "../utils/customerData";
 import { notifyMilkDataChanged } from "../utils/milkData";
@@ -435,6 +436,51 @@ async function syncCustomersFromSheet(
 
 export const BACK_TO_CURRENT_SHEET_EVENT = "dairy-farm:back-to-current-sheet";
 
+type DailyCustomerGroup = {
+  key: string;
+  customerName: string;
+  displaySerial: string;
+  rows: {
+    row: SheetRow;
+    rowIndex: number;
+  }[];
+};
+
+function buildDailyCustomerGroups(
+  visibleRowIndices: number[],
+  allRows: SheetRow[],
+  displaySerials: string[]
+): DailyCustomerGroup[] {
+  const groups: DailyCustomerGroup[] = [];
+  const map = new Map<string, DailyCustomerGroup>();
+
+  visibleRowIndices.forEach((rowIndex) => {
+    const row = allRows[rowIndex];
+    const trimmedName = (row.customerName || "").trim();
+    // Only show cards for customers that have an inputted name
+    if (!trimmedName) {
+      return;
+    }
+
+    const groupKey = trimmedName.toLowerCase();
+
+    let group = map.get(groupKey);
+    if (!group) {
+      group = {
+        key: groupKey,
+        customerName: trimmedName,
+        displaySerial: displaySerials[rowIndex] || String(rowIndex + 1),
+        rows: []
+      };
+      map.set(groupKey, group);
+      groups.push(group);
+    }
+    group.rows.push({ row, rowIndex });
+  });
+
+  return groups;
+}
+
 function CustomerTable() {
   const navigate = useNavigate();
   const [sheetState, setSheetState] = useState<SheetState>(createInitialState());
@@ -475,6 +521,35 @@ function CustomerTable() {
   const [customerSearch, setCustomerSearch] = useState(getSheetSearch);
   const undoStackRef = useRef<SheetState[]>([]);
   const redoStackRef = useRef<SheetState[]>([]);
+
+  // Mobile View Enhancements State
+  const [mobileViewMode, setMobileViewMode] = useState<"daily" | "table">(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      return "daily";
+    }
+    return "table";
+  });
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+  const [dailyShiftFilter, setDailyShiftFilter] = useState<"All" | "M" | "E">("All");
+  const [showMobileActionMenu, setShowMobileActionMenu] = useState(false);
+  const [focusedCell, setFocusedCell] = useState<{
+    serialNumber: number;
+    rowIndex: number;
+    dayIndex: number;
+  } | null>(null);
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const dailyInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const tableInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [shiftToDelete, setShiftToDelete] = useState<{
+    row: SheetRow;
+    rowIndex: number;
+  } | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerShift, setNewCustomerShift] = useState<"Both" | "M" | "E">("Both");
+  const [addCustomerError, setAddCustomerError] = useState("");
 
   const { rows, dayCount } = sheetState;
 
@@ -1194,6 +1269,53 @@ function CustomerTable() {
     saveState({ dayCount, rows: nextRows });
   };
 
+  const scrollToInputOnMobile = (element: HTMLElement | null) => {
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    window.setTimeout(() => {
+      element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    }, 180);
+  };
+
+  const handleFocusNext = () => {
+    if (!focusedCell) return;
+    const q = customerSearch.trim().toLowerCase();
+    const visibleIndices = rows
+      .map((_, idx) => idx)
+      .filter((idx) => {
+        const hasName = Boolean(rows[idx].customerName && rows[idx].customerName.trim());
+        const matchesQuery = !q || rows[idx].customerName.toLowerCase().includes(q);
+        return hasName && matchesQuery;
+      });
+
+    const currentPos = visibleIndices.indexOf(focusedCell.rowIndex);
+    if (currentPos !== -1 && currentPos < visibleIndices.length - 1) {
+      const nextRowIndex = visibleIndices[currentPos + 1];
+      const nextRow = rows[nextRowIndex];
+      setFocusedCell({
+        serialNumber: nextRow.serialNumber,
+        rowIndex: nextRowIndex,
+        dayIndex: focusedCell.dayIndex
+      });
+      const nextInput =
+        dailyInputRefs.current[`${nextRow.serialNumber}-${focusedCell.dayIndex}`] ||
+        tableInputRefs.current[`${nextRow.serialNumber}-${focusedCell.dayIndex}`];
+      if (nextInput) {
+        nextInput.focus();
+        scrollToInputOnMobile(nextInput);
+      }
+    }
+  };
+
+  const jumpToDay = (startDay: number) => {
+    if (!tableContainerRef.current) return;
+    const scrollPosition = Math.max(0, (startDay - 1) * 60);
+    tableContainerRef.current.scrollTo({
+      left: scrollPosition,
+      behavior: "smooth"
+    });
+  };
+
   const getGroupBounds = (rowIndex: number) => {
     const groupStarts = buildGroupStartIndices(rows);
     const start = groupStarts[rowIndex] ?? rowIndex;
@@ -1793,6 +1915,102 @@ function CustomerTable() {
     lastSelectionKindRef.current = "column";
   };
 
+  const handleAddCustomer = (name: string, shift: "Both" | "M" | "E") => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    const rowsToAdd: SheetRow[] = [];
+    if (shift === "Both") {
+      rowsToAdd.push({
+        serialNumber: 0,
+        customerName: trimmed,
+        shift: "M",
+        days: Array.from({ length: dayCount }, () => 0)
+      });
+      rowsToAdd.push({
+        serialNumber: 0,
+        customerName: trimmed,
+        shift: "E",
+        days: Array.from({ length: dayCount }, () => 0)
+      });
+    } else {
+      rowsToAdd.push({
+        serialNumber: 0,
+        customerName: trimmed,
+        shift,
+        days: Array.from({ length: dayCount }, () => 0)
+      });
+    }
+
+    const activeRows = rows.filter(
+      (r) => r.customerName.trim() !== "" || r.days.some((d) => d > 0)
+    );
+
+    const combined = [...activeRows, ...rowsToAdd];
+    const nextRows = combined.map((row, index) => ({
+      ...row,
+      serialNumber: index + 1
+    }));
+
+    saveState({ dayCount, rows: nextRows });
+    setRowHeights((current) => normalizeRowHeights(current, nextRows.length));
+    setShowAddCustomerModal(false);
+    setNewCustomerName("");
+    setNewCustomerShift("Both");
+    setAddCustomerError("");
+  };
+
+  const deleteShiftRow = (rowIndex: number) => {
+    if (rows.length <= 1) return;
+    const nextRows = rows
+      .filter((_, index) => index !== rowIndex)
+      .map((row, index) => ({
+        ...row,
+        serialNumber: index + 1
+      }));
+
+    saveState({ dayCount, rows: nextRows });
+    setRowHeights((current) => current.filter((_, index) => index !== rowIndex));
+    setSelectedRowIndices((current) =>
+      current.filter((i) => i !== rowIndex).map((i) => (i > rowIndex ? i - 1 : i))
+    );
+  };
+
+  const startShiftLongPress = (row: SheetRow, rowIndex: number, clientX: number, clientY: number) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+    touchStartPosRef.current = { x: clientX, y: clientY };
+    longPressTimerRef.current = setTimeout(() => {
+      try {
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          navigator.vibrate(40);
+        }
+      } catch {
+        // ignore vibration error
+      }
+      setShiftToDelete({ row, rowIndex });
+      longPressTimerRef.current = null;
+    }, 500);
+  };
+
+  const cancelShiftLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    touchStartPosRef.current = null;
+  };
+
+  const handleShiftTouchMove = (clientX: number, clientY: number) => {
+    if (!touchStartPosRef.current) return;
+    const dx = Math.abs(clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(clientY - touchStartPosRef.current.y);
+    if (dx > 10 || dy > 10) {
+      cancelShiftLongPress();
+    }
+  };
+
   const removeSelectedRows = () => {
     if (selectedRowIndices.length === 0 || rows.length - selectedRowIndices.length < 1) {
       return;
@@ -1909,9 +2127,90 @@ function CustomerTable() {
     return () => window.removeEventListener(BACK_TO_CURRENT_SHEET_EVENT, handleBackEvent);
   });
 
+  const searchQuery = customerSearch.trim().toLowerCase();
+  const visibleRowIndices = rows
+    .map((_, rowIndex) => rowIndex)
+    .filter((rowIndex) =>
+      searchQuery ? rows[rowIndex].customerName.toLowerCase().includes(searchQuery) : true
+    );
+  const displaySerialNumbers = buildDisplaySerialMap(rows);
+  const dailyGroups = buildDailyCustomerGroups(visibleRowIndices, rows, displaySerialNumbers);
+
   return (
-    <div className="relative left-1/2 flex h-auto w-full max-w-none -translate-x-1/2 flex-col space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-card dark:bg-[#212121] dark:border-[#333] md:-mt-8 md:h-[calc(100dvh-4.5rem)] md:w-screen md:space-y-2 md:rounded-none md:border-0 md:bg-white dark:md:bg-[#161616] md:pt-2 md:px-0 md:pb-0 md:shadow-none">
-      <div className="grid grid-cols-3 gap-2 lg:flex lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+    <div className="flex h-auto w-full max-w-none flex-col space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-card dark:bg-[#212121] dark:border-[#333] md:relative md:left-1/2 md:-translate-x-1/2 md:-mt-8 md:h-[calc(100dvh-4.5rem)] md:w-screen md:space-y-2 md:rounded-none md:border-0 md:bg-white dark:md:bg-[#161616] md:pt-2 md:px-0 md:pb-0 md:shadow-none">
+      {/* Mobile Top Controls (< md only) */}
+      <div className="flex flex-col gap-2.5 md:hidden">
+        <div className="flex items-center justify-between gap-2">
+          {/* Segmented Mode Switcher */}
+          <div className="inline-flex rounded-xl bg-slate-100 p-1 dark:bg-white/10">
+            <button
+              type="button"
+              onClick={() => setMobileViewMode("daily")}
+              className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-slate-900 shadow-sm transition dark:bg-[#2c2c2c] dark:text-white"
+            >
+              <span>📅</span>
+              <span>Daily Entry</span>
+            </button>
+            {/* Table section temporarily hidden on mobile */}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openSaveNameModal}
+              className="flex min-h-[40px] items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-xs font-bold text-white shadow-sm active:scale-95 touch-manipulation cursor-pointer"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+              </svg>
+              <span>Save</span>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowMobileActionMenu(true);
+              }}
+              aria-label="Open sheet actions"
+              className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-300 bg-slate-100 text-sm font-bold text-slate-700 shadow-sm transition active:scale-95 touch-manipulation dark:border-[#444] dark:bg-[#2a2a2a] dark:text-slate-200"
+            >
+              •••
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Search */}
+        <div className="relative w-full">
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+              <path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </span>
+          <input
+            type="search"
+            value={customerSearch}
+            onChange={(event) => setSheetSearch(event.target.value)}
+            placeholder="Search customer name..."
+            aria-label="Search customer name"
+            className="min-h-[42px] w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-9 text-xs text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white dark:placeholder:text-slate-500"
+          />
+          {customerSearch ? (
+            <button
+              type="button"
+              onClick={() => setSheetSearch("")}
+              aria-label="Clear customer search"
+              className="absolute inset-y-0 right-2 flex items-center rounded-full px-2 text-lg leading-none text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Desktop & Tablet Toolbar (Original toolbar preserved for md: & lg:) */}
+      <div className="hidden md:grid md:grid-cols-3 md:gap-2 lg:flex lg:flex-row lg:items-start lg:justify-between lg:gap-4">
         <div className="contents lg:flex lg:flex-wrap lg:overflow-visible lg:mx-0 lg:px-0 lg:items-center lg:gap-2">
           <button
             type="button"
@@ -1975,32 +2274,6 @@ function CustomerTable() {
           </button>
         </div>
         <div className="contents lg:flex lg:items-center lg:gap-2">
-          <div className="relative order-10 col-span-3 md:hidden">
-            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
-                <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
-                <path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </span>
-            <input
-              type="search"
-              value={customerSearch}
-              onChange={(event) => setSheetSearch(event.target.value)}
-              placeholder="Search customer name..."
-              aria-label="Search customer name"
-              className="min-h-[48px] w-full flex-1 rounded-full border border-slate-300 bg-white py-2 pl-9 pr-9 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 sm:text-[11px] lg:text-[12px] dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white dark:placeholder:text-slate-500"
-            />
-            {customerSearch ? (
-              <button
-                type="button"
-                onClick={() => setSheetSearch("")}
-                aria-label="Clear customer search"
-                className="absolute inset-y-0 right-2 flex items-center rounded-full px-2 text-lg leading-none text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
-              >
-                ×
-              </button>
-            ) : null}
-          </div>
           <button
             type="button"
             onClick={openSaveNameModal}
@@ -2037,8 +2310,8 @@ function CustomerTable() {
         </div>
       </div>
 
-      {showSaveNameModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="save-sheet-title">
+      {showSaveNameModal && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="save-sheet-title">
           <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl dark:border dark:border-[#444] dark:bg-[#212121] sm:p-5">
             <h3 id="save-sheet-title" className="text-base font-semibold text-slate-800 dark:text-white">Name this sheet</h3>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Give this saved sheet a name so it's easy to find in History.</p>
@@ -2072,11 +2345,12 @@ function CustomerTable() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {showChangeSheetModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/60 p-2 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="archived-sheets-title">
+      {showChangeSheetModal && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/60 p-2 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="archived-sheets-title">
           <div className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-md flex-col overflow-hidden rounded-2xl bg-white p-3 shadow-2xl dark:border dark:border-[#444] dark:bg-[#212121] sm:p-4">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -2141,18 +2415,686 @@ function CustomerTable() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
+      {/* Mobile Sheet Actions Menu Drawer */}
+      {showMobileActionMenu && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 backdrop-blur-sm p-0 sm:items-center sm:p-4 md:hidden"
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowMobileActionMenu(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-2xl dark:border dark:border-[#444] dark:bg-[#212121] sm:rounded-2xl"
+            style={{ paddingBottom: "max(1.75rem, env(safe-area-inset-bottom, 24px))" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {mobileViewMode === "table" ? "Table Actions" : "Sheet Actions"}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {mobileViewMode === "table" ? "Manage rows, columns, and history" : "Add customers and manage history"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMobileActionMenu(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 font-bold text-slate-500 hover:bg-slate-200 active:scale-95 touch-manipulation dark:bg-white/10 dark:text-slate-300"
+                aria-label="Close sheet actions"
+              >
+                ✕
+              </button>
+            </div>
 
-      <div
-        className="w-full min-h-0 min-w-0 max-w-full flex-1 overflow-auto overscroll-contain rounded-md dark:bg-[#161616] [scrollbar-width:thin] [-webkit-overflow-scrolling:touch] max-h-[70dvh] md:max-h-none"
-        style={{
-          touchAction: "pan-x pan-y",
-          WebkitOverflowScrolling: "touch",
-          scrollbarGutter: "stable"
-        }}
-      >
+            {mobileViewMode === "table" ? (
+              /* Restored full original actions for Table version */
+              <div className="mt-4 grid grid-cols-2 gap-2.5 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    addRow();
+                    setShowMobileActionMenu(false);
+                  }}
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-800 hover:bg-slate-100 active:scale-95 touch-manipulation dark:border-[#444] dark:bg-white/5 dark:text-white"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-100 font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">+</span>
+                  <span>Add Row</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    addColumn();
+                    setShowMobileActionMenu(false);
+                  }}
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-800 hover:bg-slate-100 active:scale-95 touch-manipulation dark:border-[#444] dark:bg-white/5 dark:text-white"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-100 font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">+</span>
+                  <span>Add Day Column</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeRow();
+                    setShowMobileActionMenu(false);
+                  }}
+                  disabled={rows.length <= 1}
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-800 hover:bg-slate-100 active:scale-95 disabled:opacity-50 touch-manipulation dark:border-[#444] dark:bg-white/5 dark:text-white"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-200 font-bold text-slate-700 dark:bg-white/10 dark:text-slate-300">−</span>
+                  <span>Remove Row</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeColumn();
+                    setShowMobileActionMenu(false);
+                  }}
+                  disabled={dayCount <= 1}
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-800 hover:bg-slate-100 active:scale-95 disabled:opacity-50 touch-manipulation dark:border-[#444] dark:bg-white/5 dark:text-white"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-200 font-bold text-slate-700 dark:bg-white/10 dark:text-slate-300">−</span>
+                  <span>Remove Column</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeSelectedRows();
+                    setShowMobileActionMenu(false);
+                  }}
+                  disabled={selectedRowIndices.length === 0 || rows.length - selectedRowIndices.length < 1}
+                  className="col-span-2 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-700 hover:bg-rose-100 active:scale-95 disabled:opacity-40 touch-manipulation dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300"
+                >
+                  <span className="flex items-center gap-2">
+                    <span>🗑️</span>
+                    <span>Delete Selected Rows</span>
+                  </span>
+                  <span className="rounded-full bg-rose-200/70 px-2 py-0.5 text-[11px] font-bold text-rose-800 dark:bg-rose-900 dark:text-rose-200">
+                    {selectedRowIndices.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeSelectedColumns();
+                    setShowMobileActionMenu(false);
+                  }}
+                  disabled={selectedDayIndices.length === 0 || dayCount - selectedDayIndices.length < 1}
+                  className="col-span-2 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-700 hover:bg-rose-100 active:scale-95 disabled:opacity-40 touch-manipulation dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300"
+                >
+                  <span className="flex items-center gap-2">
+                    <span>🗑️</span>
+                    <span>Delete Selected Columns</span>
+                  </span>
+                  <span className="rounded-full bg-rose-200/70 px-2 py-0.5 text-[11px] font-bold text-rose-800 dark:bg-rose-900 dark:text-rose-200">
+                    {selectedDayIndices.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileActionMenu(false);
+                    void archiveToHistory("");
+                  }}
+                  className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800 hover:bg-amber-100 active:scale-95 touch-manipulation dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+                >
+                  <span>📁</span>
+                  <span>Archive</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileActionMenu(false);
+                    openChangeSheetModal();
+                  }}
+                  className="flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-indigo-800 hover:bg-indigo-100 active:scale-95 touch-manipulation dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:text-indigo-300"
+                >
+                  <span>🗄️</span>
+                  <span>Archived Sheets</span>
+                </button>
+              </div>
+            ) : (
+              /* Daily Entry Mode Actions */
+              <div className="mt-4 grid grid-cols-2 gap-2.5 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileActionMenu(false);
+                    setNewCustomerName("");
+                    setNewCustomerShift("Both");
+                    setAddCustomerError("");
+                    setShowAddCustomerModal(true);
+                  }}
+                  className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-brand-500 p-3.5 text-xs font-bold text-white shadow-sm hover:bg-brand-600 active:scale-95 touch-manipulation"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20 text-base font-extrabold">+</span>
+                  <span>Add Customer</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileActionMenu(false);
+                    void archiveToHistory("");
+                  }}
+                  className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800 hover:bg-amber-100 active:scale-95 touch-manipulation dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+                >
+                  <span>📁</span>
+                  <span>Archive</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileActionMenu(false);
+                    openChangeSheetModal();
+                  }}
+                  className="flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-indigo-800 hover:bg-indigo-100 active:scale-95 touch-manipulation dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:text-indigo-300"
+                >
+                  <span>🗄️</span>
+                  <span>Archived Sheets</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Add Customer Modal with Shift Option */}
+      {showAddCustomerModal && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowAddCustomerModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:border dark:border-[#444] dark:bg-[#212121]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-blue-600/20 dark:text-blue-400 font-bold">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Add Customer</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Add customer to the milk sheet</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddCustomerModal(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 font-bold text-slate-500 hover:bg-slate-200 active:scale-95 touch-manipulation dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20"
+                aria-label="Close add customer dialog"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newCustomerName.trim()) {
+                  setAddCustomerError("Please enter a customer name.");
+                  return;
+                }
+                handleAddCustomer(newCustomerName, newCustomerShift);
+              }}
+              className="mt-4 space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                  Customer Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={newCustomerName}
+                  onChange={(e) => {
+                    setNewCustomerName(e.target.value);
+                    if (addCustomerError) setAddCustomerError("");
+                  }}
+                  placeholder="e.g. Ramesh Kumar"
+                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#555] dark:bg-[#1a1a1a] dark:text-white dark:placeholder:text-slate-500 dark:focus:border-blue-500 dark:focus:ring-blue-500/30"
+                />
+                {addCustomerError ? (
+                  <p className="mt-1 text-xs text-rose-500 font-medium">{addCustomerError}</p>
+                ) : null}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+                  Shift Option
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { value: "Both", label: "Both (M & E)" },
+                      { value: "M", label: "Morning (M)" },
+                      { value: "E", label: "Evening (E)" }
+                    ] as const
+                  ).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setNewCustomerShift(option.value)}
+                      className={`flex items-center justify-center rounded-xl border py-3 px-1 text-center transition active:scale-95 touch-manipulation ${
+                        newCustomerShift === option.value
+                          ? "border-brand-500 bg-brand-50 text-brand-700 ring-2 ring-brand-500/30 dark:border-blue-500 dark:bg-blue-950/60 dark:text-blue-300 dark:ring-blue-500/40 font-bold"
+                          : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 dark:border-[#444] dark:bg-[#1a1a1a] dark:text-slate-300 dark:hover:bg-[#262626] font-medium"
+                      }`}
+                    >
+                      <span className="text-xs leading-tight">{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(false)}
+                  className="min-h-11 rounded-xl border border-slate-300 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 active:scale-95 touch-manipulation dark:border-[#444] dark:bg-[#1a1a1a] dark:text-slate-200 dark:hover:bg-[#2a2a2a]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="min-h-11 rounded-xl bg-brand-500 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-600 active:scale-95 touch-manipulation dark:bg-blue-600 dark:hover:bg-blue-500"
+                >
+                  Add Customer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Delete Shift Confirmation Popup */}
+      {shiftToDelete && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[160] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShiftToDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:border dark:border-[#444] dark:bg-[#212121]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-300">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Shift?</h3>
+                <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {shiftToDelete.row.customerName || `Customer ${shiftToDelete.row.serialNumber}`} • {shiftToDelete.row.shift === "M" ? "Morning" : shiftToDelete.row.shift === "E" ? "Evening" : shiftToDelete.row.shift || "Shift"}
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+              Are you sure you want to delete this shift row from the milk sheet? This action will remove this entry.
+            </p>
+
+            <div className="mt-5 grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShiftToDelete(null)}
+                className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 active:scale-95 touch-manipulation dark:border-[#444] dark:text-slate-200 dark:hover:bg-[#2a2a2a]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteShiftRow(shiftToDelete.rowIndex);
+                  setShiftToDelete(null);
+                }}
+                className="min-h-11 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-rose-700 active:scale-95 touch-manipulation"
+              >
+                Delete Shift
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Daily Quick Entry Mode View on Mobile */}
+      <div className={`${mobileViewMode === "daily" ? "flex flex-col gap-3" : "hidden"} md:hidden w-full flex-1 min-h-0`}>
+        {/* Day Stepper & Carousel */}
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-2.5 dark:border-[#333] dark:bg-white/5">
+          <button
+            type="button"
+            onClick={() => setSelectedDayIndex((prev) => Math.max(0, prev - 1))}
+            disabled={selectedDayIndex === 0}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white font-bold text-slate-700 shadow-sm disabled:opacity-30 active:scale-95 dark:border-[#444] dark:bg-[#252525] dark:text-white"
+            aria-label="Previous Day"
+          >
+            ‹
+          </button>
+          <div className="text-center">
+            <span className="block text-sm font-extrabold text-slate-900 dark:text-white">
+              Day {selectedDayIndex + 1}
+            </span>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              of {dayCount} days
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedDayIndex((prev) => Math.min(dayCount - 1, prev + 1))}
+            disabled={selectedDayIndex >= dayCount - 1}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white font-bold text-slate-700 shadow-sm disabled:opacity-30 active:scale-95 dark:border-[#444] dark:bg-[#252525] dark:text-white"
+            aria-label="Next Day"
+          >
+            ›
+          </button>
+        </div>
+
+        {/* Day Quick Select Bar */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [-webkit-overflow-scrolling:touch]">
+          {Array.from({ length: dayCount }, (_, dIdx) => (
+            <button
+              key={`day-pill-${dIdx}`}
+              type="button"
+              onClick={() => setSelectedDayIndex(dIdx)}
+              className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition active:scale-95 ${
+                selectedDayIndex === dIdx
+                  ? "bg-brand-500 text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-600 dark:border-[#444] dark:bg-white/5 dark:text-slate-300"
+              }`}
+            >
+              Day {dIdx + 1}
+            </button>
+          ))}
+        </div>
+
+        {/* Shift Filter Pills */}
+        <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold dark:bg-white/5">
+          {(["All", "M", "E"] as const).map((shift) => (
+            <button
+              key={`shift-filter-${shift}`}
+              type="button"
+              onClick={() => setDailyShiftFilter(shift)}
+              className={`rounded-lg py-1.5 text-center font-bold transition ${
+                dailyShiftFilter === shift
+                  ? "bg-white text-slate-900 shadow-sm dark:bg-[#2c2c2c] dark:text-white"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+              }`}
+            >
+              {shift === "All" ? "All Shifts" : shift === "M" ? "Morning (M)" : "Evening (E)"}
+            </button>
+          ))}
+        </div>
+
+        {/* Customer Cards List */}
+        <div className="flex flex-col gap-2.5 pr-0.5 pb-0">
+          {(() => {
+            const visibleDailyGroups = dailyGroups.filter((group) => {
+              if (dailyShiftFilter === "All") return true;
+              return group.rows.some(({ row }) => (row.shift || "").toUpperCase().includes(dailyShiftFilter));
+            });
+
+            if (visibleDailyGroups.length === 0) {
+              return (
+                <div className="flex flex-col gap-2.5">
+                  <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500 dark:border-[#444] dark:text-slate-400">
+                    No customers match your search or filter.
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-[#383838] dark:bg-[#1a1a1a]">
+                    <div>
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                        Day {selectedDayIndex + 1} Total
+                      </span>
+                      <span className="font-mono text-base font-extrabold text-brand-600 dark:text-brand-400">
+                        ₹{rows.reduce((sum, r) => sum + (r.days[selectedDayIndex] ?? 0), 0)}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                        Total
+                      </span>
+                      <span className="font-mono text-base font-extrabold text-slate-900 dark:text-white">
+                        ₹{rows.reduce((grand, r) => grand + r.days.reduce((s, v) => s + v, 0), 0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            return visibleDailyGroups.map((group, groupIndex) => {
+              const matchingRows = group.rows.filter(({ row }) => {
+                if (dailyShiftFilter === "All") return true;
+                return (row.shift || "").toUpperCase().includes(dailyShiftFilter);
+              });
+              if (matchingRows.length === 0) return null;
+
+              const isLastCustomer = groupIndex === visibleDailyGroups.length - 1;
+              const customerDayTotal = group.rows.reduce(
+                (sum, { row }) => sum + (row.days[selectedDayIndex] || 0),
+                0
+              );
+
+              return (
+                <div
+                  key={`daily-card-${group.key}`}
+                  className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition hover:shadow-md dark:border-[#383838] dark:bg-[#1a1a1a] scroll-my-28"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/5">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                        {group.displaySerial}
+                      </span>
+                      <span className="truncate font-bold text-sm text-slate-900 dark:text-white">
+                        {group.customerName}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="block text-[10px] leading-tight text-slate-400">Day Total</span>
+                      <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
+                        ₹{Math.round(customerDayTotal * 100) / 100}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 touch-pan-y">
+                    {matchingRows.map(({ row, rowIndex }) => {
+                      const isMorning = (row.shift || "").toUpperCase().includes("M");
+                      const isEvening = (row.shift || "").toUpperCase().includes("E");
+                      const currentValue =
+                        editingDayCell &&
+                        editingDayCell.serialNumber === row.serialNumber &&
+                        editingDayCell.dayIndex === selectedDayIndex
+                          ? editingDayCell.text
+                          : row.days[selectedDayIndex] === 0
+                          ? ""
+                          : String(row.days[selectedDayIndex]);
+
+                      return (
+                        <div
+                          key={`daily-row-${row.serialNumber}`}
+                          className={`flex items-center justify-between gap-2 rounded-xl border p-2 transition ${
+                            isMorning
+                              ? "border-amber-200/60 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/20"
+                              : isEvening
+                              ? "border-violet-200/60 bg-violet-50/40 dark:border-violet-900/40 dark:bg-violet-950/20"
+                              : "border-slate-200 bg-slate-50/50 dark:border-[#383838] dark:bg-white/5"
+                          }`}
+                        >
+                          <div
+                            className="flex min-w-0 flex-1 items-center gap-1.5 cursor-pointer select-none active:opacity-75 touch-manipulation"
+                            onTouchStart={(e) => {
+                              const touch = e.touches[0];
+                              if (touch) {
+                                startShiftLongPress(row, rowIndex, touch.clientX, touch.clientY);
+                              }
+                            }}
+                            onTouchMove={(e) => {
+                              const touch = e.touches[0];
+                              if (touch) {
+                                handleShiftTouchMove(touch.clientX, touch.clientY);
+                              }
+                            }}
+                            onTouchEnd={cancelShiftLongPress}
+                            onTouchCancel={cancelShiftLongPress}
+                            onMouseDown={(e) => {
+                              startShiftLongPress(row, rowIndex, e.clientX, e.clientY);
+                            }}
+                            onMouseMove={(e) => {
+                              handleShiftTouchMove(e.clientX, e.clientY);
+                            }}
+                            onMouseUp={cancelShiftLongPress}
+                            onMouseLeave={cancelShiftLongPress}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              cancelShiftLongPress();
+                              setShiftToDelete({ row, rowIndex });
+                            }}
+                            title="Long press to delete this shift"
+                          >
+                            <span
+                              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-xs font-extrabold ${
+                                isMorning
+                                  ? "bg-amber-100 text-amber-800 dark:bg-amber-900/70 dark:text-amber-200"
+                                  : isEvening
+                                  ? "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/70 dark:text-indigo-200"
+                                  : "bg-slate-200 text-slate-700 dark:bg-white/10 dark:text-slate-300"
+                              }`}
+                            >
+                              {row.shift || "—"}
+                            </span>
+                            <span className="truncate text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              {isMorning ? "Morning" : isEvening ? "Evening" : row.shift || "Shift"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-xs font-bold text-slate-500 dark:text-slate-400">₹</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              enterKeyHint="next"
+                              ref={(el) => {
+                                dailyInputRefs.current[`${row.serialNumber}-${selectedDayIndex}`] = el;
+                              }}
+                              placeholder="0"
+                              value={currentValue}
+                              onFocus={(event) => {
+                                setFocusedCell({
+                                  serialNumber: row.serialNumber,
+                                  rowIndex,
+                                  dayIndex: selectedDayIndex
+                                });
+                                setEditingDayCell({
+                                  serialNumber: row.serialNumber,
+                                  dayIndex: selectedDayIndex,
+                                  text: row.days[selectedDayIndex] === 0 ? "" : String(row.days[selectedDayIndex])
+                                });
+                                scrollToInputOnMobile(event.currentTarget);
+                              }}
+                              onChange={(event) => {
+                                setEditingDayCell({
+                                  serialNumber: row.serialNumber,
+                                  dayIndex: selectedDayIndex,
+                                  text: event.target.value
+                                });
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.currentTarget.blur();
+                                  handleFocusNext();
+                                }
+                              }}
+                              onBlur={(event) => {
+                                updateDayValue(row.serialNumber, selectedDayIndex, event.target.value);
+                                setEditingDayCell(null);
+                              }}
+                              className="h-10 w-20 rounded-lg border border-slate-300 bg-white px-2 text-center font-mono text-sm font-bold text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#555] dark:bg-[#202020] dark:text-white scroll-my-24"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Attached Total Footer on Last Customer Card */}
+                  {isLastCustomer && (
+                    <div className="mt-3.5 -mx-3.5 -mb-3.5 flex items-center justify-between rounded-b-2xl border-t border-slate-200 bg-slate-50/90 px-4 py-3 dark:border-[#383838] dark:bg-white/5">
+                      <div>
+                        <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Day {selectedDayIndex + 1} Total
+                        </span>
+                        <span className="font-mono text-base font-extrabold text-brand-600 dark:text-brand-400">
+                          ₹{rows.reduce((sum, r) => sum + (r.days[selectedDayIndex] ?? 0), 0)}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Total
+                        </span>
+                        <span className="font-mono text-base font-extrabold text-slate-900 dark:text-white">
+                          ₹{rows.reduce((grand, r) => grand + r.days.reduce((s, v) => s + v, 0), 0)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            });
+          })()}
+        </div>
+      </div>
+
+      {/* Table Matrix View (Always active on md: / tablet / desktop, togglable on mobile) */}
+      <div className={`${mobileViewMode === "table" ? "flex flex-col gap-2" : "hidden"} md:flex md:flex-col md:flex-1 md:min-h-0 w-full`}>
+        {/* Day Jumper Ribbon on Mobile */}
+        <div className="flex items-center gap-1.5 overflow-x-auto py-1 px-1 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] text-xs font-semibold md:hidden">
+          <span className="text-[11px] text-slate-400 whitespace-nowrap">Jump:</span>
+          <button type="button" onClick={() => jumpToDay(1)} className="shrink-0 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm active:scale-95 dark:border-[#444] dark:bg-white/5 dark:text-slate-200">Days 1–5</button>
+          <button type="button" onClick={() => jumpToDay(6)} className="shrink-0 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm active:scale-95 dark:border-[#444] dark:bg-white/5 dark:text-slate-200">Days 6–10</button>
+          <button type="button" onClick={() => jumpToDay(11)} className="shrink-0 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm active:scale-95 dark:border-[#444] dark:bg-white/5 dark:text-slate-200">Days 11–15</button>
+          {dayCount > 15 && (
+            <button type="button" onClick={() => jumpToDay(16)} className="shrink-0 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm active:scale-95 dark:border-[#444] dark:bg-white/5 dark:text-slate-200">Days 16–{dayCount}</button>
+          )}
+          <button type="button" onClick={() => jumpToDay(dayCount + 1)} className="shrink-0 px-2.5 py-1 rounded-lg bg-brand-500 text-white font-bold shadow-sm active:scale-95">Totals ➔</button>
+        </div>
+
+        <div
+          ref={tableContainerRef}
+          className="w-full min-h-0 min-w-0 max-w-full flex-1 overflow-auto rounded-md dark:bg-[#161616] [scrollbar-width:thin] [-webkit-overflow-scrolling:touch] max-h-[70dvh] md:max-h-none touch-pan-x touch-pan-y"
+          style={{
+            touchAction: "pan-x pan-y",
+            WebkitOverflowScrolling: "touch",
+            scrollbarGutter: "stable"
+          }}
+        >
         <table className="min-w-[1080px] table-fixed border-collapse border border-slate-400 text-center text-xs md:text-sm dark:bg-[#161616]">
           <colgroup>
             <col style={{ width: columnWidths.serial }} />
@@ -2172,7 +3114,7 @@ function CustomerTable() {
                 S No
                 <span
                   onPointerDown={(event) => startColumnResize("serial", columnWidths.serial, event)}
-                  className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
+                  className="hidden md:block absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
                   aria-hidden="true"
                 />
               </th>
@@ -2183,23 +3125,24 @@ function CustomerTable() {
                 Customer Name
                 <span
                   onPointerDown={(event) => startColumnResize("customerName", columnWidths.customerName, event)}
-                  className="absolute inset-y-0 right-0 z-40 w-2 cursor-col-resize touch-none"
+                  className="hidden md:block absolute inset-y-0 right-0 z-40 w-2 cursor-col-resize touch-none"
                   aria-hidden="true"
                 />
               </th>
               <th
                 style={{ width: columnWidths.shift, position: "relative" }}
-                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5"
+                className="sticky top-0 z-20 border border-slate-400 bg-slate-100 px-1 py-2 sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
               >
                 Shift
                 <span
                   onPointerDown={(event) => startColumnResize("shift", columnWidths.shift, event)}
-                  className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
+                  className="hidden md:block absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
                   aria-hidden="true"
                 />
               </th>
               {Array.from({ length: dayCount }, (_, index) => {
                 const isSelected = selectedDayIndices.includes(index);
+                const isFocusedCol = focusedCell?.dayIndex === index;
                 return (
                   <th
                     key={`day-${index + 1}`}
@@ -2209,8 +3152,12 @@ function CustomerTable() {
                     onDrop={(event) => handleDayColumnDrop(index, event)}
                     onDragEnd={clearDragState}
                     style={{ width: columnWidths.days[index] }}
-                    className={`sticky top-0 z-50 border border-slate-400 px-1 py-2 sm:px-1.5 ${
-                      isSelected ? "bg-blue-200 text-blue-950" : "bg-slate-100"
+                    className={`sticky top-0 z-50 border border-slate-400 px-1 py-2 sm:px-1.5 transition-colors ${
+                      isSelected
+                        ? "bg-blue-200 text-blue-950"
+                        : isFocusedCol
+                        ? "bg-brand-100 text-brand-950 ring-2 ring-inset ring-brand-500 font-extrabold dark:bg-brand-900/60 dark:text-brand-100 md:bg-slate-100 md:dark:bg-[#262626] md:text-slate-800 md:dark:text-slate-100 md:ring-0 md:font-semibold"
+                        : "bg-slate-100 dark:bg-[#262626] dark:text-slate-100"
                     }`}
                   >
                     <button
@@ -2223,7 +3170,7 @@ function CustomerTable() {
                     </button>
                     <span
                       onPointerDown={(event) => startColumnResize(`day:${index}`, columnWidths.days[index], event)}
-                      className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
+                      className="hidden md:block absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
                       aria-hidden="true"
                     />
                   </th>
@@ -2236,7 +3183,7 @@ function CustomerTable() {
                 Total
                 <span
                   onPointerDown={(event) => startColumnResize("total", columnWidths.total, event)}
-                  className="absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
+                  className="hidden md:block absolute inset-y-0 right-0 z-30 w-2 cursor-col-resize touch-none"
                   aria-hidden="true"
                 />
               </th>
@@ -2299,6 +3246,7 @@ function CustomerTable() {
               const total = row.days.reduce((sum, value) => sum + value, 0);
 
               const isRowSelected = selectedRowIndices.includes(rowIndex);
+              const isRowFocused = focusedCell?.rowIndex === rowIndex;
               const groupStart = groupStartIndices[rowIndex] ?? rowIndex;
               const groupEnd = groupStart + Math.max(1, nameSpan || 1) - 1;
               const isGroupSelected = Array.from(
@@ -2310,7 +3258,13 @@ function CustomerTable() {
                 <tr
                   key={`${row.serialNumber}-${rowIndex}`}
                   style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT }}
-                  className={isRowSelected ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-[#1c1c1c]"}
+                  className={
+                    isRowSelected
+                      ? "bg-blue-50 dark:bg-blue-950/40"
+                      : isRowFocused
+                      ? "bg-brand-50/60 dark:bg-brand-950/40 md:bg-white md:dark:bg-[#1c1c1c]"
+                      : "bg-white dark:bg-[#1c1c1c]"
+                  }
                 >
                   {nameSpan > 0 && (
                     <td
@@ -2342,7 +3296,7 @@ function CustomerTable() {
                           event.stopPropagation();
                           startRowResize(rowIndex, rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, event);
                         }}
-                        className="absolute bottom-0 left-0 z-[70] h-3 w-full cursor-row-resize touch-none rounded-sm bg-transparent hover:bg-slate-300/40"
+                        className="hidden md:block absolute bottom-0 left-0 z-[70] h-3 w-full cursor-row-resize touch-none rounded-sm bg-transparent hover:bg-slate-300/40"
                         style={{ touchAction: "none", pointerEvents: "auto", cursor: "row-resize" }}
                         aria-label={`Resize row ${rowIndex + 1}`}
                         role="separator"
@@ -2361,8 +3315,9 @@ function CustomerTable() {
                       <input
                         value={row.customerName}
                         onChange={(event) => updateCustomerName(row.serialNumber, event.target.value)}
+                        onFocus={(event) => scrollToInputOnMobile(event.currentTarget)}
                         placeholder={activeHistoryId ? "-" : undefined}
-                        className={`h-11 min-h-[44px] w-full min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-left text-[14px] focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white ${isRowSelected ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-[#1c1c1c]"}`}
+                        className={`h-11 min-h-[44px] w-full min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-left text-[14px] focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white scroll-my-24 ${isRowSelected ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-[#1c1c1c]"}`}
                       />
                     </td>
                   )}
@@ -2375,72 +3330,104 @@ function CustomerTable() {
                     <input
                       value={row.shift}
                       onChange={(event) => updateShift(row.serialNumber, event.target.value)}
+                      onFocus={(event) => scrollToInputOnMobile(event.currentTarget)}
                       placeholder={activeHistoryId ? "-" : undefined}
-                      className={`h-11 min-h-[44px] w-full rounded-lg border border-slate-300 px-2 py-2 text-center text-[14px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white ${isRowSelected ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-[#1c1c1c]"}`}
+                      className={`h-11 min-h-[44px] w-full rounded-lg border border-slate-300 px-2 py-2 text-center text-[14px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-[#444] dark:bg-[#1c1c1c] dark:text-white scroll-my-24 ${isRowSelected ? "bg-blue-50 dark:bg-blue-950/40" : "bg-white dark:bg-[#1c1c1c]"}`}
                     />
                     </td>
-                  {row.days.map((value, dayIndex) => (
-                    <td
-                      key={`${row.serialNumber}-${dayIndex + 1}`}
-                      style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, verticalAlign: "middle" }}
-                      className={`border border-slate-300 px-1 py-1 ${
-                        selectedDayIndices.includes(dayIndex)
-                          ? "bg-blue-50"
-                          : isRowSelected
-                          ? "bg-blue-100"
-                          : "bg-white"
-                      }`}
-                    >
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        autoComplete="off"
-                        enterKeyHint="done"
-                        placeholder={activeHistoryId ? "-" : undefined}
-                        aria-label={`${row.customerName || "Customer"} Day ${dayIndex + 1}`}
-                        value={
-                          editingDayCell &&
-                          editingDayCell.serialNumber === row.serialNumber &&
-                          editingDayCell.dayIndex === dayIndex
-                            ? editingDayCell.text
-                            : value === 0
-                            ? ""
-                            : String(value)
-                        }
-                        onFocus={() =>
-                          setEditingDayCell({
-                            serialNumber: row.serialNumber,
-                            dayIndex,
-                            text: value === 0 ? "" : String(value)
-                          })
-                        }
-                        onChange={(event) =>
-                          setEditingDayCell({
-                            serialNumber: row.serialNumber,
-                            dayIndex,
-                            text: event.target.value
-                          })
-                        }
-                        onKeyDown={(event) => {
-                          // Pressing Enter commits the typed expression (e.g. "2+3+5")
-                          // as its summed total, same as clicking away from the cell.
-                          if (event.key === "Enter") {
-                            event.currentTarget.blur();
+                  {row.days.map((value, dayIndex) => {
+                    const isCellFocused =
+                      focusedCell?.serialNumber === row.serialNumber &&
+                      focusedCell?.dayIndex === dayIndex;
+                    const isColFocused = focusedCell?.dayIndex === dayIndex;
+
+                    return (
+                      <td
+                        key={`${row.serialNumber}-${dayIndex + 1}`}
+                        style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, verticalAlign: "middle" }}
+                        className={`border border-slate-300 px-1 py-1 transition-colors ${
+                          selectedDayIndices.includes(dayIndex)
+                            ? "bg-blue-50"
+                            : isRowSelected
+                            ? "bg-blue-100"
+                            : isCellFocused
+                            ? "bg-brand-100/80 dark:bg-brand-900/50 md:bg-white md:dark:bg-[#1c1c1c]"
+                            : isColFocused
+                            ? "bg-brand-50/30 dark:bg-brand-950/20 md:bg-white md:dark:bg-[#1c1c1c]"
+                            : "bg-white dark:bg-[#1c1c1c]"
+                        }`}
+                      >
+                        <input
+                          ref={(el) => {
+                            tableInputRefs.current[`${row.serialNumber}-${dayIndex}`] = el;
+                          }}
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          enterKeyHint="next"
+                          placeholder={activeHistoryId ? "-" : undefined}
+                          aria-label={`${row.customerName || "Customer"} Day ${dayIndex + 1}`}
+                          value={
+                            editingDayCell &&
+                            editingDayCell.serialNumber === row.serialNumber &&
+                            editingDayCell.dayIndex === dayIndex
+                              ? editingDayCell.text
+                              : value === 0
+                              ? ""
+                              : String(value)
                           }
-                        }}
-                        onBlur={(event) => {
-                          updateDayValue(row.serialNumber, dayIndex, event.target.value);
-                          setEditingDayCell(null);
-                        }}
-                        className={`h-11 min-h-[44px] w-full rounded-lg border px-1 py-2 text-center text-[15px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:text-white ${selectedDayIndices.includes(dayIndex) ? "border-blue-300 bg-blue-100 dark:border-blue-700 dark:bg-blue-900/50" : isRowSelected ? "border-blue-200 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/40" : row.shift === "M" ? "border-amber-200 bg-amber-50/60 dark:border-amber-700 dark:bg-amber-950/30" : row.shift === "E" ? "border-violet-200 bg-violet-50/60 dark:border-violet-700 dark:bg-violet-950/30" : "border-slate-300 bg-white dark:border-[#444] dark:bg-[#1c1c1c]"}`}
-                      />
-                    </td>
-                  ))}
+                          onFocus={(event) => {
+                            setFocusedCell({
+                              serialNumber: row.serialNumber,
+                              rowIndex,
+                              dayIndex
+                            });
+                            setEditingDayCell({
+                              serialNumber: row.serialNumber,
+                              dayIndex,
+                              text: value === 0 ? "" : String(value)
+                            });
+                            scrollToInputOnMobile(event.currentTarget);
+                          }}
+                          onChange={(event) =>
+                            setEditingDayCell({
+                              serialNumber: row.serialNumber,
+                              dayIndex,
+                              text: event.target.value
+                            })
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.currentTarget.blur();
+                              handleFocusNext();
+                            }
+                          }}
+                          onBlur={(event) => {
+                            updateDayValue(row.serialNumber, dayIndex, event.target.value);
+                            setEditingDayCell(null);
+                          }}
+                          className={`h-11 min-h-[44px] w-full rounded-lg border px-1 py-2 text-center font-mono tabular-nums text-[15px] font-semibold focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:text-white scroll-my-24 ${
+                            isCellFocused
+                              ? "border-brand-500 ring-2 ring-brand-500/30 bg-white dark:bg-[#222]"
+                              : selectedDayIndices.includes(dayIndex)
+                              ? "border-blue-300 bg-blue-100 dark:border-blue-700 dark:bg-blue-900/50"
+                              : isRowSelected
+                              ? "border-blue-200 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/40"
+                              : row.shift === "M"
+                              ? "border-amber-200 bg-amber-50/60 dark:border-amber-700 dark:bg-amber-950/30"
+                              : row.shift === "E"
+                              ? "border-violet-200 bg-violet-50/60 dark:border-violet-700 dark:bg-violet-950/30"
+                              : "border-slate-300 bg-white dark:border-[#444] dark:bg-[#1c1c1c]"
+                          }`}
+                        />
+                      </td>
+                    );
+                  })}
                   {nameSpan > 0 && (
                     <td
                       rowSpan={nameSpan}
                       style={{ height: rowHeights[rowIndex] ?? DEFAULT_ROW_HEIGHT, verticalAlign: "middle" }}
-                      className={`border-l-2 border-r-2 border-y border-slate-300 px-1 py-1 font-semibold md:px-2 ${
+                      className={`border-l-2 border-r-2 border-y border-slate-300 px-1 py-1 font-mono tabular-nums font-semibold md:px-2 ${
                         isGroupSelected ? "bg-blue-100" : "bg-white"
                       }`}
                     >
@@ -2469,14 +3456,14 @@ function CustomerTable() {
                 return (
                   <td
                     key={`daily-total-${dayIndex}`}
-                    className="sticky bottom-0 z-20 border-l-2 border-r-2 border-y border-slate-400 bg-slate-100 px-1 py-1 text-center shadow-[0_-2px_6px_rgba(0,0,0,0.12)] sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
+                    className="sticky bottom-0 z-20 border-l-2 border-r-2 border-y border-slate-400 bg-slate-100 px-1 py-1 text-center font-mono tabular-nums shadow-[0_-2px_6px_rgba(0,0,0,0.12)] sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
                   >
                     {dayTotal}
                   </td>
                 );
               })}
               <td
-                className="sticky bottom-0 z-20 border border-slate-400 bg-slate-100 px-1 py-1 text-center shadow-[0_-2px_6px_rgba(0,0,0,0.12)] sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
+                className="sticky bottom-0 z-20 border border-slate-400 bg-slate-100 px-1 py-1 text-center font-mono tabular-nums shadow-[0_-2px_6px_rgba(0,0,0,0.12)] sm:px-1.5 dark:border-[#444] dark:bg-[#262626] dark:text-white"
               >
                 {rows.reduce(
                   (grandTotal, row) =>
@@ -2487,6 +3474,7 @@ function CustomerTable() {
             </tr>
           </tfoot>
         </table>
+      </div>
       </div>
     </div>
   );

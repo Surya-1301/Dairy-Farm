@@ -26,10 +26,14 @@ function Profile() {
   const [phone, setPhone] = useState(
     profile?.phone?.trim() || ""
   );
+  const [farmName, setFarmName] = useState(
+    profile?.farmName?.trim() || ""
+  );
   const [avatarUrl, setAvatarUrl] = useState(
     profile?.avatarUrl?.trim() || ""
   );
   const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const blobUrlRef = useRef("");
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("success");
@@ -48,15 +52,16 @@ function Profile() {
       setName(nextProfile.name?.trim() || "");
       setEmail(nextProfile.email?.trim() || "");
       setPhone(nextProfile.phone?.trim() || "");
+      setFarmName(nextProfile.farmName?.trim() || "");
       setAvatarUrl(nextProfile.avatarUrl?.trim() || "");
     } else {
       setName(nextActiveUser?.email?.split("@")[0] ?? "");
       setEmail(nextActiveUser?.email ?? "");
       setPhone("");
+      setFarmName("");
       setAvatarUrl("");
     }
 
-    // Always fetch latest from cloud, but use fetched data if available
     void fetchCurrentUserProfile().then((cloudProfile) => {
       if (!cloudProfile) {
         return;
@@ -66,18 +71,17 @@ function Profile() {
       setName(cloudProfile.name?.trim() || "");
       setEmail(cloudProfile.email?.trim() || "");
       setPhone(cloudProfile.phone?.trim() || "");
+      setFarmName(cloudProfile.farmName?.trim() || "");
       setAvatarUrl(cloudProfile.avatarUrl?.trim() || "");
     });
   };
 
-  // On mount, wait for Firebase auth to be ready, then load profile
   useEffect(() => {
     const checkAuthAndLoadProfile = () => {
       if (isAuthReady()) {
         setIsInitializing(false);
         refreshProfile();
       } else {
-        // Check again in 50ms
         const timer = setTimeout(checkAuthAndLoadProfile, 50);
         return () => clearTimeout(timer);
       }
@@ -110,8 +114,10 @@ function Profile() {
       let finalAvatarUrl = avatarUrl;
       if (pendingAvatarFile) {
         finalAvatarUrl = await uploadImageToCloudinary(pendingAvatarFile);
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = "";
+        if (blobUrlRef.current) {
+          URL.revokeObjectURL(blobUrlRef.current);
+          blobUrlRef.current = "";
+        }
         setPendingAvatarFile(null);
         setAvatarUrl(finalAvatarUrl);
       }
@@ -120,7 +126,7 @@ function Profile() {
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim(),
-        farmName: profile?.farmName ?? "",
+        farmName: farmName.trim(),
         avatarUrl: finalAvatarUrl
       });
       
@@ -132,10 +138,9 @@ function Profile() {
       setMessageType("success");
       setMessage("Profile saved successfully!");
       
-      // Clear message after 3 seconds
       setTimeout(() => {
         setMessage("");
-      }, 3000);
+      }, 3500);
     } catch (error) {
       setMessageType("error");
       const errorMsg = error instanceof Error ? error.message : "Failed to save profile. Please try again.";
@@ -182,15 +187,14 @@ function Profile() {
     setMessage("Deleting account...");
 
     try {
-      // Call delete account function
       await deleteCurrentAccount();
       
-      // Clear all local state
       setActiveUser(null);
       setProfile(null);
       setName("");
       setEmail("");
       setPhone("");
+      setFarmName("");
       setAvatarUrl("");
       
       navigate("/login?mode=signup", { replace: true });
@@ -238,13 +242,13 @@ function Profile() {
     setPendingAvatarFile(null);
     setAvatarUrl("");
     setMessageType("success");
-    setMessage("Avatar removed.");
+    setMessage("Photo removed. Tap 'Save Changes' to update.");
     setTimeout(() => {
       setMessage("");
-    }, 2000);
+    }, 2500);
   };
 
-  const roleLabel = activeUser?.role === "owner" ? "Owner" : "User";
+  const roleLabel = activeUser?.role === "owner" ? "Dairy Owner" : "Member";
   const displayName = name.trim() || profile?.name?.trim() || activeUser?.email?.split("@")[0] || "User";
   const displayEmail = email.trim() || profile?.email || activeUser?.email || "Not set";
   const displayPhone = phone.trim() || profile?.phone || "-";
@@ -253,162 +257,288 @@ function Profile() {
 
   if (isInitializing) {
     return (
-      <section className="space-y-4 md:space-y-6">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-900">Profile</h1>
-          <p className="mt-1 text-xs md:text-sm text-slate-600">Loading your profile...</p>
-        </div>
-        <div className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
-          <p className="text-xs md:text-sm text-slate-500">Please wait while we load your profile data...</p>
+      <section className="mx-auto max-w-3xl space-y-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-[#333] dark:bg-[#1f1f1f]">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-brand-500 border-r-transparent"></div>
+          <p className="mt-3 text-xs md:text-sm text-slate-500 dark:text-slate-400">Please wait while we load your profile data...</p>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="space-y-4 md:space-y-6">
-      <div>
-        <h1 className="text-xl md:text-3xl font-bold text-slate-900">Profile</h1>
-        <p className="mt-1 text-xs md:text-sm text-slate-600">View and update your account details.</p>
-      </div>
-
-      <div className="relative rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
-        <div className="flex flex-row items-center gap-4">
-          <div className="flex h-14 w-14 md:h-16 md:w-16 items-center justify-center flex-shrink-0 overflow-hidden rounded-full bg-brand-500 text-lg md:text-xl font-bold text-white">
-            {displayAvatarUrl ? (
-              <img src={displayAvatarUrl} alt="Profile avatar" className="h-full w-full object-cover" />
-            ) : (
-              initials
-            )}
-          </div>
-          <div className="space-y-1 flex-1 min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">{roleLabel}</p>
-            <h2 className="text-base md:text-lg font-semibold text-slate-900 truncate">{displayName}</h2>
-            <p className="text-xs md:text-sm text-slate-600 truncate">{displayEmail}</p>
-            <p className="text-xs md:text-sm text-slate-600">{displayPhone}</p>
-          </div>
+    <section className="mx-auto max-w-3xl space-y-5">
+      {/* Status Message */}
+      {message && (
+        <div
+          role="alert"
+          className={`flex items-center gap-2.5 rounded-xl border p-3.5 text-xs md:text-sm font-semibold shadow-sm animate-in fade-in duration-200 ${
+            messageType === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300"
+          }`}
+        >
+          <span>{messageType === "success" ? "✅" : "⚠️"}</span>
+          <span>{message}</span>
         </div>
-      </div>
+      )}
 
-      <form onSubmit={onSave} className="space-y-4 rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h3 className="text-base md:text-lg font-semibold text-slate-900">Edit Profile</h3>
-        </div>
+      {/* Section 1: Hero Identity Card */}
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-5 shadow-sm dark:border-[#333] dark:bg-[#1f1f1f]">
+        <div className="flex flex-row items-center gap-3.5 sm:gap-4">
+          {/* Avatar with Camera Badge */}
+          <div className="relative shrink-0">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="group relative flex h-16 w-16 sm:h-20 sm:w-20 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-gradient-to-tr from-brand-600 to-indigo-500 font-extrabold text-xl sm:text-2xl text-white shadow-md ring-2 sm:ring-4 ring-slate-100 dark:ring-[#2a2a2a] transition active:scale-95 hover:opacity-95"
+              title="Click to change profile picture"
+            >
+              {displayAvatarUrl ? (
+                <img src={displayAvatarUrl} alt={displayName} className="h-full w-full object-cover" />
+              ) : (
+                initials
+              )}
+              {/* Overlay hover effect */}
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-white text-[10px] sm:text-xs font-semibold">Change</span>
+              </div>
+            </div>
 
-        {message && (
-          <div
-            className={`rounded-lg px-3 py-2 text-xs md:text-sm ${
-              messageType === "success"
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-red-50 text-red-700"
-            }`}
-          >
-            {message}
-          </div>
-        )}
-
-        <label className="block text-xs md:text-sm font-medium text-slate-700">
-          Full Name <span className="text-red-500">*</span>
-          <input
-            type="text"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
-            placeholder="Enter your full name"
-            required
-            disabled={loading}
-            autoComplete="name"
-          />
-        </label>
-
-        <label className="block text-xs md:text-sm font-medium text-slate-700">
-          Phone Number
-          <input
-            type="tel"
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
-            placeholder="Enter your phone number"
-            disabled={loading}
-            autoComplete="tel"
-          />
-        </label>
-
-        <label className="block text-xs md:text-sm font-medium text-slate-700">
-          Email Address
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand-500"
-            placeholder="Enter your email address"
-            disabled
-            autoComplete="email"
-          />
-        </label>
-        <p className="text-xs text-slate-500">
-          Email address cannot be changed.
-        </p>
-
-        <div className="space-y-2">
-          <label className="block text-xs md:text-sm font-medium text-slate-700">
-            Profile Avatar
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleAvatarChange}
-              className="mt-2 block w-full rounded-lg border border-slate-300 px-4 py-3 text-base min-h-[48px]"
-              disabled={loading}
-            />
-          </label>
-          <p className="text-xs text-slate-500">PNG, JPG, or GIF, up to 5MB</p>
-          {displayAvatarUrl && (
+            {/* Camera badge overlay */}
             <button
               type="button"
-              onClick={handleRemoveAvatar}
-              disabled={loading}
-              className="rounded-lg border border-slate-500 bg-slate-500 px-4 py-3 text-xs md:text-sm font-semibold text-white hover:bg-slate-600 active:bg-slate-700 disabled:opacity-50 w-full min-h-[48px] flex items-center justify-center transition"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Upload profile photo"
+              className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-brand-500 text-white text-[11px] sm:text-xs shadow-md ring-2 ring-white dark:ring-[#1f1f1f] hover:bg-brand-600 active:scale-95 transition cursor-pointer"
             >
-              Remove Avatar
+              📷
             </button>
-          )}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
+          </div>
+
+          {/* Details */}
+          <div className="min-w-0 flex-1 text-left space-y-1">
+            <h2 className="text-base sm:text-xl font-extrabold text-slate-900 dark:text-white truncate">
+              {displayName}
+            </h2>
+
+            {farmName && (
+              <p className="text-xs sm:text-sm font-semibold text-brand-600 dark:text-brand-400 flex items-center gap-1.5 truncate">
+                <span>🌾</span>
+                <span className="truncate">{farmName}</span>
+              </p>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-x-4 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+              <span className="flex items-center gap-1.5 truncate">
+                <span>✉️</span>
+                <span className="truncate">{displayEmail}</span>
+              </span>
+              {displayPhone !== "-" && (
+                <span className="flex items-center gap-1.5 truncate">
+                  <span>📞</span>
+                  <span>{displayPhone}</span>
+                </span>
+              )}
+            </div>
+
+            {displayAvatarUrl && (
+              <div className="pt-0.5">
+                <button
+                  type="button"
+                  onClick={handleRemoveAvatar}
+                  disabled={loading}
+                  className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                >
+                  Remove photo
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Section 2: Personal & Dairy Details Form */}
+      <form onSubmit={onSave} className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-sm dark:border-[#333] dark:bg-[#1f1f1f] space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/5">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <span>📋</span> Personal & Dairy Details
+          </h3>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 pt-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Full Name */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+              Full Name <span className="text-rose-500">*</span>
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-sm">👤</span>
+              <input
+                type="text"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Enter your full name"
+                required
+                disabled={loading}
+                autoComplete="name"
+                className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-[#444] dark:bg-[#161616] dark:text-white dark:placeholder:text-slate-500"
+              />
+            </div>
+          </div>
+
+          {/* Phone */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+              Phone Number
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-sm">📞</span>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                placeholder="Enter your phone number"
+                disabled={loading}
+                autoComplete="tel"
+                className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-[#444] dark:bg-[#161616] dark:text-white dark:placeholder:text-slate-500"
+              />
+            </div>
+          </div>
+
+          {/* Farm Name */}
+          <div className="md:col-span-2">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+              Farm / Dairy Name
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-sm">🌾</span>
+              <input
+                type="text"
+                value={farmName}
+                onChange={(event) => setFarmName(event.target.value)}
+                placeholder="Enter your dairy farm name (e.g. Raipur Dairy Farm)"
+                disabled={loading}
+                className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-[#444] dark:bg-[#161616] dark:text-white dark:placeholder:text-slate-500"
+              />
+            </div>
+          </div>
+
+          {/* Email Address (Read-only) */}
+          <div className="md:col-span-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Email Address
+              </label>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/40">
+                Verified Account
+              </span>
+            </div>
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-sm">✉️</span>
+              <input
+                type="email"
+                value={email}
+                disabled
+                autoComplete="email"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-9 text-sm text-slate-500 cursor-not-allowed dark:border-[#333] dark:bg-[#151515] dark:text-slate-400"
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs">🔒</span>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Your registered email cannot be changed for account security.
+            </p>
+          </div>
+        </div>
+
+        {/* Save Changes Button */}
+        <div className="pt-2">
           <button
             type="submit"
-            disabled={loading || resetLoading}
-            className="w-full sm:flex-1 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
+            disabled={loading}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-brand-600 active:scale-98 transition disabled:opacity-50 min-h-[46px] cursor-pointer"
           >
-            {loading ? "Saving..." : "Save Profile"}
-          </button>
-          <button
-            type="button"
-            onClick={() => { void handleResetPassword(); }}
-            disabled={loading || resetLoading}
-            className="w-full sm:flex-1 rounded-lg border border-amber-500 bg-amber-500 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-600 active:bg-amber-700 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
-          >
-            {resetLoading ? "Sending..." : "Reset Password"}
-          </button>
-          <button
-            type="button"
-            onClick={handleDeleteAccount}
-            disabled={loading || resetLoading}
-            className="w-full sm:flex-1 rounded-lg border border-red-500 bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 active:bg-red-700 disabled:opacity-50 min-h-[48px] flex items-center justify-center transition"
-          >
-            {loading ? "Deleting..." : "Delete Account"}
+            {loading ? (
+              <>
+                <svg className="h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Saving Changes...</span>
+              </>
+            ) : (
+              <>
+                <span>💾</span>
+                <span>Save Changes</span>
+              </>
+            )}
           </button>
         </div>
       </form>
 
-      <div className="rounded-lg md:rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
+      {/* Section 3: Security & Password */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-sm dark:border-[#333] dark:bg-[#1f1f1f] space-y-3">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
+          <span>🔐</span> Security & Password
+        </h3>
+        <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+          Need to change or update your login credentials? We can send a secure password reset link to your registered email address.
+        </p>
         <button
           type="button"
-          onClick={() => { void handleLogout(); }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500 bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-600 active:bg-red-700 min-h-[48px] transition"
+          onClick={() => { void handleResetPassword(); }}
+          disabled={resetLoading}
+          className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs md:text-sm font-bold text-amber-900 hover:bg-amber-100 active:scale-95 transition dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50 min-h-[42px] cursor-pointer"
         >
-          Logout
+          {resetLoading ? (
+            <span>Sending Link...</span>
+          ) : (
+            <>
+              <span>🔑</span>
+              <span>Send Password Reset Link</span>
+            </>
+          )}
         </button>
+      </div>
+
+      {/* Section 4: Danger Zone */}
+      <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-5 md:p-6 shadow-sm dark:border-rose-900/40 dark:bg-rose-950/15 space-y-3.5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-2">
+            <span>⚠️</span> Danger Zone
+          </h3>
+        </div>
+
+        <p className="text-xs text-rose-800/80 dark:text-rose-300/80 leading-relaxed">
+          Sign out of this session or permanently remove your account and all associated farm data.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <button
+            type="button"
+            onClick={() => { void handleLogout(); }}
+            className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs md:text-sm font-bold text-slate-700 hover:bg-slate-100 active:scale-95 transition dark:border-[#555] dark:bg-[#222] dark:text-slate-200 dark:hover:bg-[#2a2a2a] min-h-[44px] cursor-pointer"
+          >
+            <span>🚪</span>
+            <span>Logout Account</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { void handleDeleteAccount(); }}
+            disabled={loading}
+            className="flex items-center justify-center gap-2 rounded-xl border border-rose-600 bg-rose-600 px-4 py-2.5 text-xs md:text-sm font-bold text-white hover:bg-rose-700 active:scale-95 transition shadow-sm disabled:opacity-50 min-h-[44px] cursor-pointer"
+          >
+            <span>🗑️</span>
+            <span>Delete Account Permanently</span>
+          </button>
+        </div>
       </div>
     </section>
   );

@@ -16,11 +16,13 @@ const HEADER_MENU_LINKS = [
 
 type LayoutProps = {
   children: ReactNode;
+  hideBottomNav?: boolean;
 };
 
-function Layout({ children }: LayoutProps) {
+function Layout({ children, hideBottomNav }: LayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const shouldHideBottomNav = hideBottomNav || location.pathname === "/owner-dashboard";
   const [displayName, setDisplayName] = useState(() => getCurrentUserProfile()?.name || "Farmer");
   const [farmName, setFarmName] = useState(() => getCurrentUserProfile()?.farmName || "");
   const [theme, setThemeState] = useState(getTheme());
@@ -75,11 +77,16 @@ function Layout({ children }: LayoutProps) {
   const isArchivedSheetOpen =
     location.pathname === "/customer-details" && params.has("edit");
   const isMilkSheetPage = location.pathname === "/customer-details";
+  const isDashboardPage = location.pathname === "/dashboard" || location.pathname === "/";
   const firstName = (displayName || "Farmer").trim().split(/\s+/)[0] || "Farmer";
 
   return (
     <div
-      className="min-h-screen bg-slate-50 dark:bg-[#161616]"
+      className={`bg-slate-50 dark:bg-[#161616] ${
+        isDashboardPage
+          ? "h-screen md:min-h-screen overflow-hidden md:overflow-visible flex flex-col"
+          : "min-h-screen"
+      }`}
       style={{
         paddingLeft: "var(--safe-area-inset-left)",
         paddingRight: "var(--safe-area-inset-right)"
@@ -213,14 +220,20 @@ function Layout({ children }: LayoutProps) {
       </header>
 
       <main
-        className={`mx-auto w-full max-w-6xl px-4 py-3 pb-[calc(7rem+var(--safe-area-inset-bottom))] md:px-8 md:py-8 md:pb-20 ${
-          isMilkSheetPage ? "md:pb-0" : ""
+        className={`mx-auto w-full max-w-6xl ${
+          shouldHideBottomNav
+            ? "px-4 py-3 pb-6 md:px-8 md:py-8 md:pb-12"
+            : isDashboardPage
+            ? "px-3 py-2 pb-[calc(4.5rem+var(--safe-area-inset-bottom))] md:px-8 md:py-8 md:pb-20 flex-1 min-h-0 overflow-hidden md:overflow-visible flex flex-col"
+            : isMilkSheetPage
+            ? "px-4 py-3 pb-[calc(7rem+var(--safe-area-inset-bottom))] md:px-8 md:py-8 md:pb-0"
+            : "px-4 py-3 pb-[calc(7rem+var(--safe-area-inset-bottom))] md:px-8 md:py-8 md:pb-20"
         }`}
       >
         {children}
       </main>
 
-      <BottomNav />
+      {!shouldHideBottomNav && <BottomNav />}
     </div>
   );
 }

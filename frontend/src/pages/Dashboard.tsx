@@ -62,8 +62,8 @@ function Dashboard() {
   }, []);
 
   return (
-    <section className="space-y-4 md:space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2 md:gap-3">
+    <section className="flex flex-col gap-2 md:gap-6 flex-1 min-h-0 overflow-hidden md:overflow-visible">
+      <div className="hidden md:flex flex-wrap items-center justify-between gap-2 md:gap-3">
         <h1 className="text-xl md:text-3xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
       </div>
 
@@ -111,7 +111,7 @@ function Dashboard() {
                 <tbody>
                   {userProfiles.map((profile) => (
                     <tr key={profile.email} className="border-b border-slate-100 dark:border-[#333]">
-                      <td className="px-2 md:px-3 py-2 text-slate-900 font-medium">{profile.name || "-"}</td>
+                      <td className="px-2 md:px-3 py-2 text-slate-900 dark:text-white font-medium">{profile.name || "-"}</td>
                       <td className="px-2 md:px-3 py-2 text-slate-700 dark:text-slate-300 hidden md:table-cell">{profile.email}</td>
                       <td className="px-2 md:px-3 py-2 text-slate-700 dark:text-slate-300 hidden sm:table-cell">{profile.phone || "-"}</td>
                       <td className="px-2 md:px-3 py-2 text-slate-700 dark:text-slate-300 text-right text-xs">

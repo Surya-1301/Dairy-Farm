@@ -1,172 +1,215 @@
-# Dairy Farm
+# Dairy Farm — Raipur Dugdh Utpadan Association
 
 [![GitHub release](https://img.shields.io/github/v/release/Surya-1301/Dairy-Farm)](https://github.com/Surya-1301/Dairy-Farm/releases)
 [![Live site](https://img.shields.io/website?url=https%3A%2F%2Fwww.dairy-farm.tech&label=live%20site)](https://www.dairy-farm.tech)
 [![Android app](https://img.shields.io/badge/Android-APK_download-3DDC84?logo=android&logoColor=white)](https://github.com/Surya-1301/Dairy-Farm/releases)
 [![License](https://img.shields.io/github/license/Surya-1301/Dairy-Farm)](LICENSE)
 
-**Milk collection & customer management for dairy farms — web app + mobile app sharing.**
-
-Track customers, record daily milk entries on an editable sheet, keep sheet history, and get owner-level reporting — from the browser or the Android app.
+**Complete milk collection, customer directory, and accounting management system for Raipur Dugdh Utpadan Association.** Available as both a modern responsive Web App and a native Android App with real-time cloud synchronization.
 
 <div align="center">
 
-| 🌐 Live site | 📱 Android app |
+| 🌐 Live Web App | 📱 Android App |
 |---|---|
-| [dairy-farm.tech](https://www.dairy-farm.tech) | [GitHub releases](https://github.com/Surya-1301/Dairy-Farm/releases) |
+| [dairy-farm.tech](https://www.dairy-farm.tech) | [GitHub Releases (APK)](https://github.com/Surya-1301/Dairy-Farm/releases) |
 
 </div>
 
 ---
 
-## Android app
+## 📱 Android Application
+
 ![Dairy Farm Download](frontend/public/app.png)
 
-Dairy Farm is also available as a native Android app, built with Capacitor — the same web app wrapped for mobile, with the same customers, sheets, and history.
+Dairy Farm is packaged as a high-performance Android app using Capacitor — sharing the identical interface, customer data, and Firestore backend as the web portal.
 
-📥 **Download:** https://github.com/Surya-1301/Dairy-Farm/releases
+📥 **Download Latest APK:** [GitHub Releases](https://github.com/Surya-1301/Dairy-Farm/releases)
 
-- Free forever, no account needed beyond your dairy login
-- Same Firebase backend, so data syncs between web and mobile
-- Built automatically by GitHub Actions (Capacitor + Gradle), download from Releases
-
----
-
-## Features
-
-### Web app
-
-<div align="center">
-
-| Screen | What it does |
-|---|---|
-| Dashboard | Customer count and total milk summary |
-| Customers | Add, edit, delete customers; morning/evening shifts shown as one grouped entry |
-| Data Sheet | Editable milk sheet (50 rows × 16 days default); add/remove rows and day columns; combined morning + evening totals |
-| History | Saved sheet snapshots — export to PDF/Excel, rename, delete |
-| Archived Sheets | Past sheets kept editable without touching the live sheet |
-| Profile | Name, phone, avatar upload, password reset |
-| Owner Dashboard | All users, milk totals, earnings; edit any profile; view/export/delete any user's sheets; reset passwords |
-
-</div>
-
-### Mobile app
-
-The Android app is the same web app wrapped with Capacitor — identical screens (Dashboard, Customers, Data sheet, History, Profile, Owner Dashboard) talking to the same Firebase backend.
-
-### Sheet workflow
-
-- **Save to History** — snapshots the current sheet without changing it
-- **Archive** — stores the current sheet as an archived entry and starts a fresh sheet with the same customer structure
-- **History** — rename, export (PDF/Excel), or delete any snapshot
+- **Real-Time Cloud Sync:** Changes made on Android appear instantaneously on the web and vice versa.
+- **Offline Resilience:** Cached offline support with automatic re-sync upon network reconnection.
+- **Mobile-First Layout:** Compact navigation, single-row accordion headers, and streamlined mobile export menus.
 
 ---
 
-## How it works
+## ✨ Key Features
 
-**Shared Firebase backend.** Both apps read and write the same Firestore collections, so a sheet updated on the phone shows up on the web instantly (real-time listeners).
+### 1. 📊 Live Milk Collection Sheet
+- **Flexible Billing Cycles:** Configurable duration from 1 up to 31 days per sheet.
+- **Dual-Shift Accounting:** Track Morning (**M**) and Evening (**E**) collections for each customer.
+- **Smart Formatting:** Displays clean dashes (`-`) for zero/empty entries and clean numeric totals.
+- **In-Place Editing:** Rename sheets directly, edit entries with explicit Save/Cancel controls, and snapshot sheets to history.
+- **Instant Calculations:** Automated row-level and column-level milk volume and monetary calculations.
 
-**Authentication.** Firebase Auth (email/password + Google sign-in). The owner account is determined by `VITE_OWNER_EMAIL` and gets exclusive access to the Owner Dashboard.
+### 2. 📁 History & Document Export
+- **Snapshots:** Save historical billing cycles without altering live customer structures.
+- **Unified Reporting:** High-fidelity PDF and Excel export matching official association headers:
+  - Header: `RAIPUR DUGDH UTPADAN ASSOCIATION`
+  - Subheader: `Sheet [Name] · [X] Customers · [Y] days · Total [Z]`
+- **Mobile Dropdowns:** Combined single-click `📥 Download Sheet ▼` dropdown for mobile devices.
+- **Responsive Accordions:** Glanceable customer count, days, and total earnings on the sheet header row.
 
-**Avatars.** Uploaded to Cloudinary (unsigned preset) on profile save; the secure URL is stored in Firestore.
+### 3. 👥 Customer Directory & Shift Routing
+- **Intelligent Sorting:** Automatically organizes customers by delivery shift:
+  1. Morning & Evening (`M & E`)
+  2. Morning-only (`M`)
+  3. Evening-only (`E`)
+- **Quick Filters:** Filter pills for `All`, `M & E`, `Morning`, and `Evening`.
+- **Interactive Details Modal:** Tap any customer card to edit name, phone number, address, and shift assignment with automatic synchronization to active sheets.
 
-**Password reset.** A small Node server (`reset-server/`) mints a real Firebase reset `oobCode`; EmailJS sends the branded reset email — no Firebase Blaze plan needed.
+### 4. 👑 Executive Owner Dashboard (`/owner-dashboard`)
+- **Multi-Tenant Overview:** Monitor all dairy members, sheets, active customers, total milk volume, and aggregate earnings.
+- **User Sheet Inspection:** View, live-edit, and export PDF/Excel reports for any registered user.
+- **Password Administration:** Generate and dispatch secure password-reset links with automated toast dismissals (5s timer).
+- **Distraction-Free UI:** Clean, dedicated owner workspace with hidden public navigation bars.
+
+### 5. 🔐 Authentication & Personalization
+- **Flexible Auth:** Firebase Authentication supporting Email/Password and Google Sign-In.
+- **Verification:** Email OTP confirmation via EmailJS.
+- **Media Uploads:** Direct profile image uploads powered by Cloudinary.
+- **Theming:** Full native Dark Mode and Light Mode with instant toggle.
 
 ---
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-### Web app (`frontend/`)
+### Frontend & Mobile
+- **Core:** [React 18](https://react.dev/) · [TypeScript 5](https://www.typescriptlang.org/) · [Vite 5](https://vitejs.dev/)
+- **Styling:** [Tailwind CSS 3](https://tailwindcss.com/) with responsive breakpoints and custom dark palettes
+- **Mobile Runtime:** [Capacitor 8](https://capacitorjs.com/) (`@capacitor/android`, `@capacitor/app`, `@capacitor/filesystem`, `@capacitor/share`)
+- **Icons & Branding:** High-resolution transparent circular emblem favicons & vector icons
+- **Data Visualization:** [Recharts](https://recharts.org/)
+- **Document Generation:** `jspdf` + `jspdf-autotable` · `exceljs`
 
-- **React 18** + **TypeScript** + **Vite 5**
-- **Tailwind CSS 3** · **React Router 6** · **Recharts**
-- **Firebase 10** (Auth + Firestore)
-- `jspdf` + `jspdf-autotable`, `exceljs` — PDF/Excel export
-- Cloudinary REST API — avatar uploads
-
-### Android app (Capacitor wrapper around `frontend/`)
-
-- **Capacitor 8** — `capacitor.config.ts` (`appId: com.dairyfarm.app`)
-- GitHub Actions workflow (`.github/workflows/android.yml`) builds a debug APK on manual trigger
-
-### Reset server (`reset-server/`)
-
-- **Node.js** — mints Firebase password-reset links via the Admin SDK
+### Backend & Cloud Services
+- **Database & Auth:** [Google Firebase 10](https://firebase.google.com/) (Firestore Realtime Database + Firebase Authentication)
+- **Media Storage:** [Cloudinary REST API](https://cloudinary.com/) (unsigned profile picture storage)
+- **Email Delivery:** [EmailJS](https://www.emailjs.com/) (transactional signup OTPs & reset notifications)
+- **Reset Server:** Node.js server with Firebase Admin SDK (`reset-server/`) hosted on Render
 
 ---
 
-## Project Structure
+## 📂 Project Structure
 
 ```txt
 Dairy-Farm/
-├─ frontend/                 # Web app (React + Vite + Tailwind)
-│  ├─ src/pages/            # Login, Dashboard, Customers, CustomerDetails,
-│  │                         # History, Profile, OwnerDashboard, ResetPassword
-│  ├─ src/components/       # Layout, BottomNav, CustomerTable, SummaryTable, Chart
-│  ├─ src/firebase/         # Auth, Firestore data layer, config
-│  └─ src/utils/            # milkData, customerData, cloudinary, emailOtp, theme
-├─ reset-server/             # Standalone reset-link server (Render)
-├─ DEPLOYMENT.md             # Firebase + hosting deployment guide
-└─ README.md                 # This file
+├─ frontend/                   # Web and Capacitor React client
+│  ├─ public/                 # Static assets, circular favicons (PNG, ICO), PWA manifest
+│  ├─ src/
+│  │  ├─ assets/              # Association logos (logo-round.png, banner)
+│  │  ├─ components/          # Reusable UI (CustomerTable, SummaryTable, Layout, Chart)
+│  │  ├─ firebase/            # Firebase client initialization & Auth helpers
+│  │  ├─ pages/               # Application pages:
+│  │  │  ├─ Login.tsx         # Sign-in, sign-up with OTP verification
+│  │  │  ├─ Dashboard.tsx     # Live milk sheet entry & summary analytics
+│  │  │  ├─ Customers.tsx     # Customer directory with shift filters & edit modal
+│  │  │  ├─ CustomerDetails.tsx # Live sheet editing view
+│  │  │  ├─ History.tsx       # Saved billing snapshots & PDF/Excel exports
+│  │  │  ├─ OwnerDashboard.tsx# Comprehensive owner administration workspace
+│  │  │  ├─ Profile.tsx       # User profile details & avatar upload
+│  │  │  └─ ResetPassword.tsx # Password reset verification handler
+│  │  └─ utils/               # PDF generator, Excel exporter, milkData, customerData
+│  ├─ capacitor.config.ts     # Capacitor configuration (com.dairyfarm.app)
+│  └─ tailwind.config.js      # Custom theme, colors, and layout utilities
+├─ reset-server/               # Standalone password-reset bridge (Node.js + Firebase Admin)
+├─ DEPLOYMENT.md               # Production deployment guide
+├─ LICENSE                     # Project license
+└─ README.md                   # Project documentation
 ```
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
-### Web app
+### 1. Prerequisites
+- Node.js 18+ and `npm`
+- (Optional for Android builds) Android Studio with Android SDK 34+
 
+### 2. Frontend Setup
 ```bash
-cd frontend
+# Clone the repository
+git clone https://github.com/Surya-1301/Dairy-Farm.git
+cd Dairy-Farm/frontend
+
+# Install dependencies
 npm install
 ```
 
-Create `frontend/.env` (see `.env.example` at the repo root):
+### 3. Environment Configuration
+Create `frontend/.env` using `.env.example`:
 
 ```env
-VITE_FIREBASE_API_KEY=your_api_key
+# Firebase Configuration
+VITE_FIREBASE_API_KEY=your_firebase_api_key
 VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=your_project_id
 VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
+VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
+
+# Owner Email (Grants access to Owner Dashboard)
 VITE_OWNER_EMAIL=owner@example.com
+
+# App Canonical URL
+VITE_APP_URL=http://localhost:5173
+
+# Cloudinary (Avatar Uploads)
 VITE_CLOUDINARY_CLOUD_NAME=your_cloud_name
-VITE_CLOUDINARY_UPLOAD_PRESET=your_unsigned_upload_preset
-VITE_EMAILJS_SERVICE_ID=your_emailjs_service_id
-VITE_EMAILJS_TEMPLATE_ID=your_emailjs_otp_template_id
-VITE_EMAILJS_RESET_TEMPLATE_ID=your_emailjs_reset_template_id
-VITE_EMAILJS_PUBLIC_KEY=your_emailjs_public_key
+VITE_CLOUDINARY_UPLOAD_PRESET=your_unsigned_preset
+
+# EmailJS (OTP Verification & Alerts)
+VITE_EMAILJS_SERVICE_ID=your_service_id
+VITE_EMAILJS_TEMPLATE_ID=your_otp_template_id
+VITE_EMAILJS_RESET_TEMPLATE_ID=your_reset_template_id
+VITE_EMAILJS_PUBLIC_KEY=your_public_key
+
+# Reset Link Server
 VITE_RESET_SERVER_URL=https://your-reset-server.onrender.com
 ```
 
+### 4. Running Locally
 ```bash
-npm run dev      # start dev server (localhost:5173)
-npm run build    # production build → dist/
+# Start Vite development server
+npm run dev
+
+# Build for production
+npm run build
 ```
 
-### Build the Android APK
+---
 
-GitHub repo → **Actions** → **Android APK** → **Run workflow**. The workflow builds the web app, syncs Capacitor, and uploads the debug APK as the `dairy-farm-debug-apk` artifact. Attach it to a GitHub Release to update the download link above.
+## 📦 Building the Android App
 
-Android package id: `com.dairyfarm.app`
+### Option A: Automated via GitHub Actions
+1. Navigate to the GitHub repository: **Actions** → **Android APK**
+2. Click **Run workflow** on the `main` branch.
+3. Once completed, download the `dairy-farm-debug-apk` artifact.
+
+### Option B: Local Android Build
+```bash
+cd frontend
+
+# Build the web bundle
+npm run build
+
+# Sync assets with native Android project
+npx cap sync android
+
+# Open in Android Studio
+npx cap open android
+```
+From Android Studio, click **Build** → **Build Bundle(s) / APK(s)** → **Build APK(s)**.
 
 ---
 
-## Deployment
+## 🛡️ Security & Privacy
 
-Deploy `frontend/dist/` to Vercel, Netlify, Firebase Hosting, or any static host. The reset server deploys as a free Render Web Service. Full walkthrough in [`DEPLOYMENT.md`](DEPLOYMENT.md).
-
----
-
-## Privacy
-
-- Customer and milk data lives in your own Firebase project — no third-party analytics on user data
-- Avatar images go to your own Cloudinary cloud
-- Password-reset emails are sent via your own EmailJS account
+- **Data Isolation:** All dairy data is securely partitioned under authenticated user accounts in Firestore.
+- **Rule Enforcement:** Cloud Firestore security rules ensure users only access their own customer data and sheets; the designated owner account has administrative reporting access.
+- **Secure Image Processing:** Avatars are stored using signed or validated unsigned presets on Cloudinary without retaining sensitive server credentials on the client.
 
 ---
 
-## License
+## 📄 License
 
-MIT — see [LICENSE](LICENSE).
+This project is licensed under the [MIT License](LICENSE).

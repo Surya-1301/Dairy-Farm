@@ -1,130 +1,287 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import ExcelJS from "exceljs";
 import Layout from "../components/Layout";
 import { saveFile } from "../utils/nativeFiles";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { deleteUserByEmail, fetchAllUserProfiles, isOwnerLoggedIn, requestPasswordReset, subscribeAuthState, updateUserProfileByEmail } from "../firebase/auth";
+import {
+  deleteUserByEmail,
+  fetchAllUserProfiles,
+  isOwnerLoggedIn,
+  requestPasswordReset,
+  subscribeAuthState,
+  updateUserProfileByEmail
+} from "../firebase/auth";
 import {
   archiveSheetByEmail,
   getCustomersByEmail,
   getHistoryByEmail,
   getSheetByEmail,
+  saveCustomersByEmail,
   saveHistoryByEmail,
+  saveSheetByEmail,
   type Customer,
   type SheetHistoryEntry,
   type SheetState
 } from "../firebase/data";
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleString();
+function evaluateDayInput(rawValue: string): number {
+  const parts = rawValue.split("+");
+  const sum = parts.reduce((total, part) => {
+    const parsed = Number(part.trim());
+    return total + (Number.isFinite(parsed) ? parsed : 0);
+  }, 0);
+
+  return sum >= 0 ? sum : 0;
 }
 
-async function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
-  const doc = new jsPDF({ orientation: "landscape" });
+function formatDate(value: string) {
+  try {
+    return new Date(value).toLocaleString("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short"
+    });
+  } catch {
+    return value;
+  }
+}
+
+function getUserInitials(name?: string, email?: string): string {
+  const target = (name || "").trim() || (email || "").split("@")[0] || "U";
+  const parts = target.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return target.slice(0, 2).toUpperCase();
+}
+
+const AVATAR_BG_CLASSES = [
+  "bg-blue-600 text-white",
+  "bg-emerald-600 text-white",
+  "bg-violet-600 text-white",
+  "bg-amber-600 text-white",
+  "bg-rose-600 text-white",
+  "bg-indigo-600 text-white"
+];
+
+function getAvatarBg(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_BG_CLASSES[Math.abs(hash) % AVATAR_BG_CLASSES.length];
+}
+
+function displayText(value: string): string {
+  return value.trim() || "-";
+}
+
+function displayDayValue(value: number): string | number {
+  return value === 0 ? "-" : value;
+}
+
+function buildSheetPdfBlob(entry: SheetHistoryEntry, sheetNumber: number): Blob {
+  const doc = new jsPDF({
+    orientation: "landscape",
+    unit: "mm",
+    format: "a4",
+    compress: true
+  });
+
   const effectiveDayCount = getEffectiveDayCount(entry);
   const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
-  const groupStartIndices = buildGroupStartIndices(entry.rows);
-  const nameCellSpans = buildNameCellSpans(groupStartIndices);
-  const combinedTotals = buildCombinedTotals(entry.rows, groupStartIndices);
 
   const total = entry.rows.reduce(
-    (entryTotal, row) => entryTotal + row.days.reduce((rowTotal, value) => rowTotal + value, 0),
+    (entryTotal, row) =>
+      entryTotal +
+      row.days
+        .slice(0, effectiveDayCount)
+        .reduce((rowTotal, value) => rowTotal + value, 0),
     0
   );
 
   const pageWidth = doc.internal.pageSize.getWidth();
-  doc.setFontSize(16);
+  const marginX = 5;
+
+  // Same header hierarchy as the saved History sheet.
+  doc.setTextColor(15, 23, 42);
   doc.setFont("helvetica", "bold");
-  doc.text("RAIPUR DUGDH UTPADAN ASSOCIATION", pageWidth / 2, 8, { align: "center" });
+  doc.setFontSize(15);
+  doc.text("RAIPUR DUGDH UTPADAN ASSOCIATION", pageWidth / 2, 8, {
+    align: "center"
+  });
+
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(12);
-  doc.text(`${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${effectiveDayCount} days · Total ${total}`, pageWidth / 2, 15, { align: "center" });
+  doc.setFontSize(9);
+  doc.text(
+    `${entry.name || `Sheet ${sheetNumber}`} · ${getCustomerCount(entry.rows)} Customer · ${effectiveDayCount} days · Total ${total}`,
+    pageWidth / 2,
+    14,
+    { align: "center" }
+  );
 
-  const head = [
-    ["S No", "Customer Name", "Shift", ...Array.from({ length: effectiveDayCount }, (_, i) => `Day ${i + 1}`), "Total"],
-  ];
+  const head = [[
+    "S No",
+    "Customer Name",
+    "Shift",
+    ...Array.from(
+      { length: effectiveDayCount },
+      (_, index) => `Day ${index + 1}`
+    ),
+    "Total"
+  ]];
 
-  const body = entry.rows.map((row, index) => {
-    const rowTotal = row.days.reduce((sum, v) => sum + v, 0);
-    const nameSpan = nameCellSpans[index];
-    const displayTotal = nameSpan > 1 ? combinedTotals[index] : rowTotal;
+  const body: any[][] = [];
 
-    if (nameSpan > 0) {
-      return [
-        nameSpan > 1
-          ? { content: String(displaySerialNumbers[index] ?? String(row.serialNumber)), rowSpan: nameSpan }
-          : displaySerialNumbers[index] ?? String(row.serialNumber),
-        nameSpan > 1
-          ? { content: row.customerName, rowSpan: nameSpan }
-          : row.customerName,
-        row.shift || "-",
-        ...row.days.slice(0, effectiveDayCount),
-        nameSpan > 1
-          ? { content: String(displayTotal), rowSpan: nameSpan }
-          : displayTotal
-      ];
+  for (let index = 0; index < entry.rows.length; index += 1) {
+    const row = entry.rows[index];
+    const nextRow = entry.rows[index + 1];
+
+    const sameCustomerAsNext =
+      Boolean(nextRow?.customerName.trim()) &&
+      nextRow.customerName.trim().toLowerCase() ===
+        row.customerName.trim().toLowerCase();
+
+    const previousRow = entry.rows[index - 1];
+    const sameCustomerAsPrevious =
+      Boolean(previousRow?.customerName.trim()) &&
+      previousRow.customerName.trim().toLowerCase() ===
+        row.customerName.trim().toLowerCase();
+
+    const rowTotal = row.days
+      .slice(0, effectiveDayCount)
+      .reduce((sum, value) => sum + value, 0);
+
+    // First row of a two-shift customer: merge S No, Name and Total.
+    if (sameCustomerAsNext && !sameCustomerAsPrevious) {
+      const combinedTotal =
+        rowTotal +
+        nextRow.days
+          .slice(0, effectiveDayCount)
+          .reduce((sum, value) => sum + value, 0);
+
+      body.push([
+        {
+          content: String(displaySerialNumbers[index] ?? row.serialNumber),
+          rowSpan: 2
+        },
+        {
+          content: displayText(row.customerName),
+          rowSpan: 2
+        },
+        displayText(row.shift),
+        ...row.days.slice(0, effectiveDayCount).map(displayDayValue),
+        {
+          content: String(combinedTotal),
+          rowSpan: 2
+        }
+      ]);
+
+      continue;
     }
 
-    return [row.shift || "-", ...row.days.slice(0, effectiveDayCount)];
-  });
+    // Second row of a two-shift customer.
+    // Do NOT add placeholders for the row-spanned columns.
+    if (sameCustomerAsPrevious) {
+      body.push([
+        displayText(row.shift),
+        ...row.days.slice(0, effectiveDayCount).map(displayDayValue)
+      ]);
+
+      continue;
+    }
+
+    // Single-shift customer.
+    body.push([
+      String(displaySerialNumbers[index] ?? row.serialNumber),
+      displayText(row.customerName),
+      displayText(row.shift),
+      ...row.days.slice(0, effectiveDayCount).map(displayDayValue),
+      String(rowTotal)
+    ]);
+  }
 
   autoTable(doc, {
     head,
     body,
-    startY: 22,
-    styles: { fontSize: 8, cellPadding: 1.5, halign: "center", lineColor: [203, 213, 225], lineWidth: 0.1 },
-    headStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: "bold", lineColor: [203, 213, 225], lineWidth: 0.1 },
-    bodyStyles: { fillColor: [255, 255, 255], lineColor: [203, 213, 225], lineWidth: 0.1 },
-    columnStyles: { 1: { halign: "left" } },
-    alternateRowStyles: { fillColor: [255, 255, 255] },
-    didParseCell: (data) => {
-      const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
-      if (
-        data.section === "body" &&
-        raw &&
-        typeof raw === "object" &&
-        "rowSpan" in raw &&
-        typeof raw.rowSpan === "number" &&
-        raw.rowSpan > 1
-      ) {
-        data.cell.text = [""];
-        data.cell.styles.valign = "middle";
-      }
+    startY: 20,
+    margin: {
+      left: marginX,
+      right: marginX,
+      top: 20,
+      bottom: 5
     },
-    didDrawCell: (data) => {
-      const raw = data.cell.raw as { rowSpan?: number; content?: string } | string | number | null;
-      if (
-        data.section === "body" &&
-        raw &&
-        typeof raw === "object" &&
-        "rowSpan" in raw &&
-        typeof raw.rowSpan === "number" &&
-        raw.rowSpan > 1
-      ) {
-        const content = String(raw.content ?? "");
-        const centerY = data.cell.y + data.cell.height / 2;
+    tableWidth: pageWidth - marginX * 2,
+    theme: "grid",
+    showHead: "everyPage",
+    pageBreak: "auto",
+    rowPageBreak: "avoid",
 
-        if (data.column.index === 1) {
-          data.doc.text(content, data.cell.x + 2, centerY, { baseline: "middle" });
-        } else {
-          data.doc.text(content, data.cell.x + data.cell.width / 2, centerY, {
-            align: "center",
-            baseline: "middle"
-          });
-        }
-      }
+    styles: {
+      font: "helvetica",
+      fontSize: 9,
+      cellPadding: 1.15,
+      overflow: "hidden",
+      halign: "center",
+      valign: "middle",
+      textColor: [30, 41, 59],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15,
+      minCellHeight: 6.8
     },
+
+    headStyles: {
+      fillColor: [241, 245, 249],
+      textColor: [30, 41, 59],
+      fontStyle: "bold",
+      fontSize: 9,
+      halign: "center",
+      valign: "middle",
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15,
+      cellPadding: 1.15,
+      minCellHeight: 7
+    },
+
+    bodyStyles: {
+      fillColor: [255, 255, 255],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15
+    },
+
+    columnStyles: {
+      0: {
+        cellWidth: 14,
+        halign: "center"
+      },
+      1: {
+        cellWidth: 25,
+        halign: "center"
+      },
+      2: {
+        cellWidth: 10,
+        halign: "center"
+      },
+      [3 + effectiveDayCount]: {
+        cellWidth: 16,
+        halign: "center"
+      }
+    }
   });
 
+  return doc.output("blob");
+}
+
+async function downloadSheetAsPdf(entry: SheetHistoryEntry, sheetNumber: number, _ownerLabel?: string) {
+  const blob = buildSheetPdfBlob(entry, sheetNumber);
   await saveFile(
-    doc.output("blob"),
+    blob,
     `${(entry.name || `Sheet ${sheetNumber}`).replace(/[^a-z0-9_-]+/gi, "-")}.pdf`
   );
 }
 
-function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, ownerLabel: string) {
+function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, _ownerLabel?: string) {
   const effectiveDayCount = getEffectiveDayCount(entry);
   void (async () => {
     const displaySerialNumbers = buildDisplaySerialMap(entry.rows);
@@ -192,9 +349,9 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, own
 
       const values = [
         nameSpan > 0 ? displaySerialNumbers[index] ?? String(row.serialNumber) : "",
-        nameSpan > 0 ? row.customerName : "",
-        row.shift || "-",
-        ...row.days.slice(0, effectiveDayCount),
+        nameSpan > 0 ? displayText(row.customerName) : "",
+        displayText(row.shift),
+        ...row.days.slice(0, effectiveDayCount).map(displayDayValue),
         nameSpan > 0 ? displayTotal : "",
       ];
 
@@ -204,7 +361,9 @@ function downloadSheetAsExcel(entry: SheetHistoryEntry, sheetNumber: number, own
         cell.border = thinBorder;
         cell.alignment = { horizontal: colNumber === 2 ? "left" : "center", vertical: "middle" };
         cell.font = { name: "Calibri", size: 10 };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFFFF" } };
+        if (index % 2 === 1) {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+        }
         if (colNumber === 1 || colNumber === columnCount) {
           cell.font = { name: "Calibri", size: 10, bold: true };
         }
@@ -261,29 +420,6 @@ type UserSnapshot = UserProfile & {
   sheetRowCount: number;
   sheetTotal: number;
 };
-
-function UpdatedCard({ updatedAt }: { updatedAt?: string }) {
-  return (
-    <div className="text-right text-xs font-medium text-slate-500">
-      <div>Last Updated</div>
-      <div className="mt-1">
-        {updatedAt ? new Date(updatedAt).toLocaleString([], { hour12: true, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-"}
-      </div>
-    </div>
-  );
-}
-
-function OwnerSummaryCard({ icon, title, value, className = "" }: { icon: string; title: string; value: string; className?: string }) {
-  return (
-    <div className={`min-h-[96px] rounded-2xl border p-3 shadow-sm md:p-4 ${className}`}>
-      <div className="text-[15px]">{icon}</div>
-      <div className="mt-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</p>
-        <p className="selectable text-xl font-bold leading-tight text-slate-800 dark:text-white md:text-2xl">{value}</p>
-      </div>
-    </div>
-  );
-}
 
 function getEffectiveDayCount(entry: { dayCount: number; rows: { days: number[] }[] }): number {
   let max = 0;
@@ -372,8 +508,10 @@ export default function OwnerDashboard() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [pwResetMsg, setPwResetMsg] = useState<string | null>(null);
   const [pwResetLoading, setPwResetLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [deleteInfo, setDeleteInfo] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
@@ -386,19 +524,87 @@ export default function OwnerDashboard() {
   const [editingHistoryNameId, setEditingHistoryNameId] = useState<string | null>(null);
   const [historyNameDraft, setHistoryNameDraft] = useState("");
 
+  // Live Sheet Editing State
+  const [isEditingSheet, setIsEditingSheet] = useState(false);
+  const [editingSheetState, setEditingSheetState] = useState<SheetState | null>(null);
+  const [isSavingSheet, setIsSavingSheet] = useState(false);
+  const [sheetSaveMsg, setSheetSaveMsg] = useState<string | null>(null);
+  const [focusedDayCell, setFocusedDayCell] = useState<{
+    rowIndex: number;
+    dayIndex: number;
+    text: string;
+  } | null>(null);
+  const isEditingSheetRef = useRef(false);
+  const sheetSaveTimerRef = useRef<number | null>(null);
+
+  // History Sheet Editing State
+  const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
+  const [editingHistoryState, setEditingHistoryState] = useState<SheetHistoryEntry | null>(null);
+  const [isSavingHistory, setIsSavingHistory] = useState(false);
+  const [historySaveMsg, setHistorySaveMsg] = useState<string | null>(null);
+  const [focusedHistoryDayCell, setFocusedHistoryDayCell] = useState<{
+    rowIndex: number;
+    dayIndex: number;
+    text: string;
+  } | null>(null);
+  const isEditingHistoryRef = useRef(false);
+  const historySaveTimerRef = useRef<number | null>(null);
+  const pwResetTimerRef = useRef<number | null>(null);
+
+  // Customer Edit & Filter State
+  const [editingCustomerData, setEditingCustomerData] = useState<{
+    originalName: string;
+    name: string;
+    mobile: string;
+    address: string;
+    shift: "M/E" | "M" | "E";
+  } | null>(null);
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+  const [customerSaveMsg, setCustomerSaveMsg] = useState<string | null>(null);
+  const [customerShiftFilter, setCustomerShiftFilter] = useState<"all" | "both" | "morning" | "evening">("all");
+
+  useEffect(() => {
+    isEditingSheetRef.current = isEditingSheet;
+  }, [isEditingSheet]);
+
+  useEffect(() => {
+    isEditingHistoryRef.current = !!editingHistoryId;
+  }, [editingHistoryId]);
+
+  useEffect(() => {
+    return () => {
+      if (sheetSaveTimerRef.current) {
+        window.clearTimeout(sheetSaveTimerRef.current);
+      }
+      if (historySaveTimerRef.current) {
+        window.clearTimeout(historySaveTimerRef.current);
+      }
+      if (pwResetTimerRef.current) {
+        window.clearTimeout(pwResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "idle">("all");
+  const [activeTab, setActiveTab] = useState<"sheet" | "customers" | "history" | "account">(() =>
+    searchParams.get("history") === "1" ? "history" : "sheet"
+  );
+
   useEffect(() => {
     const nextParams = new URLSearchParams();
     if (selectedUserEmail) {
       nextParams.set("user", selectedUserEmail);
     }
-    if (showHistory) {
+    if (activeTab === "history" || showHistory) {
       nextParams.set("history", "1");
     }
-    if (showHistory && expandedEntryId) {
+    if (expandedEntryId) {
       nextParams.set("sheet", expandedEntryId);
     }
     setSearchParams(nextParams, { replace: true });
-  }, [selectedUserEmail, showHistory, expandedEntryId, setSearchParams]);
+  }, [selectedUserEmail, activeTab, showHistory, expandedEntryId, setSearchParams]);
 
   useEffect(() => {
     if (!isOwnerLoggedIn()) {
@@ -406,12 +612,18 @@ export default function OwnerDashboard() {
       return;
     }
 
-    void loadDashboardData();
+    void loadDashboardData(true);
 
-    const interval = setInterval(() => { void loadDashboardData(); }, 3000);
+    const interval = setInterval(() => {
+      if (!isEditingSheetRef.current) {
+        void loadDashboardData(false);
+      }
+    }, 3000);
 
     const unsubscribe = subscribeAuthState(() => {
-      void loadDashboardData();
+      if (!isEditingSheetRef.current) {
+        void loadDashboardData(false);
+      }
     });
 
     return () => {
@@ -420,8 +632,11 @@ export default function OwnerDashboard() {
     };
   }, [navigate]);
 
-  const loadDashboardData = async () => {
-    setLoading(true);
+  const loadDashboardData = async (showGlobalLoading = false) => {
+    if (isEditingSheetRef.current) return;
+    if (showGlobalLoading || userSnapshots.length === 0) {
+      setLoading(true);
+    }
     setDeleteInfo("");
     setLoadError(null);
 
@@ -468,6 +683,15 @@ export default function OwnerDashboard() {
     }
   };
 
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await loadDashboardData();
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
+
   const handleDeleteUser = async (email: string) => {
     if (loading) return;
 
@@ -506,10 +730,10 @@ export default function OwnerDashboard() {
     try {
       await archiveSheetByEmail(email, sheet, sheetName);
       await loadDashboardData();
-      if (showHistory) {
+      if (activeTab === "history" || showHistory) {
         setHistoryEntries(await getHistoryByEmail(email));
       }
-      setArchiveMsg("Sheet saved to history and reset.");
+      setArchiveMsg("Sheet saved to history and reset successfully.");
     } catch (error) {
       setArchiveMsg(error instanceof Error ? error.message : "Failed to save to history.");
     } finally {
@@ -517,19 +741,11 @@ export default function OwnerDashboard() {
     }
   };
 
-  const handleToggleHistory = async (email: string) => {
-    if (showHistory) {
-      setShowHistory(false);
-      setExpandedEntryId(null);
-      return;
-    }
-
-    setExpandedEntryId(null);
-    setShowHistory(true);
+  const handleLoadHistory = async (email: string) => {
     setHistoryLoading(true);
     try {
-      await loadDashboardData();
-      setHistoryEntries(await getHistoryByEmail(email));
+      const entries = await getHistoryByEmail(email);
+      setHistoryEntries(entries);
     } finally {
       setHistoryLoading(false);
     }
@@ -559,7 +775,180 @@ export default function OwnerDashboard() {
 
   const selectedUser = userSnapshots.find((snapshot) => snapshot.email === selectedUserEmail) ?? null;
 
-  // initialize edit fields when selectedUser changes
+  const handleSaveLiveSheet = async () => {
+    if (!selectedUser) return;
+    const sheetToSave = isEditingSheet && editingSheetState ? editingSheetState : selectedUser.sheet;
+    setIsSavingSheet(true);
+    if (sheetSaveTimerRef.current) {
+      window.clearTimeout(sheetSaveTimerRef.current);
+      sheetSaveTimerRef.current = null;
+    }
+    setSheetSaveMsg(null);
+    try {
+      await saveSheetByEmail(selectedUser.email, sheetToSave);
+      setSheetSaveMsg("Live sheet saved successfully!");
+      sheetSaveTimerRef.current = window.setTimeout(() => {
+        setSheetSaveMsg(null);
+        sheetSaveTimerRef.current = null;
+      }, 5000);
+
+      setIsEditingSheet(false);
+      setEditingSheetState(null);
+      setFocusedDayCell(null);
+      isEditingSheetRef.current = false;
+      await loadDashboardData();
+    } catch (error) {
+      setSheetSaveMsg(error instanceof Error ? error.message : "Failed to save sheet.");
+      sheetSaveTimerRef.current = window.setTimeout(() => {
+        setSheetSaveMsg(null);
+        sheetSaveTimerRef.current = null;
+      }, 5000);
+    } finally {
+      setIsSavingSheet(false);
+    }
+  };
+
+  const handleDayCellChange = (rowIndex: number, dayIndex: number, rawValue: string) => {
+    if (!editingSheetState) return;
+    const numValue = evaluateDayInput(rawValue);
+    const nextRows = editingSheetState.rows.map((row, rIdx) => {
+      if (rIdx !== rowIndex) return row;
+      const nextDays = [...row.days];
+      nextDays[dayIndex] = numValue;
+      return { ...row, days: nextDays };
+    });
+    setEditingSheetState({
+      ...editingSheetState,
+      rows: nextRows
+    });
+  };
+
+  const handleSaveHistorySheet = async (entryId: string) => {
+    if (!selectedUser || !editingHistoryState) return;
+    setIsSavingHistory(true);
+    if (historySaveTimerRef.current) {
+      window.clearTimeout(historySaveTimerRef.current);
+      historySaveTimerRef.current = null;
+    }
+    setHistorySaveMsg(null);
+    try {
+      const updatedEntries = historyEntries.map((h) =>
+        h.id === entryId ? { ...editingHistoryState, updatedAt: new Date().toISOString() } : h
+      );
+      setHistoryEntries(updatedEntries);
+      await saveHistoryByEmail(selectedUser.email, updatedEntries);
+      setHistorySaveMsg("History sheet saved successfully!");
+      historySaveTimerRef.current = window.setTimeout(() => {
+        setHistorySaveMsg(null);
+        historySaveTimerRef.current = null;
+      }, 5000);
+
+      setEditingHistoryId(null);
+      setEditingHistoryState(null);
+      setFocusedHistoryDayCell(null);
+      isEditingHistoryRef.current = false;
+    } catch (error) {
+      setHistorySaveMsg(error instanceof Error ? error.message : "Failed to save history sheet.");
+      historySaveTimerRef.current = window.setTimeout(() => {
+        setHistorySaveMsg(null);
+        historySaveTimerRef.current = null;
+      }, 5000);
+    } finally {
+      setIsSavingHistory(false);
+    }
+  };
+
+  const handleHistoryDayCellChange = (rowIndex: number, dayIndex: number, rawValue: string) => {
+    if (!editingHistoryState) return;
+    const numValue = evaluateDayInput(rawValue);
+    const nextRows = editingHistoryState.rows.map((row, rIdx) => {
+      if (rIdx !== rowIndex) return row;
+      const nextDays = [...row.days];
+      nextDays[dayIndex] = numValue;
+      return { ...row, days: nextDays };
+    });
+    setEditingHistoryState({
+      ...editingHistoryState,
+      rows: nextRows
+    });
+  };
+
+  const handleSaveCustomerDetails = async () => {
+    if (!selectedUser || !editingCustomerData) return;
+    const newName = editingCustomerData.name.trim();
+    if (!newName) {
+      setCustomerSaveMsg("Customer name cannot be empty.");
+      return;
+    }
+
+    setIsSavingCustomer(true);
+    setCustomerSaveMsg(null);
+
+    try {
+      const oldName = editingCustomerData.originalName.trim().toLowerCase();
+      const otherCustomers = selectedUser.customers.filter(
+        (c) => c.name.trim().toLowerCase() !== oldName
+      );
+
+      const newRecords: Customer[] = [];
+      if (editingCustomerData.shift === "M/E") {
+        newRecords.push({
+          serialNumber: 0,
+          name: newName,
+          mobile: editingCustomerData.mobile.trim(),
+          address: editingCustomerData.address.trim(),
+          shift: "M",
+          createdAt: new Date().toISOString()
+        });
+        newRecords.push({
+          serialNumber: 0,
+          name: newName,
+          mobile: editingCustomerData.mobile.trim(),
+          address: editingCustomerData.address.trim(),
+          shift: "E",
+          createdAt: new Date().toISOString()
+        });
+      } else {
+        newRecords.push({
+          serialNumber: 0,
+          name: newName,
+          mobile: editingCustomerData.mobile.trim(),
+          address: editingCustomerData.address.trim(),
+          shift: editingCustomerData.shift,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      const updatedCustomerList = [...otherCustomers, ...newRecords];
+      await saveCustomersByEmail(selectedUser.email, updatedCustomerList);
+
+      // If customer name changed, update live sheet rows
+      if (editingCustomerData.originalName.trim() !== newName) {
+        const nextSheetRows = selectedUser.sheet.rows.map((row) => {
+          if (row.customerName.trim().toLowerCase() === oldName) {
+            return { ...row, customerName: newName };
+          }
+          return row;
+        });
+        await saveSheetByEmail(selectedUser.email, {
+          ...selectedUser.sheet,
+          rows: nextSheetRows
+        });
+      }
+
+      await loadDashboardData();
+      setCustomerSaveMsg("Customer details updated successfully!");
+      setTimeout(() => {
+        setEditingCustomerData(null);
+        setCustomerSaveMsg(null);
+      }, 900);
+    } catch (err) {
+      setCustomerSaveMsg(err instanceof Error ? err.message : "Failed to update customer.");
+    } finally {
+      setIsSavingCustomer(false);
+    }
+  };
+
   useEffect(() => {
     if (!selectedUser) return;
     setEditName(selectedUser.name || "");
@@ -567,18 +956,39 @@ export default function OwnerDashboard() {
     setEditEmail(selectedUser.email || "");
     setSaveMessage(null);
     setPwResetMsg(null);
+    if (pwResetTimerRef.current) {
+      window.clearTimeout(pwResetTimerRef.current);
+      pwResetTimerRef.current = null;
+    }
     setArchiveMsg(null);
+    setIsEditingSheet(false);
+    setEditingSheetState(null);
+    if (sheetSaveTimerRef.current) {
+      window.clearTimeout(sheetSaveTimerRef.current);
+      sheetSaveTimerRef.current = null;
+    }
+    setSheetSaveMsg(null);
+    setFocusedDayCell(null);
+    setEditingHistoryId(null);
+    setEditingHistoryState(null);
+    setHistorySaveMsg(null);
+    setFocusedHistoryDayCell(null);
+    if (historySaveTimerRef.current) {
+      window.clearTimeout(historySaveTimerRef.current);
+      historySaveTimerRef.current = null;
+    }
     setHistoryEntries([]);
+    void handleLoadHistory(selectedUser.email);
   }, [selectedUserEmail]);
 
-  // Keep the opened user details screen updated with the latest customers, data sheet, and history.
   useEffect(() => {
     if (!selectedUserEmail) return;
 
     let cancelled = false;
 
     const refreshSelectedUserData = async () => {
-      if (showHistory) {
+      if (isEditingSheetRef.current || isEditingHistoryRef.current) return;
+      if (activeTab === "history") {
         const nextHistory = await getHistoryByEmail(selectedUserEmail);
         if (!cancelled) {
           setHistoryEntries(nextHistory);
@@ -598,590 +1008,1451 @@ export default function OwnerDashboard() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [selectedUserEmail, showHistory]);
+  }, [selectedUserEmail, activeTab]);
+
+  // Filtered Users List
+  const filteredUsers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return userSnapshots.filter((user) => {
+      if (!q) return true;
+      const matchName = user.name?.toLowerCase().includes(q);
+      const matchFarm = user.farmName?.toLowerCase().includes(q);
+      const matchEmail = user.email?.toLowerCase().includes(q);
+      const matchPhone = user.phone?.includes(q);
+      return Boolean(matchName || matchFarm || matchEmail || matchPhone);
+    });
+  }, [userSnapshots, searchQuery]);
+
+  const totalCustomersCount = userSnapshots.reduce((sum, s) => sum + s.customerCount, 0);
 
   return (
-    <Layout>
-      <div className="min-h-screen p-4 md:p-6">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-2 md:mb-8 md:gap-3">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white md:text-3xl">Dashboard</h1>
-          <div className="flex flex-col gap-2">
-            {deleteInfo ? (
-              <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 lg:max-w-md">
-                {deleteInfo}
-              </p>
-            ) : null}
-            {loadError ? (
-              <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 lg:max-w-md">
-                {loadError}
-              </p>
-            ) : null}
+    <Layout hideBottomNav>
+      <div className="min-h-screen p-3 md:px-0 md:pt-1 md:pb-20">
+        
+        {/* Header Section */}
+        <div className="mb-4 md:mb-5 space-y-1">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+              Executive Dashboard
+            </h1>
+            <button
+              type="button"
+              onClick={() => { void handleManualRefresh(); }}
+              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 sm:px-3.5 sm:py-2 text-xs font-bold text-white shadow-xs hover:bg-brand-700 active:scale-95 transition cursor-pointer"
+            >
+              <span className={isRefreshing ? "animate-spin" : ""}>🔄</span>
+              <span>Sync Live</span>
+            </button>
           </div>
+          <p className="hidden sm:block text-xs md:text-sm text-slate-500 dark:text-slate-400">
+            Real-time oversight across all dairy accounts, milk collection sheets & history
+          </p>
         </div>
 
-        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-[#333] dark:bg-[#212121] md:mb-8 md:p-6">
-          <div className="mb-3 flex items-center justify-between md:mb-4">
-            <h2 className="text-base font-semibold text-slate-800 dark:text-white md:text-lg">System summary</h2>
-            <span className="text-[11px] font-medium text-slate-400">
-              {new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}
-            </span>
+        {/* Global Notifications / Alerts */}
+        {deleteInfo ? (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs md:text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            {deleteInfo}
           </div>
-          <div className="grid grid-cols-2 gap-2.5 md:gap-3 xl:grid-cols-4">
-            <OwnerSummaryCard icon="👥" title="Users" value={`${users.length}`} className="border-slate-200 bg-white dark:border-[#333] dark:bg-[#1c1c1c]" />
-            <OwnerSummaryCard icon="🧑‍🌾" title="Customers" value={`${userSnapshots.reduce((sum, snapshot) => sum + snapshot.customerCount, 0)}`} className="border-emerald-100 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30" />
-            <OwnerSummaryCard icon="₹" title="Total" value={`₹${totalEarnings.toLocaleString("en-IN")}`} className="border-violet-100 bg-violet-50 dark:border-violet-900/60 dark:bg-violet-950/30" />
-            <OwnerSummaryCard icon="📊" title="Active sheets" value={`${userSnapshots.filter((snapshot) => snapshot.sheetRowCount > 0).length}`} className="border-amber-100 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30" />
+        ) : null}
+        {loadError ? (
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs md:text-sm text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
+            {loadError}
           </div>
-        </div>
+        ) : null}
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card dark:border-[#333] dark:bg-[#212121]">
-          <div className="p-4 md:p-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-slate-800 dark:text-white md:text-lg">All User Data</h2>
-                <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{users.length} total</div>
+        {/* 1. EXECUTIVE KPI STAT CARDS */}
+        <section className="mb-6">
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+            {/* Total Revenue */}
+            <div className="flex flex-col justify-between min-h-[96px] sm:min-h-[110px] rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/70 to-white p-3.5 sm:p-4 shadow-xs dark:border-violet-900/40 dark:from-violet-950/20 dark:to-[#1c1c1c]">
+              <span className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-violet-600/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-400 font-bold text-base">
+                ₹
+              </span>
+              <div className="mt-2.5 sm:mt-3">
+                <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Total Revenue</p>
+                <p className="font-mono text-lg sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5">
+                  ₹{totalEarnings.toLocaleString("en-IN")}
+                </p>
               </div>
+            </div>
 
-                {loading && users.length === 0 ? (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
-                    Loading users...
-                  </div>
-                ) : null}
+            {/* Total Accounts */}
+            <div className="flex flex-col justify-between min-h-[96px] sm:min-h-[110px] rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/70 to-white p-3.5 sm:p-4 shadow-xs dark:border-blue-900/40 dark:from-blue-950/20 dark:to-[#1c1c1c]">
+              <span className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-blue-600/10 text-brand-600 dark:bg-blue-500/20 dark:text-blue-400 font-bold text-base">
+                🏢
+              </span>
+              <div className="mt-2.5 sm:mt-3">
+                <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Dairy Accounts</p>
+                <p className="font-mono text-lg sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5">
+                  {users.length} {users.length === 1 ? "User" : ""}
+                </p>
+              </div>
+            </div>
 
-                {users.length === 0 && !loading ? (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
-                    Users will appear here after they sign up for an account.
-                  </div>
-                ) : null}
+            {/* Customer Reach */}
+            <div className="flex flex-col justify-between min-h-[96px] sm:min-h-[110px] rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/70 to-white p-3.5 sm:p-4 shadow-xs dark:border-emerald-900/40 dark:from-emerald-950/20 dark:to-[#1c1c1c]">
+              <span className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-emerald-600/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 font-bold text-base">
+                🧑‍🌾
+              </span>
+              <div className="mt-2.5 sm:mt-3">
+                <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Total Customers</p>
+                <p className="font-mono text-lg sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5">
+                  {totalCustomersCount}
+                </p>
+              </div>
+            </div>
 
-                <div className="grid gap-3 md:hidden">
-                  {userSnapshots.map((user, userIndex) => (
-                    <div key={user.email} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-[#444] dark:bg-white/5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-base font-semibold text-slate-900 dark:text-white">{user.name}</div>
-                        </div>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-600 dark:text-slate-300">
-                        <p>Customers: {user.customerCount}</p>
-                        <p>Sheet total: {user.sheetTotal}</p>
-                      </div>
-                      <div className="mt-4 grid grid-cols-2 gap-3">
-                        <button
-                          onClick={() => { setSelectedUserEmail(user.email); setShowHistory(false); setHistoryEntries([]); }}
-                          className="flex min-h-[44px] items-center justify-center rounded-lg bg-blue-100 px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-200 active:bg-blue-300"
-                        >
-                          View Data
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(user.email)}
-                          disabled={loading}
-                          className="flex min-h-[44px] items-center justify-center rounded-lg bg-red-100 px-4 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-200 active:bg-red-300 disabled:opacity-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full table-fixed text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50 dark:border-[#333] dark:bg-[#262626]">
-                      <tr>
-                        <th className="w-[10%] px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-300">S No</th>
-                        <th className="w-[25%] px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-300">Name</th>
-                        <th className="w-[20%] px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-300">Customers</th>
-                        <th className="w-[20%] px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-300">Sheet Total</th>
-                        <th className="w-[25%] px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-300">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {userSnapshots.map((user, userIndex) => (
-                        <tr key={user.email} className="border-b border-slate-100 hover:bg-slate-50 dark:border-[#333] dark:hover:bg-[#262626]">
-                          <td className="w-[10%] px-4 py-4 font-medium text-slate-900 dark:text-white">{userIndex + 1}</td>
-                          <td className="w-[25%] px-4 py-4 font-medium text-slate-900 dark:text-white">{user.name}</td>
-                          <td className="w-[20%] px-4 py-4 text-slate-600 dark:text-slate-300">{user.customerCount}</td>
-                          <td className="w-[20%] px-4 py-4 text-slate-600 dark:text-slate-300">{user.sheetTotal}</td>
-                          <td className="w-[25%] px-4 py-4">
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                onClick={() => { setSelectedUserEmail(user.email); setShowHistory(false); setHistoryEntries([]); }}
-                                className="flex min-h-[40px] items-center justify-center rounded-lg bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-200 active:bg-blue-300"
-                              >
-                                View Data
-                              </button>
-                              <button
-                                onClick={() => setDeleteConfirm(user.email)}
-                                disabled={loading}
-                                className="flex min-h-[40px] items-center justify-center rounded-lg bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-200 active:bg-red-300 disabled:opacity-50"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            {/* Active Sheets */}
+            <div className="flex flex-col justify-between min-h-[96px] sm:min-h-[110px] rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50/70 to-white p-3.5 sm:p-4 shadow-xs dark:border-amber-900/40 dark:from-amber-950/20 dark:to-[#1c1c1c]">
+              <span className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-amber-600/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 font-bold text-base">
+                📊
+              </span>
+              <div className="mt-2.5 sm:mt-3">
+                <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Active Sheets</p>
+                <p className="font-mono text-lg sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5">
+                  {userSnapshots.filter((s) => s.sheetRowCount > 0).length}
+                </p>
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        {deleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-              <h3 className="mb-3 text-lg font-semibold text-slate-900">Delete User</h3>
-              <p className="mb-6 text-sm leading-6 text-slate-600">
-                Are you sure you want to delete <strong>{deleteConfirm}</strong>? This action cannot be undone and all their data will be removed.
-              </p>
-              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+        {/* 2. USER DIRECTORY & MANAGEMENT CARD */}
+        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-[#333] dark:bg-[#1e1e1e] overflow-hidden">
+          
+          {/* Card Top: Title & Search */}
+          <div className="border-b border-slate-100 p-4 md:p-5 dark:border-[#333] space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>👥</span> Dairy Accounts Directory
+                </h2>
+                <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">
+                  Monitor live collections, inspect customer lists and reset credentials
+                </p>
+              </div>
+              <span className="hidden sm:inline text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Showing <strong className="text-slate-900 dark:text-white">{filteredUsers.length}</strong> of {users.length} accounts
+              </span>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by dairy name, owner email or phone..."
+                className="w-full h-10 rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-8 text-xs md:text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 dark:border-[#444] dark:bg-[#161616] dark:text-white transition"
+              />
+              {searchQuery ? (
                 <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-1"
+                >
+                  ✕
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Empty / Loading States */}
+          {loading && userSnapshots.length === 0 ? (
+            <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
+              <div className="mx-auto mb-2 h-7 w-7 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+              Loading dairy accounts...
+            </div>
+          ) : null}
+
+          {userSnapshots.length === 0 && !loading ? (
+            <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
+              No users registered yet. Accounts will appear here once registered.
+            </div>
+          ) : null}
+
+          {filteredUsers.length === 0 && userSnapshots.length > 0 ? (
+            <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
+              No accounts match &ldquo;{searchQuery}&rdquo;. Try another search term.
+            </div>
+          ) : null}
+
+          {/* DESKTOP TABLE VIEW */}
+          {filteredUsers.length > 0 && (
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-slate-100 bg-slate-50/80 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:border-[#333] dark:bg-[#171717] dark:text-slate-400">
+                  <tr>
+                    <th className="px-5 py-3.5">User</th>
+                    <th className="px-4 py-3.5">Contact</th>
+                    <th className="px-4 py-3.5 text-center">Customers</th>
+                    <th className="px-4 py-3.5 text-right">Total</th>
+                    <th className="px-5 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-[#2a2a2a]">
+                  {filteredUsers.map((user) => {
+                    return (
+                      <tr key={user.email} className="hover:bg-slate-50/80 dark:hover:bg-[#222]/80 transition">
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold text-xs shadow-xs ${getAvatarBg(user.email)}`}>
+                              {getUserInitials(user.name, user.email)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-900 dark:text-white text-sm truncate">
+                                {user.farmName || user.name || "Dairy Account"}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-xs">
+                          <p className="font-medium text-slate-900 dark:text-white truncate">
+                            {user.email}
+                          </p>
+                          <p className="text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                            {user.phone || "-"}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-bold text-brand-600 dark:bg-blue-500/20 dark:text-blue-400">
+                            {user.customerCount}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <span className="font-mono font-bold text-sm text-slate-900 dark:text-white">
+                            ₹{user.sheetTotal.toLocaleString("en-IN")}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedUserEmail(user.email);
+                                setActiveTab("sheet");
+                              }}
+                              className="flex items-center gap-1 rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-bold text-brand-700 hover:bg-blue-100 active:scale-95 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/50 transition cursor-pointer"
+                            >
+                              <span>👁️</span> Inspect
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirm(user.email)}
+                              className="rounded-xl border border-slate-200 p-1.5 text-slate-400 hover:text-rose-600 hover:border-rose-300 dark:border-[#333] dark:hover:border-rose-900 transition cursor-pointer"
+                              title="Delete Account"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* MOBILE CARDS VIEW */}
+          {filteredUsers.length > 0 && (
+            <div className="md:hidden divide-y divide-slate-100 dark:divide-[#2a2a2a] p-3 space-y-3">
+              {filteredUsers.map((user) => {
+                return (
+                  <div key={user.email} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-[#333] dark:bg-[#1a1a1a] space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold text-xs ${getAvatarBg(user.email)}`}>
+                          {getUserInitials(user.name, user.email)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                            {user.farmName || user.name || "Dairy Account"}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                            {user.email}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-2.5 text-xs dark:bg-[#141414]">
+                      <div>
+                        <span className="text-slate-400">Customers:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200 ml-1">{user.customerCount}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-slate-400">Total:</span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-white ml-1">
+                          ₹{user.sheetTotal.toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedUserEmail(user.email);
+                          setActiveTab("sheet");
+                        }}
+                        className="flex items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2 text-xs font-bold text-white shadow-xs hover:bg-brand-700 active:scale-95 transition cursor-pointer"
+                      >
+                        <span>👁️</span> Inspect 
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirm(user.email)}
+                        className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 active:scale-95 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300 transition cursor-pointer"
+                      >
+                        <span>🗑️</span> Delete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* DELETE CONFIRMATION MODAL */}
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+            <div className="w-full max-w-sm rounded-2xl bg-white p-5 md:p-6 shadow-2xl dark:border dark:border-[#333] dark:bg-[#212121]">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400 font-bold">
+                  ⚠️
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete User Account</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Irreversible administrative action</p>
+                </div>
+              </div>
+              <p className="mb-5 text-xs md:text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                Are you sure you want to permanently delete <strong>{deleteConfirm}</strong>? All their customers, sheets, and historical data will be removed.
+              </p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
                   onClick={() => setDeleteConfirm(null)}
                   disabled={loading}
-                  className="flex min-h-[48px] items-center justify-center rounded-lg border border-slate-300 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-50 active:bg-slate-100 disabled:opacity-50"
+                  className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 active:scale-95 disabled:opacity-50 dark:border-[#444] dark:bg-[#1c1c1c] dark:text-slate-200 dark:hover:bg-[#282828] cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => handleDeleteUser(deleteConfirm)}
+                  type="button"
+                  onClick={() => { void handleDeleteUser(deleteConfirm); }}
                   disabled={loading}
-                  className="flex min-h-[48px] items-center justify-center rounded-lg bg-red-600 px-4 py-3 font-medium text-white transition hover:bg-red-700 active:bg-red-800 disabled:opacity-50"
+                  className="min-h-11 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 active:scale-95 disabled:opacity-50 shadow-sm cursor-pointer"
                 >
-                  {loading ? "Deleting..." : "Delete"}
+                  {loading ? "Deleting..." : "Delete Permanently"}
                 </button>
               </div>
             </div>
           </div>
         )}
 
+        {/* 3. USER INSPECTION FULL SCREEN VIEW */}
         {selectedUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 md:bg-white md:p-0">
-            <div className="max-h-[88vh] w-[94vw] max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl md:flex md:h-screen md:max-h-none md:w-screen md:max-w-none md:flex-col md:rounded-none md:shadow-none">
-              <div className="relative flex items-start justify-between gap-3 border-b border-slate-200 p-4 pr-10 md:p-5 md:pr-16">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">User Data</h3>
-                  <p className="text-sm text-slate-500">Complete profile, customer list, and sheet data for this account.</p>
+          <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-[#1c1c1c] w-full h-full overflow-hidden animate-in fade-in duration-150">
+            
+            {/* Top Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/90 px-4 py-3 sm:px-6 dark:border-[#333] dark:bg-[#202020] shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl font-black text-sm shadow-xs ${getAvatarBg(selectedUser.email)}`}>
+                  {getUserInitials(selectedUser.name, selectedUser.email)}
                 </div>
-                <div className="flex items-start gap-3">
-                  <div className="flex flex-col items-end gap-2 text-right">
-                    <UpdatedCard updatedAt={selectedUser.sheet.updatedAt ?? selectedUser.updatedAt} />
-                    <button
-                      type="button"
-                      onClick={() => handleToggleHistory(selectedUser.email)}
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                    >
-                      {showHistory ? "Hide History" : "View History"}
-                    </button>
-                  </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                    {selectedUser.farmName || selectedUser.name || "Dairy Account"}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                    {selectedUser.email} {selectedUser.phone ? `· ${selectedUser.phone}` : ""}
+                  </p>
+                </div>
+              </div>
+
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    aria-label="Close"
                     onClick={() => setSelectedUserEmail(null)}
-                    className="absolute right-1 top-1 z-10 flex h-7 w-7 items-center justify-center bg-transparent p-0 text-xl font-bold leading-none text-red-500 transition hover:text-red-600 active:text-red-700"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-100 text-rose-600 hover:bg-rose-200 active:scale-95 transition dark:bg-rose-950/50 dark:text-rose-400 dark:hover:bg-rose-900/60 dark:border dark:border-rose-900/50 cursor-pointer font-bold"
+                    aria-label="Close user data dialog"
                   >
-                    ×
+                    ✕
                   </button>
                 </div>
               </div>
 
-                <div className="max-h-[calc(88vh-96px)] overflow-auto p-3 md:max-h-none md:flex-1 md:p-5">
-                <div className="grid min-w-[900px] grid-cols-[260px_minmax(0,1fr)] gap-4 lg:min-w-0 lg:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-1">
-                    <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Customer Records</h4>
-                    <div className="mt-3 space-y-3">
-                      {selectedUser.customers.length === 0 ? (
-                        <p className="text-sm text-slate-500">No customers saved for this user yet.</p>
-                      ) : (
-                        (() => {
-                          const seen = new Map<string, { customer: typeof selectedUser.customers[0]; shifts: string[] }>();
-                          selectedUser.customers.forEach((c) => {
-                            const key = c.name.trim().toLowerCase();
-                            if (!key) return;
-                            if (seen.has(key)) {
-                              if (c.shift) seen.get(key)!.shifts.push(c.shift);
-                            } else {
-                              seen.set(key, { customer: c, shifts: c.shift ? [c.shift] : [] });
-                            }
-                          });
-                          return Array.from(seen.values()).map(({ customer, shifts }, idx) => (
-                            <div key={`${selectedUser.email}-${customer.name}-${idx}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="font-medium text-slate-900">{customer.name}</p>
-                                  <p className="text-sm text-slate-600">{customer.mobile || "-"}</p>
-                                </div>
-                                <div className="flex flex-col items-end gap-1">
-                                  <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-800">
-                                    #{idx + 1}
-                                  </span>
-                                  {shifts.length > 0 && (
-                                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
-                                      {shifts.join(" & ")}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <p className="mt-2 text-sm text-slate-600">{customer.address || "No address provided"}</p>
+              {/* Segmented Navigation Tabs */}
+              <div className="border-b border-slate-200 bg-white px-3 sm:px-6 dark:border-[#333] dark:bg-[#1e1e1e]">
+                <nav className="flex gap-1.5 sm:gap-2 overflow-x-auto py-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("sheet")}
+                    className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition cursor-pointer ${
+                      activeTab === "sheet"
+                        ? "bg-brand-50 text-brand-700 dark:bg-blue-950/50 dark:text-blue-300 ring-1 ring-brand-500/30"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#252525]"
+                    }`}
+                  >
+                    <span>📊</span>
+                    <span>Live Sheet Data</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("customers")}
+                    className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition cursor-pointer ${
+                      activeTab === "customers"
+                        ? "bg-brand-50 text-brand-700 dark:bg-blue-950/50 dark:text-blue-300 ring-1 ring-brand-500/30"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#252525]"
+                    }`}
+                  >
+                    <span>🧑‍🌾</span>
+                    <span>Customer Directory ({selectedUser.customerCount})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("history");
+                      void handleLoadHistory(selectedUser.email);
+                    }}
+                    className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition cursor-pointer ${
+                      activeTab === "history"
+                        ? "bg-brand-50 text-brand-700 dark:bg-blue-950/50 dark:text-blue-300 ring-1 ring-brand-500/30"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#252525]"
+                    }`}
+                  >
+                    <span>📁</span>
+                    <span>Sheet History ({historyEntries.length})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("account")}
+                    className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition cursor-pointer ${
+                      activeTab === "account"
+                        ? "bg-brand-50 text-brand-700 dark:bg-blue-950/50 dark:text-blue-300 ring-1 ring-brand-500/30"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#252525]"
+                    }`}
+                  >
+                    <span>⚙️</span>
+                    <span>Edit & Security</span>
+                  </button>
+                </nav>
+              </div>
+
+              {/* Drawer Content Area */}
+              <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 bg-slate-50/60 dark:bg-[#161616]">
+
+                {/* TAB 1: LIVE SHEET DATA */}
+                {activeTab === "sheet" && (() => {
+                  const activeSheet = isEditingSheet && editingSheetState ? editingSheetState : selectedUser.sheet;
+                  const activeSheetTotal = activeSheet.rows.reduce(
+                    (sum, row) => sum + row.days.reduce((rowSum, value) => rowSum + (value || 0), 0),
+                    0
+                  );
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-[#333] dark:bg-[#212121]">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white">Active Milk Collection Sheet</h4>
+                            {isEditingSheet && (
+                              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                                Editing Mode
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {getCustomerCount(activeSheet.rows)} Customers · {activeSheet.dayCount} Days · Total ₹{activeSheetTotal.toLocaleString("en-IN")}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
+
+                          {/* Edit Sheet Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isEditingSheet) {
+                                setIsEditingSheet(false);
+                                setEditingSheetState(null);
+                                setFocusedDayCell(null);
+                              } else {
+                                setIsEditingSheet(true);
+                                setEditingSheetState(JSON.parse(JSON.stringify(selectedUser.sheet)));
+                                if (sheetSaveTimerRef.current) {
+                                  window.clearTimeout(sheetSaveTimerRef.current);
+                                  sheetSaveTimerRef.current = null;
+                                }
+                                setSheetSaveMsg(null);
+                              }
+                            }}
+                            className={`rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer shrink-0 ${
+                              isEditingSheet
+                                ? "border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-300"
+                                : "border border-blue-200 bg-blue-50 text-brand-700 hover:bg-blue-100 dark:border-blue-800/50 dark:bg-blue-950/40 dark:text-blue-300"
+                            }`}
+                          >
+                            {isEditingSheet ? "✕ Cancel Edit" : "✏️ Edit Sheet"}
+                          </button>
+
+                          {/* Save Sheet Button - only shown when in Edit Sheet mode */}
+                          {isEditingSheet && (
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveLiveSheet()}
+                              disabled={isSavingSheet}
+                              className="rounded-xl border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 transition cursor-pointer shrink-0 ml-auto sm:ml-0"
+                            >
+                              {isSavingSheet ? "Saving..." : "💾 Save Sheet"}
+                            </button>
+                          )}
+
+                          {/* Save to History - shown only when not editing, styled in green like Edit Sheet */}
+                          {!isEditingSheet && (
+                            <button
+                              type="button"
+                              onClick={() => { void handleArchiveToHistory(selectedUser.email, activeSheet); }}
+                              disabled={archiving}
+                              className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-300 cursor-pointer transition shrink-0 ml-auto sm:ml-0"
+                            >
+                              {archiving ? "Saving..." : "📁 Save to History"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {sheetSaveMsg && (
+                        <p className={`text-xs font-medium p-2.5 rounded-xl border ${
+                          sheetSaveMsg.includes("success")
+                            ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50/70 border-emerald-200 dark:border-emerald-900/40 dark:bg-emerald-950/20"
+                            : "text-rose-600 dark:text-rose-400 bg-rose-50/70 border-rose-200 dark:border-rose-900/40 dark:bg-rose-950/20"
+                        }`}>
+                          {sheetSaveMsg}
+                        </p>
+                      )}
+
+                      {archiveMsg && (
+                        <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                          {archiveMsg}
+                        </p>
+                      )}
+
+                      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-[#333] dark:bg-[#212121]">
+                        <table className="min-w-[900px] w-full border-collapse text-center text-xs">
+                          <thead className="bg-slate-100 font-bold text-slate-800 dark:bg-[#262626] dark:text-slate-200 border-b border-slate-200 dark:border-[#333]">
+                            <tr>
+                              <th className="border border-slate-300 px-2 py-2.5 dark:border-[#444] w-12">S No</th>
+                              <th className="border border-slate-300 px-3 py-2.5 text-left dark:border-[#444] min-w-[160px]">Customer Name</th>
+                              <th className="border border-slate-300 px-2 py-2.5 dark:border-[#444] w-14">Shift</th>
+                              {Array.from({ length: activeSheet.dayCount }, (_, index) => (
+                                <th key={`selected-day-${index + 1}`} className="border border-slate-300 px-1 py-2.5 dark:border-[#444] min-w-[38px]">
+                                  D{index + 1}
+                                </th>
+                              ))}
+                              <th className="border border-slate-300 px-3 py-2.5 font-bold text-right dark:border-[#444] min-w-[70px]">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(() => {
+                              const effectiveDayCount = activeSheet.dayCount;
+                              const displaySerials = buildDisplaySerialMap(activeSheet.rows);
+                              const groupStartIndices = buildGroupStartIndices(activeSheet.rows);
+                              const nameCellSpans = buildNameCellSpans(groupStartIndices);
+                              const combinedTotals = buildCombinedTotals(activeSheet.rows, groupStartIndices);
+                              return activeSheet.rows.map((row, rowIndex) => {
+                                const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
+                                const nameSpan = nameCellSpans[rowIndex];
+                                const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : rowTotal;
+
+                                return (
+                                  <tr key={`${selectedUser.email}-sheet-${row.serialNumber}-${rowIndex}`} className="bg-white hover:bg-slate-50 dark:bg-[#1c1c1c] dark:hover:bg-[#222] dark:text-slate-200">
+                                    {nameSpan > 0 && (
+                                      <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold align-middle dark:border-[#333]" style={{ verticalAlign: "middle" }}>
+                                        {displaySerials[rowIndex]}
+                                      </td>
+                                    )}
+                                    {nameSpan > 0 && (
+                                      <td rowSpan={nameSpan} className="border border-slate-200 px-2.5 py-1 text-left font-bold align-middle dark:border-[#333]" style={{ verticalAlign: "middle" }}>
+                                        {row.customerName || `Customer ${displaySerials[rowIndex] || row.serialNumber}`}
+                                      </td>
+                                    )}
+                                    <td className="border border-slate-200 px-1 py-1 dark:border-[#333]">
+                                      <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                        row.shift === "M"
+                                          ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                                          : row.shift === "E"
+                                          ? "bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300"
+                                          : "bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300"
+                                      }`}>
+                                        {row.shift || "-"}
+                                      </span>
+                                    </td>
+                                    {row.days.slice(0, effectiveDayCount).map((value, dayIndex) => (
+                                      <td key={`${selectedUser.email}-${row.serialNumber}-${dayIndex + 1}`} className={`border border-slate-200 font-mono dark:border-[#333] ${isEditingSheet ? "p-0.5 bg-blue-50/20 dark:bg-blue-950/20" : "px-1 py-1"}`}>
+                                        {isEditingSheet ? (
+                                          <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={
+                                              focusedDayCell && focusedDayCell.rowIndex === rowIndex && focusedDayCell.dayIndex === dayIndex
+                                                ? focusedDayCell.text
+                                                : value === 0
+                                                ? ""
+                                                : String(value)
+                                            }
+                                            onFocus={() => {
+                                              setFocusedDayCell({
+                                                rowIndex,
+                                                dayIndex,
+                                                text: value === 0 ? "" : String(value)
+                                              });
+                                            }}
+                                            onChange={(e) => {
+                                              const newText = e.target.value;
+                                              setFocusedDayCell({ rowIndex, dayIndex, text: newText });
+                                              handleDayCellChange(rowIndex, dayIndex, newText);
+                                            }}
+                                            onBlur={() => {
+                                              setFocusedDayCell(null);
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                (e.target as HTMLInputElement).blur();
+                                              }
+                                            }}
+                                            className="w-full min-w-[34px] h-7 text-center rounded border border-transparent hover:border-slate-300 focus:border-brand-500 focus:bg-white bg-transparent font-mono text-xs font-bold text-slate-900 outline-none transition dark:text-white dark:hover:border-[#555] dark:focus:bg-[#161616]"
+                                          />
+                                        ) : (
+                                          value === 0 ? "-" : value
+                                        )}
+                                      </td>
+                                    ))}
+                                    {nameSpan > 0 && (
+                                      <td rowSpan={nameSpan} className="border border-slate-200 px-2.5 py-1 text-right font-mono font-bold text-slate-900 dark:text-white dark:border-[#333]">
+                                        {displayTotal}
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* TAB 2: CUSTOMERS DIRECTORY */}
+                {activeTab === "customers" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3.5 dark:border-[#333] dark:bg-[#212121]">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">Customer Directory</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">All registered farmers under this dairy account</p>
+                      </div>
+                      <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-bold text-brand-600 dark:bg-blue-500/20 dark:text-blue-400">
+                        {selectedUser.customers.length} Entries
+                      </span>
+                    </div>
+
+                    {selectedUser.customers.length === 0 ? (
+                      <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500 dark:border-[#333] dark:bg-[#212121] dark:text-slate-400">
+                        No customers added yet for this account.
+                      </div>
+                    ) : (
+                      (() => {
+                        const seen = new Map<string, { customer: typeof selectedUser.customers[0]; shifts: string[] }>();
+                        selectedUser.customers.forEach((c) => {
+                          const key = c.name.trim().toLowerCase();
+                          if (!key) return;
+                          if (seen.has(key)) {
+                            if (c.shift && !seen.get(key)!.shifts.includes(c.shift)) seen.get(key)!.shifts.push(c.shift);
+                          } else {
+                            seen.set(key, { customer: c, shifts: c.shift ? [c.shift] : [] });
+                          }
+                        });
+
+                        const allUnique = Array.from(seen.values());
+
+                        const getCategory = (shifts: string[]): "both" | "morning" | "evening" | "other" => {
+                          const hasM = shifts.includes("M") || shifts.some((s) => s.toUpperCase().includes("M"));
+                          const hasE = shifts.includes("E") || shifts.some((s) => s.toUpperCase().includes("E"));
+                          if (hasM && hasE) return "both";
+                          if (hasM) return "morning";
+                          if (hasE) return "evening";
+                          return "other";
+                        };
+
+                        const bothCount = allUnique.filter((item) => getCategory(item.shifts) === "both").length;
+                        const morningCount = allUnique.filter((item) => getCategory(item.shifts) === "morning").length;
+                        const eveningCount = allUnique.filter((item) => getCategory(item.shifts) === "evening").length;
+
+                        // Sort order: M & E first (0), Morning second (1), Evening third (2), Other fourth (3)
+                        const sorted = [...allUnique].sort((a, b) => {
+                          const priorityMap = { both: 0, morning: 1, evening: 2, other: 3 };
+                          const catA = getCategory(a.shifts);
+                          const catB = getCategory(b.shifts);
+                          if (priorityMap[catA] !== priorityMap[catB]) {
+                            return priorityMap[catA] - priorityMap[catB];
+                          }
+                          return a.customer.name.localeCompare(b.customer.name);
+                        });
+
+                        const filtered = sorted.filter((item) => {
+                          if (customerShiftFilter === "all") return true;
+                          return getCategory(item.shifts) === customerShiftFilter;
+                        });
+
+                        return (
+                          <div className="space-y-3">
+                            {/* Filter Bar on first row: All, M&E, M, E */}
+                            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1">
+                              <button
+                                type="button"
+                                onClick={() => setCustomerShiftFilter("all")}
+                                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer shrink-0 ${
+                                  customerShiftFilter === "all"
+                                    ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs"
+                                    : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-[#333] dark:bg-[#212121] dark:text-slate-300"
+                                }`}
+                              >
+                                All ({allUnique.length})
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCustomerShiftFilter("both")}
+                                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                                  customerShiftFilter === "both"
+                                    ? "bg-emerald-600 text-white shadow-xs"
+                                    : "border border-emerald-200 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+                                }`}
+                              >
+                                <span>M & E</span>
+                                <span className="rounded-full bg-black/10 dark:bg-white/10 px-1.5 py-0.2 text-[10px]">{bothCount}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCustomerShiftFilter("morning")}
+                                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                                  customerShiftFilter === "morning"
+                                    ? "bg-amber-600 text-white shadow-xs"
+                                    : "border border-amber-200 bg-amber-50/70 text-amber-800 hover:bg-amber-100 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300"
+                                }`}
+                              >
+                                <span>Morning (M)</span>
+                                <span className="rounded-full bg-black/10 dark:bg-white/10 px-1.5 py-0.2 text-[10px]">{morningCount}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCustomerShiftFilter("evening")}
+                                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                                  customerShiftFilter === "evening"
+                                    ? "bg-violet-600 text-white shadow-xs"
+                                    : "border border-violet-200 bg-violet-50/70 text-violet-800 hover:bg-violet-100 dark:border-violet-900/40 dark:bg-violet-950/30 dark:text-violet-300"
+                                }`}
+                              >
+                                <span>Evening (E)</span>
+                                <span className="rounded-full bg-black/10 dark:bg-white/10 px-1.5 py-0.2 text-[10px]">{eveningCount}</span>
+                              </button>
                             </div>
-                          ));
-                        })()
+
+                            {/* Customer Cards Grid (Sorted M&E, then M, then E) */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {filtered.map(({ customer, shifts }, idx) => {
+                                const cat = getCategory(shifts);
+                                return (
+                                  <div
+                                    key={`${selectedUser.email}-${customer.name}-${idx}`}
+                                    onClick={() => {
+                                      setEditingCustomerData({
+                                        originalName: customer.name,
+                                        name: customer.name,
+                                        mobile: customer.mobile || "",
+                                        address: customer.address || "",
+                                        shift: cat === "both" ? "M/E" : cat === "evening" ? "E" : "M"
+                                      });
+                                      setCustomerSaveMsg(null);
+                                    }}
+                                    className="group rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xs hover:border-blue-400 hover:shadow-md dark:border-[#333] dark:bg-[#212121] dark:hover:border-blue-500 space-y-2 cursor-pointer transition relative"
+                                    title="Click to edit customer details"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 pr-1">
+                                        <p className="font-bold text-sm text-slate-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition flex items-center gap-1.5">
+                                          <span>{customer.name}</span>
+                                          <span className="text-[10px] text-blue-500 opacity-0 group-hover:opacity-100 transition font-normal">✏️ Edit</span>
+                                        </p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                          📞 {customer.mobile || "No phone"}
+                                        </p>
+                                      </div>
+                                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-blue-950/50 dark:text-blue-300 shrink-0">
+                                        #{idx + 1}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Shift:</span>
+                                      {cat === "both" ? (
+                                        <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                                          M & E
+                                        </span>
+                                      ) : cat === "morning" ? (
+                                        <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                                          M
+                                        </span>
+                                      ) : cat === "evening" ? (
+                                        <span className="rounded-md bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-800 dark:bg-violet-950/50 dark:text-violet-300">
+                                          E
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs text-slate-400">-</span>
+                                      )}
+                                    </div>
+
+                                    <p className="text-xs text-slate-600 dark:text-slate-400 truncate">
+                                      📍 {customer.address || "No address"}
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 3: SHEET HISTORY */}
+                {activeTab === "history" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3.5 dark:border-[#333] dark:bg-[#212121]">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">Archived Sheet History</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Previously closed periods with downloadable reports</p>
+                      </div>
+                      <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-bold text-brand-600 dark:bg-blue-500/20 dark:text-blue-400">
+                        {historyEntries.length} Saved
+                      </span>
+                    </div>
+
+                    {historyLoading ? (
+                      <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500 dark:border-[#333] dark:bg-[#212121] dark:text-slate-400">
+                        Loading saved sheets...
+                      </div>
+                    ) : historyEntries.length === 0 ? (
+                      <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-500 dark:border-[#333] dark:bg-[#212121] dark:text-slate-400">
+                        No saved sheets yet for this dairy account.
+                      </div>
+                    ) : (
+                      historyEntries.map((entry, index) => {
+                        const isEditing = editingHistoryId === entry.id;
+                        const activeEntry = isEditing && editingHistoryState ? editingHistoryState : entry;
+                        const effectiveDayCount = getEffectiveDayCount(activeEntry);
+                        const entryTotal = activeEntry.rows.reduce(
+                          (sum, row) => sum + row.days.reduce((rowSum, value) => rowSum + value, 0),
+                          0
+                        );
+                        const sheetNumber = historyEntries.length - index;
+                        const isExpanded = expandedEntryId === entry.id;
+
+                        return (
+                          <div key={entry.id} className="rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-[#333] dark:bg-[#212121] overflow-hidden transition">
+                            {/* History Header - clickable to toggle */}
+                            <div
+                              onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
+                              className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 p-3.5 sm:p-4 cursor-pointer hover:bg-slate-50/70 dark:hover:bg-[#262626] transition select-none"
+                            >
+                              <div className="min-w-0 pr-0 sm:pr-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  {isEditing ? (
+                                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="text"
+                                        value={editingHistoryState?.name ?? ""}
+                                        onChange={(e) => {
+                                          if (editingHistoryState) {
+                                            setEditingHistoryState({
+                                              ...editingHistoryState,
+                                              name: e.target.value
+                                            });
+                                          }
+                                        }}
+                                        onKeyDown={(e) => {
+                                          e.stopPropagation();
+                                          if (e.key === "Enter") {
+                                            void handleSaveHistorySheet(entry.id);
+                                          }
+                                        }}
+                                        placeholder="Sheet Name"
+                                        className="h-8 rounded-lg border border-blue-400 bg-white px-2.5 text-xs sm:text-sm font-bold text-slate-900 shadow-xs outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 dark:border-blue-600 dark:bg-[#181818] dark:text-white w-44 sm:w-60"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <h5 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">
+                                      {entry.name || `Sheet ${sheetNumber}`}
+                                    </h5>
+                                  )}
+
+                                  {/* Mobile only: customer stats & arrow on the same row as sheet name */}
+                                  <div className="flex sm:hidden items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 shrink-0 font-medium">
+                                    <span>
+                                      {getCustomerCount(activeEntry.rows)} Customer · {effectiveDayCount} days · Total {entryTotal.toLocaleString("en-IN")}
+                                    </span>
+                                    <span className={`text-[10px] text-slate-400 transition-transform duration-200 ${isExpanded ? "rotate-180" : "rotate-0"}`}>
+                                      ▼
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                  Saved on {formatDate(entry.savedAt)}
+                                </p>
+                              </div>
+
+                              {/* Desktop only: customer stats & arrow on the right side */}
+                              <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 shrink-0 font-medium">
+                                <span>
+                                  {getCustomerCount(activeEntry.rows)} Customer · {effectiveDayCount} days · Total {entryTotal.toLocaleString("en-IN")}
+                                </span>
+                                <span className={`text-[10px] text-slate-400 transition-transform duration-200 ${isExpanded ? "rotate-180" : "rotate-0"}`}>
+                                  ▼
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Expanded Area: Action Buttons & Sheet Table */}
+                            {isExpanded && (
+                              <div className="border-t border-slate-100 p-3.5 sm:p-4 space-y-3.5 bg-slate-50/40 dark:border-[#2e2e2e] dark:bg-[#191919]">
+                                {/* Action Buttons toolbar */}
+                                <div className={`flex items-center gap-1.5 sm:gap-2 ${isEditing ? "justify-end" : "justify-between"}`}>
+                                  {!isEditing && (
+                                    <>
+                                      {/* Mobile: Single Download Sheet Dropdown */}
+                                      <div className="relative sm:hidden">
+                                        <button
+                                          type="button"
+                                          onClick={() => setOpenSaveMenuId(openSaveMenuId === entry.id ? null : entry.id)}
+                                          className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-[#444] dark:bg-[#222] dark:text-slate-200 cursor-pointer shadow-xs transition flex items-center gap-1 shrink-0"
+                                        >
+                                          <span>📥</span> Download Sheet <span className="text-[9px] text-slate-400">▼</span>
+                                        </button>
+
+                                        {openSaveMenuId === entry.id && (
+                                          <>
+                                            <div className="fixed inset-0 z-20" onClick={() => setOpenSaveMenuId(null)} />
+                                            <div className="absolute left-0 top-full mt-1.5 w-40 rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden z-30 text-xs font-semibold dark:border-[#333] dark:bg-[#222]">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  void downloadSheetAsPdf(activeEntry, sheetNumber, selectedUser.name || selectedUser.email);
+                                                  setOpenSaveMenuId(null);
+                                                }}
+                                                className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 dark:hover:bg-white/10 flex items-center gap-2 text-slate-700 dark:text-slate-200 transition"
+                                              >
+                                                <span>📥</span> PDF
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  downloadSheetAsExcel(activeEntry, sheetNumber, selectedUser.name || selectedUser.email);
+                                                  setOpenSaveMenuId(null);
+                                                }}
+                                                className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 dark:hover:bg-white/10 flex items-center gap-2 border-t border-slate-100 dark:border-[#333] text-slate-700 dark:text-slate-200 transition"
+                                              >
+                                                <span>📊</span> Excel
+                                              </button>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+
+                                      {/* Desktop: Separate PDF & Excel buttons */}
+                                      <div className="hidden sm:flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => { void downloadSheetAsPdf(activeEntry, sheetNumber, selectedUser.name || selectedUser.email); }}
+                                          className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-[#444] dark:bg-[#222] dark:text-slate-200 cursor-pointer shadow-xs transition"
+                                        >
+                                          📥 PDF
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => downloadSheetAsExcel(activeEntry, sheetNumber, selectedUser.name || selectedUser.email)}
+                                          className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-[#444] dark:bg-[#222] dark:text-slate-200 cursor-pointer shadow-xs transition"
+                                        >
+                                          📊 Excel
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+
+                                  <div className={`flex items-center gap-1.5 sm:gap-2 ${isEditing ? "w-full sm:w-auto justify-between sm:justify-end" : "shrink-0"}`}>
+                                    {/* Edit Sheet / Cancel Edit Button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isEditing) {
+                                          setEditingHistoryId(null);
+                                          setEditingHistoryState(null);
+                                          setFocusedHistoryDayCell(null);
+                                        } else {
+                                          setEditingHistoryId(entry.id);
+                                          setEditingHistoryState({
+                                            ...JSON.parse(JSON.stringify(entry)),
+                                            name: entry.name || `Sheet ${sheetNumber}`
+                                          });
+                                          if (historySaveTimerRef.current) {
+                                            window.clearTimeout(historySaveTimerRef.current);
+                                            historySaveTimerRef.current = null;
+                                          }
+                                          setHistorySaveMsg(null);
+                                        }
+                                      }}
+                                      className={`rounded-xl px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 ${
+                                        isEditing
+                                          ? "border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-300"
+                                          : "border border-blue-200 bg-blue-50 text-brand-700 hover:bg-blue-100 dark:border-blue-800/50 dark:bg-blue-950/40 dark:text-blue-300"
+                                      }`}
+                                    >
+                                      {isEditing ? "✕ Cancel Edit" : "✏️ Edit Sheet"}
+                                    </button>
+
+                                    {/* Save Sheet Button - visible only when editing */}
+                                    {isEditing && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleSaveHistorySheet(entry.id)}
+                                        disabled={isSavingHistory}
+                                        className="rounded-xl border border-emerald-500 bg-emerald-600 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 transition cursor-pointer shrink-0 ml-auto sm:ml-0"
+                                      >
+                                        {isSavingHistory ? "Saving..." : "💾 Save Sheet"}
+                                      </button>
+                                    )}
+
+                                    {!isEditing && (
+                                      <button
+                                        type="button"
+                                        onClick={() => { void handleDeleteHistoryEntry(selectedUser.email, entry.id); }}
+                                        className="rounded-xl border border-rose-200 bg-rose-50 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 shrink-0"
+                                        title="Delete sheet"
+                                      >
+                                        <span>🗑️</span> Delete Sheet
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {isEditing && historySaveMsg && (
+                                  <p className={`text-xs font-medium p-2.5 rounded-xl border ${
+                                    historySaveMsg.includes("success")
+                                      ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50/70 border-emerald-200 dark:border-emerald-900/40 dark:bg-emerald-950/20"
+                                      : "text-rose-600 dark:text-rose-400 bg-rose-50/70 border-rose-200 dark:border-rose-900/40 dark:bg-rose-950/20"
+                                  }`}>
+                                    {historySaveMsg}
+                                  </p>
+                                )}
+
+                                {/* Expanded Sheet Table */}
+                                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#333]">
+                                <table className="w-full min-w-[850px] border-collapse text-center text-xs">
+                                  <thead className="bg-slate-100 font-bold text-slate-800 dark:bg-[#262626] dark:text-slate-200">
+                                    <tr>
+                                      <th className="border border-slate-300 px-2 py-2 dark:border-[#444]">S No</th>
+                                      <th className="border border-slate-300 px-3 py-2 text-left dark:border-[#444]">Customer Name</th>
+                                      <th className="border border-slate-300 px-2 py-2 dark:border-[#444]">Shift</th>
+                                      {Array.from({ length: effectiveDayCount }, (_, d) => (
+                                        <th key={`hist-day-${entry.id}-${d}`} className="border border-slate-300 px-1 py-2 dark:border-[#444]">
+                                          D{d + 1}
+                                        </th>
+                                      ))}
+                                      <th className="border border-slate-300 px-2 py-2 font-bold text-right dark:border-[#444]">Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(() => {
+                                      const displaySerials = buildDisplaySerialMap(activeEntry.rows);
+                                      const groupStartIndices = buildGroupStartIndices(activeEntry.rows);
+                                      const nameCellSpans = buildNameCellSpans(groupStartIndices);
+                                      const combinedTotals = buildCombinedTotals(activeEntry.rows, groupStartIndices);
+                                      return activeEntry.rows.map((row, rIdx) => {
+                                        const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
+                                        const nameSpan = nameCellSpans[rIdx];
+                                        const displayTotal = nameSpan > 1 ? combinedTotals[rIdx] : rowTotal;
+                                        return (
+                                          <tr key={`${entry.id}-${row.serialNumber}-${rIdx}`} className="bg-white dark:bg-[#1c1c1c] dark:text-slate-200">
+                                            {nameSpan > 0 && (
+                                              <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold align-middle dark:border-[#333]">
+                                                {displaySerials[rIdx]}
+                                              </td>
+                                            )}
+                                            {nameSpan > 0 && (
+                                              <td rowSpan={nameSpan} className="border border-slate-200 px-2 py-1 text-left font-bold align-middle dark:border-[#333]">
+                                                {row.customerName}
+                                              </td>
+                                            )}
+                                            <td className="border border-slate-200 px-1 py-1 dark:border-[#333]">{row.shift || "-"}</td>
+                                            {row.days.slice(0, effectiveDayCount).map((val, dIdx) => (
+                                              <td key={`${entry.id}-${row.serialNumber}-${dIdx}`} className={`border border-slate-200 font-mono dark:border-[#333] ${isEditing ? "p-0.5 bg-blue-50/20 dark:bg-blue-950/20" : "px-1 py-1"}`}>
+                                                {isEditing ? (
+                                                  <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={
+                                                      focusedHistoryDayCell && focusedHistoryDayCell.rowIndex === rIdx && focusedHistoryDayCell.dayIndex === dIdx
+                                                        ? focusedHistoryDayCell.text
+                                                        : val === 0
+                                                        ? ""
+                                                        : String(val)
+                                                    }
+                                                    onFocus={() => {
+                                                      setFocusedHistoryDayCell({
+                                                        rowIndex: rIdx,
+                                                        dayIndex: dIdx,
+                                                        text: val === 0 ? "" : String(val)
+                                                      });
+                                                    }}
+                                                    onChange={(e) => {
+                                                      const newText = e.target.value;
+                                                      setFocusedHistoryDayCell({ rowIndex: rIdx, dayIndex: dIdx, text: newText });
+                                                      handleHistoryDayCellChange(rIdx, dIdx, newText);
+                                                    }}
+                                                    onBlur={() => {
+                                                      setFocusedHistoryDayCell(null);
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                      if (e.key === "Enter") {
+                                                        (e.target as HTMLInputElement).blur();
+                                                      }
+                                                    }}
+                                                    className="w-full min-w-[34px] h-7 text-center rounded border border-transparent hover:border-slate-300 focus:border-brand-500 focus:bg-white bg-transparent font-mono text-xs font-bold text-slate-900 outline-none transition dark:text-white dark:hover:border-[#555] dark:focus:bg-[#161616]"
+                                                  />
+                                                ) : (
+                                                  val === 0 ? "-" : val
+                                                )}
+                                              </td>
+                                            ))}
+                                            {nameSpan > 0 && (
+                                              <td rowSpan={nameSpan} className="border border-slate-200 px-2 py-1 text-right font-mono font-bold dark:border-[#333]">
+                                                {displayTotal}
+                                              </td>
+                                            )}
+                                          </tr>
+                                        );
+                                      });
+                                    })()}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 4: EDIT ACCOUNT & SECURITY */}
+                {activeTab === "account" && (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-xs dark:border-[#333] dark:bg-[#212121] space-y-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">Profile & Contact Information</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Edit account details on behalf of this dairy</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                             Full Name
+                          </label>
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            placeholder="Full name"
+                            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs md:text-sm text-slate-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 dark:border-[#444] dark:bg-[#161616] dark:text-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                          Phone Number
+                          </label>
+                          <input
+                            type="text"
+                            value={editPhone}
+                            onChange={(e) => setEditPhone(e.target.value)}
+                            placeholder="Phone number"
+                            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs md:text-sm text-slate-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 dark:border-[#444] dark:bg-[#161616] dark:text-white"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                            Email Address
+                          </label>
+                          <input
+                            type="email"
+                            value={editEmail}
+                            onChange={(e) => setEditEmail(e.target.value)}
+                            placeholder="Email address"
+                            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs md:text-sm text-slate-900 outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 dark:border-[#444] dark:bg-[#161616] dark:text-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 pt-2 border-t border-slate-100 dark:border-[#333]">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!selectedUser) return;
+                            setSaveMessage(null);
+                            try {
+                              setProfileSaving(true);
+                              await updateUserProfileByEmail(selectedUser.email, {
+                                name: editName,
+                                phone: editPhone,
+                                email: editEmail
+                              });
+                              await loadDashboardData();
+                              setSaveMessage("Profile saved successfully!");
+                              setTimeout(() => setSaveMessage(null), 3000);
+                            } catch (err) {
+                              setSaveMessage(err instanceof Error ? err.message : "Failed to save profile.");
+                            } finally {
+                              setProfileSaving(false);
+                            }
+                          }}
+                          disabled={profileSaving}
+                          className="flex min-h-[38px] items-center justify-center rounded-xl bg-brand-600 px-2 sm:px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-brand-700 active:scale-95 disabled:opacity-50 transition cursor-pointer text-center"
+                        >
+                          {profileSaving ? (
+                            "Saving..."
+                          ) : (
+                            <>
+                              <span className="hidden sm:inline">Save Profile Changes</span>
+                              <span className="sm:hidden">Save Profile</span>
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!selectedUser) return;
+                            if (pwResetTimerRef.current) {
+                              window.clearTimeout(pwResetTimerRef.current);
+                              pwResetTimerRef.current = null;
+                            }
+                            setPwResetMsg(null);
+                            setPwResetLoading(true);
+                            try {
+                              await requestPasswordReset(selectedUser.email);
+                              setPwResetMsg("Password reset email link sent to " + selectedUser.email);
+                            } catch (err) {
+                              setPwResetMsg(err instanceof Error ? err.message : "Failed to send reset link.");
+                            } finally {
+                              setPwResetLoading(false);
+                              pwResetTimerRef.current = window.setTimeout(() => {
+                                setPwResetMsg(null);
+                                pwResetTimerRef.current = null;
+                              }, 5000);
+                            }
+                          }}
+                          disabled={pwResetLoading}
+                          className="flex min-h-[38px] items-center justify-center gap-1 sm:gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-2 sm:px-3.5 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100 active:scale-95 transition dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-200 cursor-pointer text-center"
+                        >
+                          {pwResetLoading ? (
+                            "Sending Link..."
+                          ) : (
+                            <>
+                              <span>🔑</span>
+                              <span className="hidden sm:inline">Send Password Reset Link</span>
+                              <span className="sm:hidden">Reset Password</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {saveMessage && (
+                        <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900/40">
+                          {saveMessage}
+                        </p>
+                      )}
+                      {pwResetMsg && (
+                        <p className="text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/40">
+                          {pwResetMsg}
+                        </p>
                       )}
                     </div>
                   </div>
+                )}
 
-                  <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
-                    {!showHistory && (
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Sheet Data</h4>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <div className="text-xs font-medium text-slate-500">
-                          {getCustomerCount(selectedUser.sheet.rows)} Customers · {selectedUser.sheet.dayCount} Days ·  {selectedUser.sheetTotal} Total
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleArchiveToHistory(selectedUser.email, selectedUser.sheet)}
-                          disabled={archiving}
-                          className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {archiving ? "Saving..." : "Save to History"}
-                        </button>
-                      </div>
-                    </div>
-                    )}
-                    {archiveMsg && (
-                      <p className="mt-2 text-xs text-slate-600">{archiveMsg}</p>
-                    )}
-
-                    {showHistory && (
-                      <div className="mt-4 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        {historyLoading ? (
-                          <div className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-500">
-                            Loading history...
-                          </div>
-                        ) : historyEntries.length === 0 ? (
-                          <div className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-500">
-                            No saved sheets yet for this user.
-                          </div>
-                        ) : (
-                          historyEntries.map((entry, index) => {
-                            const effectiveDayCount = getEffectiveDayCount(entry);
-                            const entryTotal = entry.rows.reduce(
-                              (sum, row) => sum + row.days.reduce((rowSum, value) => rowSum + value, 0),
-                              0
-                            );
-                            const sheetNumber = historyEntries.length - index;
-
-                            const isExpanded = expandedEntryId === entry.id;
-
-                            return (
-                              <div key={entry.id} className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                                <span className="absolute right-4 top-4 text-slate-400 sm:hidden">{isExpanded ? "▲" : "▼"}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
-                                  className="flex w-full flex-col gap-2 pr-6 text-left sm:flex-row sm:items-start sm:justify-between sm:pr-0"
-                                >
-                                  <div>
-                                    <h5 className="text-base font-semibold text-slate-900">
-                                      {entry.name || `Sheet ${sheetNumber}`}
-                                    </h5>
-                                    <p className="text-xs text-slate-500">Saved on {formatDate(entry.savedAt)}</p>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
-                                    <span>{getCustomerCount(entry.rows)} Customer · {effectiveDayCount} days · Total {entryTotal}</span>
-                                    <span className="hidden text-slate-400 sm:inline">{isExpanded ? "▲" : "▼"}</span>
-                                  </div>
-                                </button>
-
-                                {isExpanded && (
-                                <>
-                                <div className="mt-3 mb-3 flex flex-col sm:flex-row gap-2">
-                                  <div className="relative flex-1 sm:flex-none">
-                                    <button
-                                      type="button"
-                                      onClick={() => setOpenSaveMenuId(openSaveMenuId === entry.id ? null : entry.id)}
-                                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
-                                    >
-                                      Save Sheet
-                                    </button>
-                                    {openSaveMenuId === entry.id && (
-                                      <>
-                                        <div className="fixed inset-0 z-10" onClick={() => setOpenSaveMenuId(null)} />
-                                        <div className="absolute left-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              downloadSheetAsPdf(entry, sheetNumber, selectedUser.name || selectedUser.email);
-                                              setOpenSaveMenuId(null);
-                                            }}
-                                            className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100"
-                                          >
-                                            Download as PDF
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              downloadSheetAsExcel(entry, sheetNumber, selectedUser.name || selectedUser.email);
-                                              setOpenSaveMenuId(null);
-                                            }}
-                                            className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100"
-                                          >
-                                            Download as Excel (.xlsx)
-                                          </button>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingHistoryNameId(entry.id);
-                                      setHistoryNameDraft(entry.name || `Sheet ${sheetNumber}`);
-                                    }}
-                                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition flex-1 sm:flex-none"
-                                  >
-                                    Edit Sheet Name
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteHistoryEntry(selectedUser.email, entry.id)}
-                                    className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition flex-1 sm:flex-none sm:ml-auto"
-                                  >
-                                    Delete Sheet
-                                  </button>
-                                </div>
-
-                                {editingHistoryNameId === entry.id && (
-                                  <div className="mb-3 flex flex-col sm:flex-row gap-2">
-                                    <input
-                                      type="text"
-                                      value={historyNameDraft}
-                                      onChange={(event) => setHistoryNameDraft(event.target.value)}
-                                      placeholder="Sheet name"
-                                      autoFocus
-                                      className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-xs"
-                                    />
-                                    <div className="flex gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          void handleRenameHistoryEntry(selectedUser.email, entry.id, historyNameDraft);
-                                        }}
-                                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition"
-                                      >
-                                        Save
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditingHistoryNameId(null)}
-                                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                <div className="overflow-x-auto rounded-b-lg border border-slate-200 md:rounded-b-xl md:-mx-4 md:-mb-4">
-                                  <table className="w-full min-w-[900px] border-collapse text-center text-xs">
-                                    <thead className="bg-slate-100 font-semibold text-slate-800">
-                                      <tr>
-                                        <th className="border border-slate-300 px-1 py-2">S No</th>
-                                        <th className="border border-slate-300 px-1 py-2">Customer Name</th>
-                                        <th className="border border-slate-300 px-1 py-2">Shift</th>
-                                        {Array.from({ length: effectiveDayCount }, (_, dayIndex) => (
-                                          <th key={`owner-history-${entry.id}-day-${dayIndex + 1}`} className="border border-slate-300 px-1 py-2">
-                                            Day {dayIndex + 1}
-                                          </th>
-                                        ))}
-                                        <th className="border border-slate-300 px-1 py-2">Total</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {(() => {
-                                        const displaySerials = buildDisplaySerialMap(entry.rows);
-                                        const groupStartIndices = buildGroupStartIndices(entry.rows);
-                                        const nameCellSpans = buildNameCellSpans(groupStartIndices);
-                                        const combinedTotals = buildCombinedTotals(entry.rows, groupStartIndices);
-                                        return entry.rows.map((row, rowIndex) => {
-                                          const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
-                                          const nameSpan = nameCellSpans[rowIndex];
-                                          const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : rowTotal;
-                                          return (
-                                            <tr key={`${entry.id}-${row.serialNumber}`} className="bg-white">
-                                              {nameSpan > 0 && (
-                                                <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerials[rowIndex]}</td>
-                                              )}
-                                              {nameSpan > 0 && (
-                                                <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left align-middle">{row.customerName}</td>
-                                              )}
-                                              <td className="border border-slate-200 px-1 py-1">{row.shift || "—"}</td>
-                                              {row.days.slice(0, effectiveDayCount).map((value, dayIndex) => (
-                                                <td key={`${entry.id}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-1 py-1">
-                                                  {value}
-                                                </td>
-                                              ))}
-                                              {nameSpan > 0 && (
-                                                <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold align-middle">{displayTotal}</td>
-                                              )}
-                                            </tr>
-                                          );
-                                        });
-                                      })()}
-                                    </tbody>
-                                  </table>
-                                </div>
-                                </>
-                                )}
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
-
-                    {!showHistory && (
-                    <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-                      <table className="min-w-[900px] border-collapse text-center text-xs">
-                        <thead className="bg-slate-100 font-semibold text-slate-800">
-                          <tr>
-                            <th className="border border-slate-300 px-1 py-2">S No</th>
-                            <th className="border border-slate-300 px-1 py-2">Customer Name</th>
-                            <th className="border border-slate-300 px-1 py-2">Shift</th>
-                            {Array.from({ length: selectedUser.sheet.dayCount }, (_, index) => (
-                              <th key={`selected-day-${index + 1}`} className="border border-slate-300 px-1 py-2">
-                                Day {index + 1}
-                              </th>
-                            ))}
-                            <th className="border border-slate-300 px-1 py-2">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(() => {
-                            const effectiveDayCount = selectedUser.sheet.dayCount;
-                            const displaySerials = buildDisplaySerialMap(selectedUser.sheet.rows);
-                            const groupStartIndices = buildGroupStartIndices(selectedUser.sheet.rows);
-                            const nameCellSpans = buildNameCellSpans(groupStartIndices);
-                            const combinedTotals = buildCombinedTotals(selectedUser.sheet.rows, groupStartIndices);
-                            return selectedUser.sheet.rows.map((row, rowIndex) => {
-                            const rowTotal = row.days.reduce((sum, value) => sum + value, 0);
-                            const nameSpan = nameCellSpans[rowIndex];
-                            const displayTotal = nameSpan > 1 ? combinedTotals[rowIndex] : rowTotal;
-
-                            return (
-                              <tr key={`${selectedUser.email}-sheet-${row.serialNumber}`} className="bg-white">
-                                {nameSpan > 0 && (
-                                  <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold align-middle" style={{ verticalAlign: "middle" }}>{displaySerials[rowIndex]}</td>
-                                )}
-                                {nameSpan > 0 && (
-                                  <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 text-left align-middle" style={{ verticalAlign: "middle" }}>{row.customerName}</td>
-                                )}
-                                <td className="border border-slate-200 px-1 py-1">{row.shift}</td>
-                                {row.days.slice(0, effectiveDayCount).map((value, dayIndex) => (
-                                  <td key={`${selectedUser.email}-${row.serialNumber}-${dayIndex + 1}`} className="border border-slate-200 px-1 py-1">
-                                    {value}
-                                  </td>
-                                ))}
-                                {nameSpan > 0 && (
-                                  <td rowSpan={nameSpan} className="border border-slate-200 px-1 py-1 font-semibold">{displayTotal}</td>
-                                )}
-                              </tr>
-                            );
-                          });
-                          })()}
-                        </tbody>
-                      </table>
-                    </div>
-                    )}
+              </div>
+          </div>
+        )}
+        {/* EDIT CUSTOMER MODAL */}
+        {editingCustomerData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <div
+              className="fixed inset-0"
+              onClick={() => {
+                if (!isSavingCustomer) setEditingCustomerData(null);
+              }}
+            />
+            <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl dark:border-[#333] dark:bg-[#202020] z-10 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-[#333]">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold text-base">
+                    ✏️
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Edit Customer Details</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Update name, mobile, address, or shift</p>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingCustomerData(null)}
+                  disabled={isSavingCustomer}
+                  className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
 
-                <div className="mt-6">
-                  <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Edit Profile (Owner)</h4>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      placeholder="Full name"
-                      className="min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                    />
-                    <input
-                      value={editPhone}
-                      onChange={(e) => setEditPhone(e.target.value)}
-                      placeholder="Phone"
-                      className="min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                    />
-                    <input
-                      value={editEmail}
-                      onChange={(e) => setEditEmail(e.target.value)}
-                      placeholder="Email"
-                      type="email"
-                      className="min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                    />
+              {customerSaveMsg && (
+                <div className={`text-xs font-semibold p-2.5 rounded-xl border ${
+                  customerSaveMsg.includes("success")
+                    ? "text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/30 dark:border-emerald-900/40"
+                    : "text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-300 dark:bg-rose-950/30 dark:border-rose-900/40"
+                }`}>
+                  {customerSaveMsg}
+                </div>
+              )}
+
+              <div className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Customer Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editingCustomerData.name}
+                    onChange={(e) => setEditingCustomerData({ ...editingCustomerData, name: e.target.value })}
+                    placeholder="e.g. Ramesh Kumar"
+                    className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs sm:text-sm font-semibold text-slate-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-[#444] dark:bg-[#181818] dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Mobile Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={editingCustomerData.mobile}
+                    onChange={(e) => setEditingCustomerData({ ...editingCustomerData, mobile: e.target.value })}
+                    placeholder="e.g. 9876543210"
+                    className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs sm:text-sm font-semibold text-slate-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-[#444] dark:bg-[#181818] dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Delivery Shift
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (!selectedUser) return;
-                        setPwResetMsg(null);
-                        setPwResetLoading(true);
-                        try {
-                          await requestPasswordReset(selectedUser.email);
-                          setPwResetMsg("Password reset email sent!");
-                        } catch (err) {
-                          setPwResetMsg(err instanceof Error ? err.message : "Failed to send reset email");
-                        } finally {
-                          setPwResetLoading(false);
-                        }
-                      }}
-                      disabled={pwResetLoading || loading}
-                      className="min-h-[48px] w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition"
+                      onClick={() => setEditingCustomerData({ ...editingCustomerData, shift: "M/E" })}
+                      className={`rounded-xl py-2 px-2 text-xs font-bold border transition cursor-pointer text-center ${
+                        editingCustomerData.shift === "M/E"
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/50 dark:text-emerald-300 ring-1 ring-emerald-500"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-[#333] dark:bg-[#181818] dark:text-slate-300"
+                      }`}
                     >
-                      {pwResetLoading ? "Sending..." : "Send Password Reset Email"}
-                    </button>
-                  </div>
-                  {pwResetMsg && <p className="mt-2 text-xs text-slate-600">{pwResetMsg}</p>}
-                  <div className="mt-4 flex gap-3">
-                    <button
-                      onClick={async () => {
-                        if (!selectedUser) return;
-                        setSaveMessage(null);
-                        try {
-                          setLoading(true);
-                          await updateUserProfileByEmail(selectedUser.email, {
-                            name: editName,
-                            phone: editPhone,
-                            email: editEmail
-                          });
-                          await loadDashboardData();
-                          setSaveMessage("Saved successfully");
-                        } catch (err) {
-                          setSaveMessage(err instanceof Error ? err.message : "Failed to save");
-                        } finally {
-                          setLoading(false);
-                        }
-                      }}
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-white"
-                    >
-                      Save
+                      M & E
+                      <span className="block text-[10px] font-normal opacity-75">Both Shifts</span>
                     </button>
                     <button
-                      onClick={() => {
-                        setSelectedUserEmail(null);
-                      }}
-                      className="rounded-lg border border-slate-300 px-4 py-2"
+                      type="button"
+                      onClick={() => setEditingCustomerData({ ...editingCustomerData, shift: "M" })}
+                      className={`rounded-xl py-2 px-2 text-xs font-bold border transition cursor-pointer text-center ${
+                        editingCustomerData.shift === "M"
+                          ? "border-amber-500 bg-amber-50 text-amber-800 dark:border-amber-500 dark:bg-amber-950/50 dark:text-amber-300 ring-1 ring-amber-500"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-[#333] dark:bg-[#181818] dark:text-slate-300"
+                      }`}
                     >
-                      Close
+                      Morning
+                      <span className="block text-[10px] font-normal opacity-75">M Only</span>
                     </button>
-                    {saveMessage ? <div className="text-sm text-slate-600">{saveMessage}</div> : null}
+                    <button
+                      type="button"
+                      onClick={() => setEditingCustomerData({ ...editingCustomerData, shift: "E" })}
+                      className={`rounded-xl py-2 px-2 text-xs font-bold border transition cursor-pointer text-center ${
+                        editingCustomerData.shift === "E"
+                          ? "border-violet-500 bg-violet-50 text-violet-800 dark:border-violet-500 dark:bg-violet-950/50 dark:text-violet-300 ring-1 ring-violet-500"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-[#333] dark:bg-[#181818] dark:text-slate-300"
+                      }`}
+                    >
+                      Evening
+                      <span className="block text-[10px] font-normal opacity-75">E Only</span>
+                    </button>
                   </div>
                 </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Address / Village
+                  </label>
+                  <input
+                    type="text"
+                    value={editingCustomerData.address}
+                    onChange={(e) => setEditingCustomerData({ ...editingCustomerData, address: e.target.value })}
+                    placeholder="e.g. Near Shiv Temple, Raipur"
+                    className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs sm:text-sm font-semibold text-slate-900 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-[#444] dark:bg-[#181818] dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-[#333]">
+                <button
+                  type="button"
+                  onClick={() => setEditingCustomerData(null)}
+                  disabled={isSavingCustomer}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-[#444] dark:bg-[#262626] dark:text-slate-300 cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveCustomerDetails()}
+                  disabled={isSavingCustomer}
+                  className="rounded-xl border border-blue-600 bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50 cursor-pointer transition"
+                >
+                  {isSavingCustomer ? "Saving..." : "Save Changes"}
+                </button>
               </div>
             </div>
           </div>
         )}
+      </div>
     </Layout>
   );
 }

@@ -63,6 +63,35 @@ function sortCustomerGroups(groups: Customer[][]): Customer[][] {
   });
 }
 
+function getCustomerInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  if (parts.length === 1 && parts[0].length > 0) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return "?";
+}
+
+const AVATAR_GRADIENTS = [
+  "from-blue-500 to-indigo-600",
+  "from-emerald-500 to-teal-600",
+  "from-violet-500 to-purple-600",
+  "from-amber-500 to-orange-600",
+  "from-rose-500 to-pink-600",
+  "from-cyan-500 to-blue-600",
+];
+
+function getAvatarGradient(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % AVATAR_GRADIENTS.length;
+  return AVATAR_GRADIENTS[index];
+}
+
 function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [draggedSerial, setDraggedSerial] = useState<number | null>(null);
@@ -105,11 +134,28 @@ function Customers() {
     return hasE;
   });
   const shiftBadgeStyle = (label: string) => {
-    if (label.includes("&") || label === "M/E") return "bg-emerald-100 text-emerald-700";
-    if (label === "M") return "bg-amber-100 text-amber-700";
-    if (label === "E") return "bg-violet-100 text-violet-700";
-    return "bg-slate-100 text-slate-500";
+    if (label.includes("&") || label === "M/E") {
+      return "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/40 border border-emerald-500/20";
+    }
+    if (label === "M") {
+      return "bg-amber-500/10 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/40 border border-amber-500/20";
+    }
+    if (label === "E") {
+      return "bg-violet-500/10 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300 dark:border-violet-800/40 border border-violet-500/20";
+    }
+    return "bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400";
   };
+
+  const totalCount = groupedCustomers.length;
+  const bothCount = groupedCustomers.filter(
+    (g) => g.some((c) => c.shift === "M") && g.some((c) => c.shift === "E"),
+  ).length;
+  const morningCount = groupedCustomers.filter((g) =>
+    g.some((c) => c.shift === "M"),
+  ).length;
+  const eveningCount = groupedCustomers.filter((g) =>
+    g.some((c) => c.shift === "E"),
+  ).length;
 
   useEffect(() => {
     const loadCustomers = async () => {
@@ -436,8 +482,8 @@ function Customers() {
 
   const handleMobilePointerDown =
     (serialNumber: number) => (event: ReactPointerEvent<HTMLDivElement>) => {
-      // Do not start a drag when interacting with a button.
-      if ((event.target as HTMLElement).closest("button")) {
+      // Do not start a drag when interacting with a button or anchor link.
+      if ((event.target as HTMLElement).closest("button, a")) {
         return;
       }
 
@@ -566,146 +612,238 @@ function Customers() {
     <div className="flex flex-col gap-3 md:gap-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl md:text-3xl font-bold text-slate-900">
+          <h1 className="text-xl md:text-3xl font-bold text-slate-900 dark:text-white">
             Customers
           </h1>
-          <p className="text-xs text-slate-500 md:text-sm">{filteredGroups.length} of {groupedCustomers.length} shown</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 md:text-sm">
+            {filteredGroups.length} of {groupedCustomers.length} shown
+          </p>
         </div>
         {!showForm && (
           <button
             onClick={handleAddClick}
-            className="rounded-full bg-brand-500 px-5 py-3 text-sm text-white font-semibold hover:bg-brand-600 active:scale-95 min-h-[48px] flex items-center justify-center shadow-card shrink-0"
+            className="rounded-full bg-brand-500 px-4 md:px-5 py-2.5 md:py-3 text-xs md:text-sm text-white font-bold hover:bg-brand-600 active:scale-95 min-h-[44px] flex items-center justify-center shadow-card shrink-0 gap-1.5"
           >
-            + Add
+            <span className="text-base leading-none">+</span> Add Customer
           </button>
         )}
       </div>
 
-      <div className="sticky top-[57px] md:top-[65px] z-20 -mx-4 px-4 py-2 bg-slate-50/95 backdrop-blur dark:bg-[#161616]/95 md:static md:mx-0 md:px-0 md:py-0 md:bg-transparent">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base">🔍</span>
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search name / mobile..."
-              className="w-full rounded-full border border-slate-200 bg-white pl-10 pr-4 py-3 text-[15px] min-h-[48px] focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </div>
-        </div>
-        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 md:flex-wrap">
-          {(["All", "M", "E", "Both"] as const).map((f) => (
+      {/* Glanceable KPI Summary Bar */}
+      <div className="grid grid-cols-4 gap-2">
+        <button
+          type="button"
+          onClick={() => setShiftFilter("All")}
+          className={`flex flex-col items-center justify-center rounded-2xl p-2 md:p-3 text-center transition active:scale-95 ${
+            shiftFilter === "All"
+              ? "border border-brand-500/50 bg-brand-500/10 dark:bg-brand-500/20 ring-2 ring-brand-500/30"
+              : "border border-slate-200 bg-white hover:border-slate-300 dark:border-[#2a2a2a] dark:bg-[#1c1c1c] shadow-xs"
+          }`}
+        >
+          <span className="text-[10px] md:text-xs font-semibold text-slate-500 dark:text-slate-400">Total</span>
+          <span className="text-base md:text-xl font-black text-slate-900 dark:text-white">{totalCount}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShiftFilter("Both")}
+          className={`flex flex-col items-center justify-center rounded-2xl p-2 md:p-3 text-center transition active:scale-95 ${
+            shiftFilter === "Both"
+              ? "border border-emerald-500/50 bg-emerald-500/10 dark:bg-emerald-500/20 ring-2 ring-emerald-500/30"
+              : "border border-slate-200 bg-white hover:border-slate-300 dark:border-[#2a2a2a] dark:bg-[#1c1c1c] shadow-xs"
+          }`}
+        >
+          <span className="text-[10px] md:text-xs font-semibold text-slate-500 dark:text-slate-400">M & E</span>
+          <span className="text-base md:text-xl font-black text-emerald-600 dark:text-emerald-400">{bothCount}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShiftFilter("M")}
+          className={`flex flex-col items-center justify-center rounded-2xl p-2 md:p-3 text-center transition active:scale-95 ${
+            shiftFilter === "M"
+              ? "border border-amber-500/50 bg-amber-500/10 dark:bg-amber-500/20 ring-2 ring-amber-500/30"
+              : "border border-slate-200 bg-white hover:border-slate-300 dark:border-[#2a2a2a] dark:bg-[#1c1c1c] shadow-xs"
+          }`}
+        >
+          <span className="text-[10px] md:text-xs font-semibold text-slate-500 dark:text-slate-400">Morning</span>
+          <span className="text-base md:text-xl font-black text-amber-600 dark:text-amber-400">{morningCount}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShiftFilter("E")}
+          className={`flex flex-col items-center justify-center rounded-2xl p-2 md:p-3 text-center transition active:scale-95 ${
+            shiftFilter === "E"
+              ? "border border-violet-500/50 bg-violet-500/10 dark:bg-violet-500/20 ring-2 ring-violet-500/30"
+              : "border border-slate-200 bg-white hover:border-slate-300 dark:border-[#2a2a2a] dark:bg-[#1c1c1c] shadow-xs"
+          }`}
+        >
+          <span className="text-[10px] md:text-xs font-semibold text-slate-500 dark:text-slate-400">Evening</span>
+          <span className="text-base md:text-xl font-black text-violet-600 dark:text-violet-400">{eveningCount}</span>
+        </button>
+      </div>
+
+      {/* Sticky Search Bar */}
+      <div className="sticky top-[57px] md:top-[65px] z-20 -mx-4 px-4 py-2 bg-slate-50/95 backdrop-blur dark:bg-[#121212]/95 md:static md:mx-0 md:px-0 md:py-0 md:bg-transparent">
+        <div className="relative">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+          </span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search name, mobile or address..."
+            className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-10 text-[14px] min-h-[48px] shadow-xs outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-[#282828] dark:bg-[#1a1a1a] dark:text-white"
+          />
+          {searchQuery && (
             <button
-              key={f}
               type="button"
-              onClick={() => setShiftFilter(f)}
-              className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold min-h-[36px] active:scale-95 ${shiftFilter === f ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "bg-white text-slate-600 border border-slate-200 dark:bg-[#212121] dark:border-[#333] dark:text-slate-300"}`}
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
             >
-              {f === "All" ? "All" : f === "Both" ? "M&E" : f === "M" ? "Morning" : "Evening"}
+              ✕
             </button>
-          ))}
+          )}
         </div>
       </div>
 
+      {/* Add / Edit Drawer Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 md:items-center md:p-4" onClick={handleCancel}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs md:items-center md:p-4" onClick={handleCancel}>
           <div
-            className="w-full max-w-md rounded-t-3xl bg-white p-4 pb-[max(1.5rem,var(--safe-area-inset-bottom))] shadow-2xl md:rounded-3xl md:p-6 dark:bg-[#212121]"
+            className="w-full max-w-md rounded-t-3xl border border-slate-200 bg-white p-5 pb-[max(1.5rem,var(--safe-area-inset-bottom))] shadow-2xl md:rounded-3xl dark:border-[#2e2e2e] dark:bg-[#1a1a1a]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200 md:hidden" />
+            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-300 md:hidden dark:bg-slate-700" />
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-900 md:text-xl dark:text-white">
-                {editingIds.length > 0 ? "Edit Customer" : "Add New Customer"}
-              </h2>
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:bg-brand-500/20 dark:text-blue-400 font-bold">
+                  👤
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 md:text-lg dark:text-white">
+                    {editingIds.length > 0 ? "Edit Customer" : "Add New Customer"}
+                  </h2>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {editingIds.length > 0 ? "Update delivery details" : "Save new delivery details & shift"}
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={handleCancel}
                 aria-label="Close"
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-xl text-slate-500 active:scale-95 dark:bg-white/10 dark:text-slate-300"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 active:scale-95 dark:bg-[#262626] dark:text-slate-400 dark:hover:bg-[#333]"
               >
-                ×
+                ✕
               </button>
             </div>
+
             {formError ? (
-              <p className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700">{formError}</p>
+              <p className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                {formError}
+              </p>
             ) : null}
-            <form onSubmit={handleSubmit} className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto md:max-h-none md:overflow-visible">
+
+            <form onSubmit={handleSubmit} className="flex max-h-[70vh] flex-col gap-3.5 overflow-y-auto md:max-h-none md:overflow-visible">
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Customer Name *
                 </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base min-h-[48px] focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  placeholder="e.g. Amit Verma"
-                  autoComplete="name"
-                  autoFocus
-                />
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">👤</span>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/60 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 dark:border-[#333] dark:bg-[#222] dark:text-white dark:focus:border-brand-400"
+                    placeholder="e.g. Ramesh Kumar"
+                    autoComplete="name"
+                    autoFocus
+                  />
+                </div>
               </div>
+
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Mobile Number
+                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Phone Number (10 digits)
                 </label>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  value={formData.mobile}
-                  onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) })}
-                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base min-h-[48px] tracking-wider focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  placeholder="10-digit mobile"
-                  autoComplete="tel"
-                />
+                <div className="relative flex">
+                  <span className="inline-flex items-center rounded-l-xl border border-r-0 border-slate-200 bg-slate-100 px-3 text-xs font-semibold text-slate-500 dark:border-[#333] dark:bg-[#262626] dark:text-slate-400">
+                    +91
+                  </span>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={formData.mobile}
+                    onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) })}
+                    className="w-full rounded-r-xl border border-slate-200 bg-slate-50/60 py-2.5 px-3 text-sm tracking-wider text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 dark:border-[#333] dark:bg-[#222] dark:text-white dark:focus:border-brand-400"
+                    placeholder="10-digit mobile"
+                    autoComplete="tel"
+                  />
+                </div>
               </div>
+
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Address
-                </label>
-                <textarea
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base min-h-[88px] focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  placeholder="Village / street..."
-                  rows={2}
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Shift *
+                  Milk Delivery Shift *
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { v: "M/E", l: "Both M&E" },
-                    { v: "M", l: "Morning" },
-                    { v: "E", l: "Evening" },
+                    { v: "M/E", l: "Both M&E", icon: "🔄" },
+                    { v: "M", l: "Morning", icon: "🌅" },
+                    { v: "E", l: "Evening", icon: "🌇" },
                   ].map((o) => (
                     <button
                       key={o.v}
                       type="button"
                       onClick={() => setFormData({ ...formData, shift: o.v })}
-                      className={`rounded-2xl border px-2 py-3 text-[13px] font-semibold min-h-[48px] active:scale-95 ${formData.shift === o.v ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-white/10 dark:text-white" : "border-slate-200 bg-white text-slate-600 dark:bg-white/5 dark:border-[#444] dark:text-slate-300"}`}
+                      className={`flex flex-col items-center justify-center rounded-xl p-2.5 text-center transition active:scale-95 ${
+                        formData.shift === o.v
+                          ? "border-2 border-brand-500 bg-brand-50/60 text-brand-700 dark:border-blue-500 dark:bg-blue-950/50 dark:text-blue-300 font-bold"
+                          : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-[#333] dark:bg-[#222] dark:text-slate-300"
+                      }`}
                     >
-                      {o.l}
+                      <span className="text-sm">{o.icon}</span>
+                      <span className="text-xs mt-0.5">{o.l}</span>
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="mt-1 flex gap-2.5">
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Address / House No.
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-3 text-slate-400">📍</span>
+                  <textarea
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/60 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 dark:border-[#333] dark:bg-[#222] dark:text-white dark:focus:border-brand-400"
+                    placeholder="Village / street / house details..."
+                    rows={2}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-2">
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 min-h-[52px] active:scale-[0.98] dark:border-[#444] dark:text-slate-200"
+                  className="flex-1 rounded-xl border border-slate-300 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 active:scale-95 dark:border-[#333] dark:text-slate-300 dark:hover:bg-[#262626] transition min-h-[48px]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-[2] rounded-2xl bg-brand-500 px-4 py-3 text-sm font-bold text-white min-h-[52px] shadow-card active:scale-[0.98]"
+                  className="flex-[2] rounded-xl bg-brand-500 py-3 text-xs font-bold text-white shadow-md shadow-brand-500/20 hover:bg-brand-600 active:scale-95 transition min-h-[48px]"
                 >
-                  {editingIds.length > 0 ? "Update" : "+ Add"} Customer
+                  {editingIds.length > 0 ? "Update Customer" : "+ Add Customer"}
                 </button>
               </div>
             </form>
@@ -713,21 +851,24 @@ function Customers() {
         </div>
       )}
 
+      {/* Customer List Section */}
       <div>
         {loading ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-brand-500" />
-            <p className="mt-3 text-sm text-slate-500">Loading customers...</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card dark:border-[#282828] dark:bg-[#1a1a1a]">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-brand-500 dark:border-[#333] dark:border-t-brand-400" />
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Loading customers...</p>
           </div>
         ) : customers.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-card">
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-card dark:border-[#333] dark:bg-[#1a1a1a]">
             <p className="text-3xl">🐄</p>
-            <p className="mt-2 text-sm font-semibold text-slate-800">No customers yet</p>
-            <p className="mt-1 text-xs text-slate-500">Tap + Add to add your first customer.</p>
+            <p className="mt-2 text-sm font-bold text-slate-800 dark:text-white">No customers yet</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Tap + Add Customer to add your first customer.</p>
           </div>
         ) : filteredGroups.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
-            <p className="text-sm text-slate-500">No matches for {searchQuery || shiftFilter}. Try clearing search.</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card dark:border-[#282828] dark:bg-[#1a1a1a]">
+            <p className="text-3xl">🔍</p>
+            <p className="mt-2 text-sm font-bold text-slate-800 dark:text-white">No customers found</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">No matches for {searchQuery || shiftFilter}. Try clearing search or filters.</p>
           </div>
         ) : (
           <>
@@ -736,7 +877,10 @@ function Customers() {
               {filteredGroups.map((group, groupIndex) => {
                 const primary = group[0];
                 const label = formatShiftLabel(group);
-                const initial = (primary.name.trim().charAt(0) || "?").toUpperCase();
+                const initials = getCustomerInitials(primary.name);
+                const gradient = getAvatarGradient(primary.name);
+                const cleanPhone = primary.mobile?.trim().replace(/\D/g, "") ?? "";
+
                 return (
                   <div
                     key={primary.serialNumber}
@@ -751,7 +895,7 @@ function Customers() {
                     style={{
                       touchAction: mobileDraggedSerial === primary.serialNumber ? "none" : "pan-y",
                     }}
-                    className={`rounded-2xl border border-slate-200 bg-white p-3.5 shadow-card select-none ${
+                    className={`rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-card select-none dark:border-[#282828] dark:bg-[#1c1c1c] transition ${
                       mobileDraggedSerial === primary.serialNumber
                         ? "opacity-60 ring-2 ring-brand-500 ring-inset"
                         : ""
@@ -761,144 +905,203 @@ function Customers() {
                         : ""
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <span
+                    {/* Top Section: Grip + Avatar + Name/Phone/Address + Shift Badge */}
+                    <div className="flex items-start gap-3">
+                      <div
                         aria-hidden="true"
-                        className="shrink-0 text-slate-400 dark:text-slate-500"
+                        className="cursor-grab active:cursor-grabbing pt-1 text-slate-300 dark:text-slate-600 select-none"
                         title="Long press and drag to reorder"
                       >
-                        ⋮⋮
-                      </span>
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                          <circle cx="8" cy="6" r="2" />
+                          <circle cx="16" cy="6" r="2" />
+                          <circle cx="8" cy="12" r="2" />
+                          <circle cx="16" cy="12" r="2" />
+                          <circle cx="8" cy="18" r="2" />
+                          <circle cx="16" cy="18" r="2" />
+                        </svg>
+                      </div>
+
+                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${gradient} text-white font-bold text-xs shadow-xs tracking-wider`}>
+                        {initials}
+                      </div>
+
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <p className="truncate text-[15px] font-bold text-slate-900">{primary.name}</p>
+                        <div className="flex items-center justify-between gap-1.5">
+                          <h3 className="truncate text-[15px] font-bold text-slate-900 dark:text-white">
+                            {primary.name}
+                          </h3>
+                          <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${shiftBadgeStyle(label)}`}>
+                            {label}
+                          </span>
                         </div>
-                        {(primary.mobile?.trim() || primary.address?.trim()) ? (
-                          <p className="selectable mt-0.5 truncate text-xs text-slate-500">
-                            {primary.mobile?.trim() ? primary.mobile.trim() : null}
-                            {primary.mobile?.trim() && primary.address?.trim() ? " • " : ""}
-                            {primary.address?.trim() ? primary.address.trim() : null}
+
+                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="font-semibold text-brand-600 dark:text-brand-400">#{groupIndex + 1}</span>
+                          {cleanPhone ? (
+                            <>
+                              <span>•</span>
+                              <span className="font-medium tracking-wide">{primary.mobile}</span>
+                            </>
+                          ) : null}
+                        </p>
+
+                        {primary.address?.trim() ? (
+                          <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                            <span className="opacity-75">📍</span>
+                            <span className="truncate">{primary.address.trim()}</span>
                           </p>
                         ) : null}
                       </div>
-                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${shiftBadgeStyle(label)}`}>
-                        {label}
-                      </span>
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
+
+                    {/* Bottom Action Bar: Edit, Delete */}
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-[#282828] grid grid-cols-2 gap-2">
                       <button
+                        type="button"
                         onClick={() => handleEditClick(group)}
-                        className="flex min-h-[44px] items-center justify-center rounded-xl bg-brand-50 text-[13px] font-bold text-brand-700 active:scale-95 dark:bg-blue-950/40 dark:text-blue-300"
+                        className="flex min-h-[40px] items-center justify-center rounded-xl bg-blue-50 text-xs font-bold text-blue-700 active:scale-95 dark:bg-blue-950/50 dark:text-blue-300 dark:border dark:border-blue-900/40 transition"
                       >
-                        Edit
+                        ✏️ Edit
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleDelete(group.map((c) => c.serialNumber))}
-                        className="flex min-h-[44px] items-center justify-center rounded-xl bg-red-50 text-[13px] font-bold text-red-600 active:scale-95 dark:bg-red-950/40 dark:text-red-300"
+                        className="flex min-h-[40px] items-center justify-center rounded-xl bg-red-50 text-xs font-bold text-red-600 active:scale-95 dark:bg-red-950/50 dark:text-red-300 dark:border dark:border-red-900/40 transition"
                       >
-                        Delete
+                        🗑️ Delete
                       </button>
                     </div>
                   </div>
                 );
               })}
             </div>
+
             {/* Desktop / tablet table - kept for md+ */}
-            <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-card md:block">
+            <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-card md:block dark:border-[#2a2a2a] dark:bg-[#1a1a1a]">
               <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
-                  S.No
-                </th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
-                  Name
-                </th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
-                  Mobile
-                </th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
-                  Shift
-                </th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
-                  Address
-                </th>
-                <th className="px-2 md:px-6 py-2 md:py-3 text-left text-xs md:text-sm font-semibold text-slate-900">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {filteredGroups.map((group, groupIndex) => {
-                const primary = group[0];
-                const isDragging = draggedSerial === primary.serialNumber;
-                const isDropTarget = dropSerial === primary.serialNumber;
-
-                return (
-                  <tr
-                    key={primary.serialNumber}
-                    ref={(node) => {
-                      rowRefs.current[primary.serialNumber] = node;
-                    }}
-
-                    draggable
-                    onDragStart={handleDragStart(primary.serialNumber)}
-                    onDragOver={handleDragOver(primary.serialNumber)}
-                    onDrop={handleDrop(primary.serialNumber)}
-                    onDragEnd={handleDragEnd}
-                    className={`hover:bg-slate-50 ${isDragging ? "opacity-50" : ""} ${isDropTarget ? "ring-2 ring-brand-500 ring-inset" : ""} cursor-grab active:cursor-grabbing`}
-                  >
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">
-                      {groupIndex + 1}
-                    </td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 font-medium">
-                      {primary.name}
-                    </td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">
-                      {primary.mobile}
-                    </td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700">
-                      {formatShiftLabel(group)}
-                    </td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm text-slate-700 truncate">
-                      {primary.address}
-                    </td>
-                    <td className="px-2 md:px-6 py-2 md:py-3 text-xs md:text-sm flex gap-2 md:gap-3 flex-col sm:flex-row">
-                      <button
-                        onClick={() => handleEditClick(group)}
-                        className="text-brand-600 hover:text-brand-700 active:text-brand-800 font-medium px-3 py-2 rounded hover:bg-brand-50 active:bg-brand-100 transition min-h-[40px] flex items-center justify-center"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleDelete(
-                            group.map((customer) => customer.serialNumber),
-                          )
-                        }
-                        className="text-red-600 hover:text-red-700 active:text-red-800 font-medium px-3 py-2 rounded hover:bg-red-50 active:bg-red-100 transition min-h-[40px] flex items-center justify-center"
-                      >
-                        Delete
-                      </button>
-                    </td>
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:border-[#2a2a2a] dark:bg-[#202020] dark:text-slate-400">
+                    <th className="px-4 py-3 text-center w-12">#</th>
+                    <th className="px-6 py-3">Customer</th>
+                    <th className="px-6 py-3">Contact</th>
+                    <th className="px-6 py-3">Shift</th>
+                    <th className="px-6 py-3">Address</th>
+                    <th className="px-6 py-3 text-right">Actions</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-[#252525]">
+                  {filteredGroups.map((group, groupIndex) => {
+                    const primary = group[0];
+                    const isDragging = draggedSerial === primary.serialNumber;
+                    const isDropTarget = dropSerial === primary.serialNumber;
+                    const initials = getCustomerInitials(primary.name);
+                    const gradient = getAvatarGradient(primary.name);
+                    const label = formatShiftLabel(group);
+
+                    return (
+                      <tr
+                        key={primary.serialNumber}
+                        ref={(node) => {
+                          rowRefs.current[primary.serialNumber] = node;
+                        }}
+                        draggable
+                        onDragStart={handleDragStart(primary.serialNumber)}
+                        onDragOver={handleDragOver(primary.serialNumber)}
+                        onDrop={handleDrop(primary.serialNumber)}
+                        onDragEnd={handleDragEnd}
+                        className={`hover:bg-slate-50/70 dark:hover:bg-[#202020] transition ${
+                          isDragging ? "opacity-50" : ""
+                        } ${
+                          isDropTarget ? "ring-2 ring-brand-500 ring-inset" : ""
+                        } cursor-grab active:cursor-grabbing`}
+                      >
+                        <td className="px-4 py-3 text-center text-xs font-bold text-slate-400">
+                          {groupIndex + 1}
+                        </td>
+                        <td className="px-6 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${gradient} text-white font-bold text-[11px]`}>
+                              {initials}
+                            </div>
+                            <span className="text-sm font-bold text-slate-900 dark:text-white">
+                              {primary.name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-3 text-sm text-slate-700 dark:text-slate-300">
+                          {primary.mobile ? (
+                            <span>{primary.mobile}</span>
+                          ) : (
+                            <span className="text-slate-400 italic text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3">
+                          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${shiftBadgeStyle(label)}`}>
+                            {label}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3 text-sm text-slate-600 dark:text-slate-400 truncate max-w-xs">
+                          {primary.address || "—"}
+                        </td>
+                        <td className="px-6 py-3 text-right">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleEditClick(group)}
+                              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#282828] transition"
+                              title="Edit"
+                            >
+                               Edit
+                            </button>
+                            <button
+                              onClick={() =>
+                                handleDelete(
+                                  group.map((customer) => customer.serialNumber),
+                                )
+                              }
+                              className="rounded-lg p-2 text-red-500 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/40 transition"
+                              title="Delete"
+                            >
+                               Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </>
         )}
       </div>
 
+      {/* Delete Confirmation Modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 md:items-center" onClick={() => setDeleteTarget(null)}>
-          <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl dark:bg-[#212121]" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs p-4 md:items-center" onClick={() => setDeleteTarget(null)}>
+          <div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-[#2e2e2e] dark:bg-[#1a1a1a]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400 mb-3 text-lg">
+              🗑️
+            </div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Customer?</h3>
-            <p className="mt-1 text-[13px] text-slate-500">This will remove this customer. This cannot be undone.</p>
+            <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
+              This will remove this customer and their shift records. This action cannot be undone.
+            </p>
             <div className="mt-4 flex gap-2.5">
-              <button type="button" onClick={() => setDeleteTarget(null)} className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold min-h-[52px] active:scale-[0.98]">Cancel</button>
-              <button type="button" onClick={() => void confirmDelete()} className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-sm font-bold text-white min-h-[52px] active:scale-[0.98]">Delete</button>
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 rounded-xl border border-slate-300 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 active:scale-95 dark:border-[#333] dark:text-slate-300 dark:hover:bg-[#262626] transition min-h-[44px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDelete()}
+                className="flex-1 rounded-xl bg-red-600 py-2.5 text-xs font-bold text-white hover:bg-red-700 active:scale-95 shadow-md shadow-red-500/20 transition min-h-[44px]"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
