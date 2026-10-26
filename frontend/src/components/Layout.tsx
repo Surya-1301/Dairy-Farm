@@ -80,6 +80,19 @@ function Layout({ children, hideBottomNav }: LayoutProps) {
   const isDashboardPage = location.pathname === "/dashboard" || location.pathname === "/";
   const firstName = (displayName || "Farmer").trim().split(/\s+/)[0] || "Farmer";
 
+  const handleBackToHistory = () => {
+    window.dispatchEvent(new Event(BACK_TO_CURRENT_SHEET_EVENT));
+    setTimeout(() => {
+      if (window.location.search.includes("edit=")) {
+        if (window.history.length > 1) {
+          navigate(-1);
+        } else {
+          navigate("/history");
+        }
+      }
+    }, 150);
+  };
+
   return (
     <div
       className={`bg-slate-50 dark:bg-[#161616] ${
@@ -101,9 +114,9 @@ function Layout({ children, hideBottomNav }: LayoutProps) {
           {isArchivedSheetOpen ? (
             <button
               type="button"
-              onClick={() => window.dispatchEvent(new Event(BACK_TO_CURRENT_SHEET_EVENT))}
-              aria-label="Back to current sheet"
-              title="Back to current sheet"
+              onClick={handleBackToHistory}
+              aria-label="Back to history"
+              title="Back to history"
               className="absolute left-1 top-1/2 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-bold text-slate-700 active:scale-95 lg:flex dark:border-[#333333] dark:bg-[#212121] dark:text-slate-100"
             >
               ←
@@ -113,9 +126,9 @@ function Layout({ children, hideBottomNav }: LayoutProps) {
             {isArchivedSheetOpen ? (
               <button
                 type="button"
-                onClick={() => window.dispatchEvent(new Event(BACK_TO_CURRENT_SHEET_EVENT))}
-                aria-label="Back to current sheet"
-                title="Back to current sheet"
+                onClick={handleBackToHistory}
+                aria-label="Back to history"
+                title="Back to history"
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-bold text-slate-700 active:scale-95 md:h-11 md:w-11 lg:hidden dark:border-[#333333] dark:bg-[#212121] dark:text-slate-100"
               >
                 ←

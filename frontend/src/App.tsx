@@ -43,10 +43,35 @@ function App() {
       resumeListener = handle;
     });
     CapacitorApp.addListener("backButton", ({ canGoBack }) => {
-      if (window.location.pathname === "/login" || !canGoBack) {
+      // If editing an archived sheet, trigger the back event to save and return to history
+      if (window.location.pathname === "/customer-details" && window.location.search.includes("edit=")) {
+        window.dispatchEvent(new Event("dairy-farm:back-to-current-sheet"));
+        setTimeout(() => {
+          if (window.location.search.includes("edit=")) {
+            if (window.history.length > 1) {
+              navigate(-1);
+            } else {
+              navigate("/history");
+            }
+          }
+        }, 150);
+        return;
+      }
+
+      // Exit app only on root screens or login
+      if (
+        window.location.pathname === "/login" ||
+        window.location.pathname === "/" ||
+        window.location.pathname === "/dashboard"
+      ) {
         void CapacitorApp.exitApp();
-      } else {
+        return;
+      }
+
+      if (window.history.length > 1) {
         navigate(-1);
+      } else {
+        navigate("/dashboard");
       }
     }).then((handle) => {
       listener = handle;
