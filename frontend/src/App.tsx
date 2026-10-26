@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { StatusBar } from "@capacitor/status-bar";
+import { requestNativePermissions } from "./utils/nativeFiles";
 import Layout from "./components/Layout";
 import { getActiveUser, isAuthReady, isAuthenticated, subscribeAuthState } from "./firebase/auth";
 import CustomerDetails from "./pages/CustomerDetails";
@@ -32,6 +33,7 @@ function App() {
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
+    requestNativePermissions();
     void StatusBar.hide().catch(() => {});
     let resumeListener: { remove: () => void } | undefined;
     let listener: { remove: () => void } | undefined;

@@ -52,29 +52,60 @@ async function notifyNativeFileSave(fileName: string, status: "saving" | "saved"
   });
 }
 
+export function requestNativePermissions(): void {
+  if (typeof window === "undefined") return;
+  const win = window as any;
+  const bridge = win?.DairyFarmBlobDownloader || win?.PDFVerseBlobDownloader;
+  if (bridge && typeof bridge.requestAppPermissions === "function") {
+    try {
+      bridge.requestAppPermissions();
+    } catch (err) {
+      console.warn("Failed to invoke requestAppPermissions:", err);
+    }
+  }
+}
+
 export async function saveFile(blob: Blob, fileName: string): Promise<void> {
+  const safeName = safeFileName(fileName);
+  const win = typeof window !== "undefined" ? (window as any) : null;
+  const bridge = win?.DairyFarmBlobDownloader || win?.PDFVerseBlobDownloader;
+
+  // 1. Direct native download via Android Java bridge interface (matches PDFVerse)
+  if (bridge && typeof bridge.processBlobData === "function") {
+    try {
+      const base64 = await blobToBase64(blob);
+      const mimeType = blob.type || (safeName.endsWith(".pdf") ? "application/pdf" : safeName.endsWith(".xlsx") ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/octet-stream");
+      bridge.processBlobData(base64, safeName, mimeType);
+      return;
+    } catch (bridgeErr) {
+      console.warn("[saveFile] Native blob downloader failed, trying fallback:", bridgeErr);
+    }
+  }
+
+  // 2. Web browser download fallback
   if (!Capacitor.isNativePlatform()) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = fileName;
+    link.download = safeName;
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
     return;
   }
 
+  // 3. Fallback: LocalNotifications & Filesystem
   let notificationsEnabled = false;
   try {
-    await notifyNativeFileSave(fileName, "saving");
+    await notifyNativeFileSave(safeName, "saving");
     notificationsEnabled = true;
   } catch (error) {
     console.error("Unable to show Android file-save notification.", error);
   }
 
   await Filesystem.writeFile({
-    path: safeFileName(fileName),
+    path: safeName,
     data: await blobToBase64(blob),
     directory: Directory.Documents,
     recursive: true
@@ -83,7 +114,7 @@ export async function saveFile(blob: Blob, fileName: string): Promise<void> {
   if (notificationsEnabled) {
     try {
       await LocalNotifications.cancel({ notifications: [{ id: 1001 }] });
-      await notifyNativeFileSave(fileName, "saved");
+      await notifyNativeFileSave(safeName, "saved");
     } catch (error) {
       console.error("Unable to show Android file-save completion notification.", error);
     }

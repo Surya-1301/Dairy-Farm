@@ -35,8 +35,7 @@ firebase-debug.log
 # Render
 .render
 
-# Capacitor native projects (generated in CI via `npx cap add/sync`)
-frontend/android/
+# Capacitor native projects
 frontend/ios/
 
 # Firebase CLI cache
