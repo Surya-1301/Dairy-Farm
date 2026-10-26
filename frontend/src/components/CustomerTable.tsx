@@ -2096,11 +2096,7 @@ function CustomerTable() {
   const backToCurrentSheet = async () => {
     const activeUser = getActiveUser();
     if (!activeUser?.email) {
-      if (window.history.length > 1) {
-        navigate(-1);
-      } else {
-        navigate("/history");
-      }
+      navigate("/customer-details", { replace: true });
       return;
     }
 
@@ -2108,12 +2104,13 @@ function CustomerTable() {
     activeHistoryIdRef.current = null;
     setActiveHistoryId(null);
     window.sessionStorage.removeItem(getActiveHistoryStorageKey(activeUser.email));
-    
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate("/history");
-    }
+    const currentSheet = await getSheetByEmail(activeUser.email, true);
+    setSheetState({
+      dayCount: currentSheet.dayCount,
+      rows: normalizeRows(currentSheet.rows, currentSheet.dayCount)
+    });
+    setSaveStatus("saved");
+    navigate("/customer-details", { replace: true });
   };
 
   // Header back-arrow (shown only while an archived sheet is open) triggers

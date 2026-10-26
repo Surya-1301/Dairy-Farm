@@ -111,25 +111,14 @@ function Layout({ children, hideBottomNav }: LayoutProps) {
         style={{ paddingTop: "var(--safe-area-inset-top)" }}
       >
         <div className="relative mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-4 py-2.5 md:gap-3 md:px-8 md:py-3">
-          {isArchivedSheetOpen ? (
-            <button
-              type="button"
-              onClick={handleBackToHistory}
-              aria-label="Back to history"
-              title="Back to history"
-              className="absolute left-1 top-1/2 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-bold text-slate-700 active:scale-95 lg:flex dark:border-[#333333] dark:bg-[#212121] dark:text-slate-100"
-            >
-              ←
-            </button>
-          ) : null}
-          <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-2.5 lg:pl-16">
+          <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-2.5">
             {isArchivedSheetOpen ? (
               <button
                 type="button"
                 onClick={handleBackToHistory}
-                aria-label="Back to history"
-                title="Back to history"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-bold text-slate-700 active:scale-95 md:h-11 md:w-11 lg:hidden dark:border-[#333333] dark:bg-[#212121] dark:text-slate-100"
+                aria-label="Back to current sheet"
+                title="Back to current sheet"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-bold text-slate-700 active:scale-95 md:h-11 md:w-11 dark:border-[#333333] dark:bg-[#212121] dark:text-slate-100"
               >
                 ←
               </button>
