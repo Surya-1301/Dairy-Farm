@@ -598,7 +598,7 @@ function History() {
                         📅 {effectiveDayCount} Days
                       </span>
                       <span className="inline-flex items-center gap-1 rounded-xl bg-emerald-500/10 px-2.5 py-1 text-xs font-black text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 border border-emerald-500/25">
-                        ₹{total.toLocaleString("en-IN")}
+                        Total {total.toLocaleString("en-IN")}
                       </span>
                     </div>
                     {/* Animated Chevron */}
@@ -890,7 +890,7 @@ function History() {
                                       rowSpan={nameSpan}
                                       className="py-2 px-3 font-mono font-black text-emerald-600 dark:text-emerald-400 bg-slate-50/30 dark:bg-[#1c1c1c] align-middle"
                                     >
-                                      ₹{displayTotal}
+                                      {displayTotal}
                                     </td>
                                   )}
                                 </tr>
